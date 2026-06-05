@@ -12,11 +12,13 @@ if (!channelAccessToken || !channelSecret) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
+  const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+
+  if (req.method === 'GET' && pathname === '/health') {
     return sendJson(res, 200, { ok: true });
   }
 
-  if (req.method !== 'POST' || req.url !== '/webhook/line') {
+  if (req.method !== 'POST' || pathname !== '/webhook/line') {
     return sendJson(res, 404, { error: 'Not found' });
   }
 

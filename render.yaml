@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: line-oa-webhook
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: LINE_CHANNEL_ID
+        value: "2010309343"
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
