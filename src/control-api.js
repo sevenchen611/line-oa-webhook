@@ -520,6 +520,13 @@ async function recordOutgoingMessages(target, messages) {
       pages.push({ messageId, pageId: page.id, duplicate: false });
     }
 
+    await appendOutgoingConversationContent({
+      conversationId: conversation.id,
+      target,
+      messages,
+      sentAt,
+    });
+
     await updateOutgoingConversation(conversation, target, sentAt, preview, messages.length);
 
     return { skipped: false, conversationId: conversation.id, messagesLogged: pages.length, pages };
@@ -655,6 +662,33 @@ async function createOutgoingMessagePage({ conversationId, messageId, message, m
         paragraphProperty(text || '(非文字訊息)'),
       ],
     },
+  });
+}
+
+async function appendOutgoingConversationContent({ conversationId, target, messages, sentAt }) {
+  const blocks = [];
+  const context = resolveOutgoingTargetContext(target);
+  const conversationName = target.name || `${context.entityType} ${target.id}`;
+
+  messages.forEach((message, index) => {
+    const messageType = normalizeOutgoingMessageType(message.type);
+    const text = outgoingMessageText(message);
+    const typeLabel = messageType === 'text' ? '文字訊息' : messageType;
+    const meta = `【${formatTaipeiDateTime(sentAt)}】${conversationName} - ${OUTGOING_ACTOR_NAME}：${typeLabel}`;
+    blocks.push(paragraphProperty(meta));
+    blocks.push(paragraphProperty(text || '(非文字訊息)'));
+    if (index < messages.length - 1) {
+      blocks.push(paragraphProperty(''));
+    }
+  });
+
+  if (!blocks.length) {
+    return;
+  }
+
+  await notionRequest(`/v1/blocks/${conversationId}/children`, {
+    method: 'PATCH',
+    body: { children: blocks },
   });
 }
 
