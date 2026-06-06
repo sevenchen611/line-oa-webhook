@@ -21,6 +21,7 @@ async function handleControlRequest(req, res, pathname) {
       controlApiEnabled: Boolean(process.env.SEVEN_CONTROL_API_KEY),
       linePushEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
+      defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       endpoints: [
         'POST /control/line/push',
         'POST /control/reports/send',
@@ -71,20 +72,54 @@ function isAuthorized(req) {
 async function sendReport(body) {
   const reportType = String(body.reportType || body.type || '').trim().toLowerCase();
   const report = buildReportMessage(reportType, body.text);
-  const targets = normalizeTargets(body.targets, body.targetId, body.targetType);
+  const targets = await resolveReportTargets(body);
 
   if (!targets.length) {
-    const defaultTargetId = process.env.SEVEN_REPORT_TARGET_ID;
-    if (defaultTargetId) {
-      targets.push({ id: defaultTargetId, type: process.env.SEVEN_REPORT_TARGET_TYPE || 'user' });
-    }
-  }
-
-  if (!targets.length) {
-    throw new Error('No LINE target configured. Set SEVEN_REPORT_TARGET_ID or pass targets in the request body.');
+    throw new Error('No LINE report target found. Send a message to Seven Jr. first, or set SEVEN_REPORT_TARGET_ID.');
   }
 
   return pushToTargets(targets, [report]);
+}
+
+async function resolveReportTargets(body) {
+  const targets = normalizeTargets(body.targets, body.targetId, body.targetType);
+  if (targets.length) {
+    return targets;
+  }
+
+  const defaultTargetId = process.env.SEVEN_REPORT_TARGET_ID;
+  if (defaultTargetId) {
+    return [{ id: defaultTargetId, type: process.env.SEVEN_REPORT_TARGET_TYPE || 'user' }];
+  }
+
+  const notionTarget = await findDefaultReportTargetFromNotion();
+  return notionTarget ? [notionTarget] : [];
+}
+
+async function findDefaultReportTargetFromNotion() {
+  const notionToken = process.env.NOTION_TOKEN;
+  const dataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
+  if (!notionToken || !dataSourceId) {
+    return null;
+  }
+
+  const result = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 10,
+      filter: { property: '對象類型', select: { equals: '個人' } },
+      sorts: [{ property: '最後訊息時間', direction: 'descending' }],
+    },
+  });
+
+  const pages = result.results || [];
+  const keyword = String(process.env.SEVEN_REPORT_TARGET_NAME_KEYWORD || 'Seven').toLowerCase();
+  const preferred = pages.find((page) => pageTextProperty(page, 'LINE 對話名稱').toLowerCase().includes(keyword)
+    || pageTextProperty(page, '自定義名稱').toLowerCase().includes(keyword));
+  const selected = preferred || pages[0];
+  const userId = selected ? pageTextProperty(selected, 'User ID') : '';
+
+  return userId ? { id: userId, type: 'user', source: 'notion-auto' } : null;
 }
 
 function buildReportMessage(reportType, customText) {
@@ -172,7 +207,7 @@ async function pushToTargets(targets, messages) {
   const results = [];
   for (const target of targets) {
     await pushLine(target.id, messages);
-    results.push({ targetId: target.id, targetType: target.type || 'unknown', ok: true });
+    results.push({ targetId: target.id, targetType: target.type || 'unknown', source: target.source || 'request', ok: true });
   }
 
   return { ok: true, sent: results.length, results };
@@ -197,6 +232,46 @@ async function pushLine(to, messages) {
   if (!response.ok) {
     throw new Error(`LINE push failed: ${response.status} ${responseText}`);
   }
+}
+
+async function notionRequest(pathname, { method, body }) {
+  const response = await fetch(`https://api.notion.com${pathname}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Notion-Version': process.env.NOTION_VERSION || '2025-09-03',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Notion API failed: ${response.status} ${responseText}`);
+  }
+
+  return responseText ? JSON.parse(responseText) : {};
+}
+
+function pageTextProperty(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  if (!property) {
+    return '';
+  }
+
+  if (property.type === 'title') {
+    return richTextPlain(property.title);
+  }
+
+  if (property.type === 'rich_text') {
+    return richTextPlain(property.rich_text);
+  }
+
+  return '';
+}
+
+function richTextPlain(items) {
+  return (items || []).map((item) => item.plain_text || item.text?.content || '').join('');
 }
 
 async function readJsonBody(req) {
