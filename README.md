@@ -1,71 +1,125 @@
 # LINE OA Webhook
 
-這是一個最小可用的 LINE Official Account Webhook 接收端。
+Seven Jr. 的 LINE OA Webhook 服務，用來接收 LINE 群組/個人對話、寫入 Notion，並提供安全的主動推送入口。
 
-## 本機啟動
+## Webhook
 
-1. 複製環境變數：
+LINE Developers Console 的 Webhook URL：
 
-```powershell
-Copy-Item .env.example .env
+```text
+https://line-oa-webhook-nn5j.onrender.com/webhook/line
 ```
 
-2. 在 `.env` 填入 LINE Developers Console 裡的：
+健康檢查：
+
+```text
+https://line-oa-webhook-nn5j.onrender.com/health
+```
+
+控制 API 健康檢查：
+
+```text
+https://line-oa-webhook-nn5j.onrender.com/control/health
+```
+
+## Render Environment
+
+必要設定：
 
 - `LINE_CHANNEL_ACCESS_TOKEN`
 - `LINE_CHANNEL_SECRET`
+- `NOTION_TOKEN`
+- `SEVEN_CONVERSATIONS_DATA_SOURCE_ID`
+- `SEVEN_MESSAGES_DATA_SOURCE_ID`
+- `SEVEN_ATTACHMENTS_DATA_SOURCE_ID`
 
-3. 啟動：
+主動推送功能需要新增：
+
+- `SEVEN_CONTROL_API_KEY`: 控制 API 密鑰，請使用一組夠長的隨機字串。
+- `SEVEN_REPORT_TARGET_ID`: 早報/晚報預設推送對象，可以是 userId、groupId 或 roomId。
+- `SEVEN_REPORT_TARGET_TYPE`: `user`、`group` 或 `room`，主要作為紀錄辨識用。
+- `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 GitHub 預設版。
+- `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 GitHub 預設版。
+
+## 主動推送 API
+
+所有控制 API 都需要帶其中一種授權：
+
+```text
+x-seven-control-key: <SEVEN_CONTROL_API_KEY>
+```
+
+或：
+
+```text
+Authorization: Bearer <SEVEN_CONTROL_API_KEY>
+```
+
+### 指定對象發訊息
+
+```http
+POST /control/line/push
+```
+
+範例 body：
+
+```json
+{
+  "targetType": "group",
+  "targetId": "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "text": "Seven Jr. 測試主動推送訊息。"
+}
+```
+
+也可以一次推送多個對象：
+
+```json
+{
+  "targets": [
+    { "type": "user", "id": "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    { "type": "group", "id": "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+  ],
+  "text": "這是一則批次通知。"
+}
+```
+
+### 發送早報或晚報
+
+```http
+POST /control/reports/send
+```
+
+範例 body：
+
+```json
+{
+  "reportType": "morning"
+}
+```
+
+或：
+
+```json
+{
+  "reportType": "daily"
+}
+```
+
+若 body 沒有指定 targets，系統會使用 `SEVEN_REPORT_TARGET_ID` 作為預設推送對象。
+
+## LINE 指令回覆
+
+一般訊息只會收集到 Notion，不會自動回覆。以下指令例外：
+
+- `早報`、`#早報`、`今日早報`、`#今日早報`、`行程`、`#行程`
+- `報告`、`#報告`、`每日報告`、`#每日報告`
+
+這些指令會回覆對應的報告網頁連結。
+
+## 啟動
 
 ```powershell
-node src/server.js
+npm start
 ```
 
-本機 Webhook endpoint 是：
-
-```text
-http://localhost:3000/webhook/line
-```
-
-LINE Webhook URL 不能使用 `localhost`，必須填公開 HTTPS 網址。
-
-## 取得公開 HTTPS 網址
-
-最穩的做法是部署到 Render。部署完成後，Render 會提供一個公開網址，例如：
-
-```text
-https://line-oa-webhook.onrender.com
-```
-
-LINE Developers Console 裡要填的是加上路徑後的完整 Webhook URL：
-
-```text
-https://line-oa-webhook.onrender.com/webhook/line
-```
-
-## Render 部署
-
-1. 把這個 repo 連到 Render。
-2. Render 會讀取 `render.yaml` 建立 `line-oa-webhook` 服務。
-3. 在 Render 的 Environment 填入：
-
-- `LINE_CHANNEL_ACCESS_TOKEN`
-- `LINE_CHANNEL_SECRET`
-
-4. 部署完成後，把 Render 的公開網址加上 `/webhook/line`，填到 LINE Developers Console。
-
-## LINE Developers Console 設定
-
-到 Channel ID `2010309343` 的 Messaging API 分頁：
-
-1. 找到 Webhook settings。
-2. 在 Webhook URL 填入公開 HTTPS Webhook URL。
-3. 開啟 Use webhook。
-4. 按 Verify 確認成功。
-5. 若還沒有 Channel access token，請在 Messaging API 分頁發行，並填到 Render Environment。
-
-目前程式會把使用者文字訊息回覆成：
-
-```text
-收到：使用者訊息
-```
+`npm start` 會同時啟動 Webhook 與控制 API。
