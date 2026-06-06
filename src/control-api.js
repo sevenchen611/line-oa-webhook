@@ -22,10 +22,8 @@ async function handleControlRequest(req, res, pathname) {
       linePushEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
-      endpoints: [
-        'POST /control/line/push',
-        'POST /control/reports/send',
-      ],
+      reportTypes: ['morning', 'daily', 'followup-morning', 'followup-afternoon'],
+      endpoints: ['POST /control/line/push', 'POST /control/reports/send'],
     });
   }
 
@@ -129,6 +127,7 @@ function buildReportMessage(reportType, customText) {
 
   const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
   const dailyReportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
+  const followupBaseUrl = process.env.FOLLOWUP_CONFIRMATION_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/followup-confirmation-prototype.html';
 
   if (['morning', 'morning-brief', '早報'].includes(reportType)) {
     return {
@@ -144,7 +143,21 @@ function buildReportMessage(reportType, customText) {
     };
   }
 
-  throw new Error('Unknown reportType. Use morning or daily.');
+  if (['followup-morning', 'followup-10', '10', '上午跟催'].includes(reportType)) {
+    return {
+      type: 'text',
+      text: `上午 10 點跟催訊息發送確認：\n${followupBaseUrl}\n\n請確認哪些訊息要由 Seven Jr. 發給各群組或負責人。未確認前不會對外發送。`,
+    };
+  }
+
+  if (['followup-afternoon', 'followup-17', '17', '下午跟催'].includes(reportType)) {
+    return {
+      type: 'text',
+      text: `下午 5 點跟催訊息發送確認：\n${followupBaseUrl}${followupBaseUrl.includes('?') ? '&' : '?'}slot=17\n\n請確認下班前哪些事項需要由 Seven Jr. 提醒各群組或負責人。未確認前不會對外發送。`,
+    };
+  }
+
+  throw new Error('Unknown reportType. Use morning, daily, followup-morning, or followup-afternoon.');
 }
 
 async function pushLineMessages(body) {
