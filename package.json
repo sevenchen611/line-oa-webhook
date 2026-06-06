@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --import ./src/control-api.js src/server.js",
-    "dev": "node --import ./src/control-api.js --watch src/server.js"
+    "dev": "node --import ./src/control-api.js --watch src/server.js",
+    "cron:report": "node scripts/render-cron-report.js"
   }
 }
