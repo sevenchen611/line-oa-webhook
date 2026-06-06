@@ -34,7 +34,9 @@ const server = http.createServer(async (req, res) => {
       autoReplyEnabled: false,
       conversationPageBlocksEnabled: true,
       lineContentUploadEnabled: true,
+      directFileBlocksEnabled: true,
       attachmentLinksEnabled: true,
+      attachmentLinksPointToDatabaseIndex: true,
       storageMode: 'hozo-crm-style',
     });
   }
@@ -130,38 +132,18 @@ async function storeLineEventInNotion(event, rawBody) {
 
 function resolveConversationContext(source) {
   if (source.roomId) {
-    return {
-      identityProperty: 'Room ID',
-      identityValue: source.roomId,
-      entityType: '聊天室',
-      key: `room:${source.roomId}`,
-    };
+    return { identityProperty: 'Room ID', identityValue: source.roomId, entityType: '聊天室', key: `room:${source.roomId}` };
   }
 
   if (source.groupId) {
-    return {
-      identityProperty: 'Group ID',
-      identityValue: source.groupId,
-      entityType: '群組',
-      key: `group:${source.groupId}`,
-    };
+    return { identityProperty: 'Group ID', identityValue: source.groupId, entityType: '群組', key: `group:${source.groupId}` };
   }
 
   if (source.userId) {
-    return {
-      identityProperty: 'User ID',
-      identityValue: source.userId,
-      entityType: '個人',
-      key: `user:${source.userId}`,
-    };
+    return { identityProperty: 'User ID', identityValue: source.userId, entityType: '個人', key: `user:${source.userId}` };
   }
 
-  return {
-    identityProperty: '對話統一鍵',
-    identityValue: 'unknown',
-    entityType: '未知',
-    key: 'unknown',
-  };
+  return { identityProperty: '對話統一鍵', identityValue: 'unknown', entityType: '未知', key: 'unknown' };
 }
 
 async function resolveDisplayNames(source, context) {
@@ -237,10 +219,7 @@ async function findConversationPage(context) {
     method: 'POST',
     body: {
       page_size: 1,
-      filter: {
-        property: context.identityProperty,
-        rich_text: { equals: context.identityValue },
-      },
+      filter: { property: context.identityProperty, rich_text: { equals: context.identityValue } },
     },
   });
 
@@ -252,10 +231,7 @@ async function findMessagePage(messageId) {
     method: 'POST',
     body: {
       page_size: 1,
-      filter: {
-        property: '訊息 ID',
-        title: { equals: messageId },
-      },
+      filter: { property: '訊息 ID', title: { equals: messageId } },
     },
   });
 
@@ -312,10 +288,7 @@ async function appendConversationContentFirst({ conversationId, conversationName
 
   await notionRequest(`/v1/blocks/${conversationId}/children`, {
     method: 'PATCH',
-    body: {
-      after: anchorBlock.id,
-      children: blocks,
-    },
+    body: { after: anchorBlock.id, children: blocks },
   });
 }
 
@@ -366,9 +339,17 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
   if (messageType === 'file') {
     const filename = message.fileName || uploadedContent?.filename || messageId;
     blocks.push(paragraph(`檔案：${filename}`));
-    if (attachmentPageUrl) {
-      blocks.push(linkParagraph(`附件資料庫：${filename}`, attachmentPageUrl));
+
+    if (uploadedContent?.fileUploadId) {
+      blocks.push(fileBlock(uploadedContent.fileUploadId, filename));
+    } else {
+      blocks.push(paragraph('檔案下載或上傳 Notion 失敗，請查看 Render log。'));
     }
+
+    if (attachmentPageUrl) {
+      blocks.push(linkParagraph(`附件資料庫索引：${filename}`, attachmentPageUrl));
+    }
+
     return blocks;
   }
 
@@ -418,7 +399,9 @@ async function createAttachmentPage({ conversationId, messagePageId, event, mess
     body: {
       parent: { type: 'data_source_id', data_source_id: attachmentsDataSourceId },
       properties,
-      children: uploadedContent?.fileUploadId ? [fileBlock(uploadedContent.fileUploadId)] : [paragraph('LINE 檔案下載或 Notion 上傳失敗，請查看 Render log。')],
+      children: uploadedContent?.fileUploadId
+        ? [fileBlock(uploadedContent.fileUploadId, filename)]
+        : [paragraph('LINE 檔案下載或 Notion 上傳失敗，請查看 Render log。')],
     },
   });
 }
@@ -471,10 +454,7 @@ async function downloadLineContent(messageId) {
 async function uploadFileToNotion(buffer, filename, contentType) {
   const upload = await notionRequest('/v1/file_uploads', {
     method: 'POST',
-    body: {
-      filename,
-      content_type: contentType,
-    },
+    body: { filename, content_type: contentType },
   });
 
   const formData = new FormData();
@@ -677,14 +657,14 @@ function imageBlock(fileUploadId, caption) {
   };
 }
 
-function fileBlock(fileUploadId) {
+function fileBlock(fileUploadId, caption) {
   return {
     object: 'block',
     type: 'file',
     file: {
       type: 'file_upload',
       file_upload: { id: fileUploadId },
-      caption: [],
+      caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [],
     },
   };
 }
