@@ -19,6 +19,19 @@ The system must answer two questions:
 - Render Webhook Server: receives LINE webhook events, writes to Notion, exposes control APIs, and runs scheduled report jobs.
 - Notion: visible database layer for conversations, tasks, attachments, project status, risks, and decisions.
 
+## User LINE Identity
+
+The user is Seven 陳聖文.
+
+When the user asks Codex or Seven Jr. to "send a message to me", "傳訊息給我", "通知我", or otherwise send a LINE message to the user personally, the default LINE target is:
+
+- Notion conversation: `Seven陳聖文`
+- Custom name: `Seven 的主要訊息`
+- Target type: `user`
+- User ID: `U09dc6553016c78d89c515522be9b74f6`
+
+This target was tested successfully through the Render Control API on 2026-06-06. When sending Chinese text through PowerShell, encode the JSON request body as UTF-8 bytes and set `Content-Type: application/json; charset=utf-8`; otherwise LINE may receive garbled Chinese text.
+
 ## Current GitHub Backup
 
 Repository: `sevenchen611/line-oa-webhook`
@@ -356,6 +369,24 @@ Rules:
 - Never paste secrets into public messages.
 - When checking secrets, confirm existence/format only.
 - Do not print secret values back to the user.
+
+## Daily Report Approval Write-back
+
+The 20:30 daily report page now posts confirmed page choices back to Render:
+
+```text
+POST /control/reports/approve
+```
+
+This endpoint writes internal records to Notion only. It does not send external LINE messages.
+
+Current write-back behavior:
+
+- Creates a decision record in the risk and decision database.
+- Updates matching task records in the total control task database, or creates them if no exact task name exists.
+- Creates attachment conversion queue records for checked attachments.
+- Supports optional `SEVEN_REPORT_APPROVAL_KEY`; when set on Render, the page must send `approvalKey` by query string, local storage, body, or `x-seven-approval-key`.
+- Uses CORS headers so static report pages can call the Render Control API.
 
 ## Next Steps
 

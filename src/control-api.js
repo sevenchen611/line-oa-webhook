@@ -2,6 +2,10 @@ import http from 'node:http';
 
 const originalCreateServer = http.createServer.bind(http);
 
+const TASKS_DATA_SOURCE_ID = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
+const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOURCE_ID || '0792a903-d274-4a6a-9115-8c66473d1234';
+const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
+
 http.createServer = function createServerWithControlApi(listener) {
   return originalCreateServer(async (req, res) => {
     const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
@@ -15,15 +19,20 @@ http.createServer = function createServerWithControlApi(listener) {
 };
 
 async function handleControlRequest(req, res, pathname) {
+  if (req.method === 'OPTIONS') {
+    return sendNoContent(res);
+  }
+
   if (req.method === 'GET' && pathname === '/control/health') {
     return sendJson(res, 200, {
       ok: true,
       controlApiEnabled: Boolean(process.env.SEVEN_CONTROL_API_KEY),
       linePushEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+      approvalWriteBackEnabled: Boolean(process.env.NOTION_TOKEN),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-afternoon'],
-      endpoints: ['POST /control/line/push', 'POST /control/reports/send'],
+      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/approve'],
     });
   }
 
@@ -31,11 +40,17 @@ async function handleControlRequest(req, res, pathname) {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
 
-  if (!isAuthorized(req)) {
-    return sendJson(res, 401, { error: 'Unauthorized' });
-  }
-
   try {
+    if (pathname === '/control/reports/approve') {
+      const body = await readJsonBody(req);
+      const result = await approveReport(req, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (!isAuthorized(req)) {
+      return sendJson(res, 401, { error: 'Unauthorized' });
+    }
+
     const body = await readJsonBody(req);
 
     if (pathname === '/control/line/push') {
@@ -65,6 +80,204 @@ function isAuthorized(req) {
   const authorization = req.headers.authorization || '';
   const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
   return headerKey === expected || bearerToken === expected;
+}
+
+function isApprovalAuthorized(req, body) {
+  const expected = process.env.SEVEN_REPORT_APPROVAL_KEY;
+  if (!expected) {
+    return true;
+  }
+
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const headerKey = req.headers['x-seven-approval-key'];
+  const queryKey = url.searchParams.get('approvalKey');
+  const bodyKey = body.approvalKey;
+  return headerKey === expected || queryKey === expected || bodyKey === expected;
+}
+
+async function approveReport(req, body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+
+  if (!isApprovalAuthorized(req, body)) {
+    throw new Error('Approval key is invalid.');
+  }
+
+  const reportType = String(body.reportType || 'daily').trim().toLowerCase();
+  const approvedBy = String(body.approvedBy || 'Seven 陳聖文').trim();
+  const submittedAt = body.submittedAt ? new Date(body.submittedAt) : new Date();
+  const tasks = normalizeApprovalList(body.tasks);
+  const attachments = normalizeApprovalList(body.attachments);
+
+  const taskResults = [];
+  for (const item of tasks) {
+    taskResults.push(await applyTaskApproval(item, { reportType, approvedBy, submittedAt }));
+  }
+
+  const attachmentResults = [];
+  for (const item of attachments) {
+    attachmentResults.push(await createAttachmentConversionApproval(item, { reportType, approvedBy, submittedAt }));
+  }
+
+  const decisionPage = await createApprovalDecisionPage({
+    reportType,
+    approvedBy,
+    submittedAt,
+    taskResults,
+    attachmentResults,
+    notes: body.notes,
+  });
+
+  return {
+    ok: true,
+    reportType,
+    decisionPageId: decisionPage.id,
+    tasksWritten: taskResults.length,
+    attachmentsWritten: attachmentResults.length,
+    taskResults,
+    attachmentResults,
+  };
+}
+
+function normalizeApprovalList(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : [];
+}
+
+async function applyTaskApproval(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  if (!taskName) {
+    throw new Error('Task approval is missing task name.');
+  }
+
+  const status = normalizeTaskStatus(item.status);
+  const existingPage = await findTaskByName(taskName);
+  const summary = `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認。`;
+
+  if (existingPage) {
+    await notionRequest(`/v1/pages/${existingPage.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          狀態: selectProperty(status),
+          確認狀態: selectProperty('已確認'),
+          最後更新: dateProperty(context.submittedAt),
+          'Codex 判斷摘要': richTextProperty(summary),
+        }),
+      },
+    });
+
+    return { task: taskName, status, action: 'updated', pageId: existingPage.id };
+  }
+
+  const created = await notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: TASKS_DATA_SOURCE_ID },
+      properties: compactProperties({
+        任務名稱: titleProperty(taskName),
+        狀態: selectProperty(status),
+        確認狀態: selectProperty('已確認'),
+        來源: selectProperty('Codex 手動整理'),
+        信心等級: selectProperty('中'),
+        優先級: selectProperty('中'),
+        專案: selectProperty('未分類'),
+        來源原文: richTextProperty(`${context.reportType} 報告頁面確認`),
+        'Codex 判斷摘要': richTextProperty(summary),
+        最後更新: dateProperty(context.submittedAt),
+      }),
+    },
+  });
+
+  return { task: taskName, status, action: 'created', pageId: created.id };
+}
+
+async function findTaskByName(taskName) {
+  const result = await notionRequest(`/v1/data_sources/${TASKS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: { property: '任務名稱', title: { equals: taskName } },
+    },
+  });
+
+  return result.results?.[0] || null;
+}
+
+async function createAttachmentConversionApproval(item, context) {
+  const fileName = String(item.file || item.name || '').trim();
+  if (!fileName) {
+    throw new Error('Attachment approval is missing file name.');
+  }
+
+  const action = String(item.action || '暫不轉檔').trim();
+  const conversionStatus = resolveConversionStatus(action);
+  const conversionType = resolveConversionType(action);
+  const sourceUrl = String(item.sourceUrl || '').trim();
+  const summary = `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認：${action}`;
+
+  const created = await notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID },
+      properties: compactProperties({
+        轉檔項目: titleProperty(`${fileName} - ${action}`),
+        原始檔名: richTextProperty(fileName),
+        轉檔狀態: selectProperty(conversionStatus),
+        轉檔類型: selectProperty(conversionType),
+        附件類型: selectProperty('file'),
+        '可供 Codex 判斷': checkboxProperty(conversionStatus !== '不需轉檔'),
+        轉檔時間: dateProperty(context.submittedAt),
+        摘要: richTextProperty(summary),
+        轉檔來源附件: sourceUrl ? urlProperty(sourceUrl) : undefined,
+      }),
+    },
+  });
+
+  return { file: fileName, action, conversionStatus, conversionType, pageId: created.id };
+}
+
+async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, notes }) {
+  const title = `${reportType} 報告確認 ${formatTaipeiDateTime(submittedAt)}`;
+  const taskLines = taskResults.length
+    ? taskResults.map((item) => `${item.task} -> ${item.status} (${item.action})`).join('\n')
+    : '沒有任務狀態變更。';
+  const attachmentLines = attachmentResults.length
+    ? attachmentResults.map((item) => `${item.file} -> ${item.action} (${item.conversionStatus})`).join('\n')
+    : '沒有附件轉檔確認。';
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: RISK_DECISIONS_DATA_SOURCE_ID },
+      properties: compactProperties({
+        議題: titleProperty(title),
+        類型: selectProperty('決策'),
+        專案: selectProperty('跨專案'),
+        狀態: selectProperty('已決策'),
+        嚴重度: selectProperty('低'),
+        說明: richTextProperty(`確認人：${approvedBy}\n報告類型：${reportType}\n\n任務：\n${taskLines}\n\n附件：\n${attachmentLines}`),
+        後續行動: richTextProperty(notes ? String(notes) : '依照本次確認結果更新任務與附件轉檔佇列。'),
+      }),
+    },
+  });
+}
+
+function normalizeTaskStatus(value) {
+  const status = String(value || '').trim();
+  const allowed = new Set(['待確認', '未開始', '進行中', '等待回覆', '待確認完成', '已完成', '封存']);
+  return allowed.has(status) ? status : '待確認';
+}
+
+function resolveConversionStatus(action) {
+  return /不需|暫不|不要|跳過/.test(action) ? '不需轉檔' : '待轉檔';
+}
+
+function resolveConversionType(action) {
+  if (/OCR|圖片|影像/.test(action)) return 'OCR';
+  if (/PDF|文字/.test(action)) return 'PDF 文字';
+  if (/摘要|整理/.test(action)) return '檔案摘要';
+  return '人工整理';
 }
 
 async function sendReport(body) {
@@ -132,28 +345,28 @@ function buildReportMessage(reportType, customText) {
   if (['morning', 'morning-brief', '早報'].includes(reportType)) {
     return {
       type: 'text',
-      text: `早上 8 點行程與待辦報告：\n${morningBriefUrl}\n\n請先看今天行程、昨日未完成事項與今日優先處理清單。`,
+      text: `早上 8 點早晨總控報告：\n${morningBriefUrl}\n\n請確認今日行程、優先工作、未完成事項與需要決策的項目。`,
     };
   }
 
   if (['daily', 'evening', 'night', '晚報', '每日報告'].includes(reportType)) {
     return {
       type: 'text',
-      text: `晚上 8 點半每日總控報告：\n${dailyReportUrl}\n\n請確認任務狀態、待解析附件、低信心判斷與明日優先事項。`,
+      text: `晚上 8 點半每日總控報告：\n${dailyReportUrl}\n\n請確認專案進度、待辦狀態、附件解析需求與明日優先事項。`,
     };
   }
 
-  if (['followup-morning', 'followup-10', '10', '上午跟催'].includes(reportType)) {
+  if (['followup-morning', 'followup-10', '10', '上午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `上午 10 點跟催訊息發送確認：\n${followupBaseUrl}\n\n請確認哪些訊息要由 Seven Jr. 發給各群組或負責人。未確認前不會對外發送。`,
+      text: `上午 10 點進度追蹤確認：\n${followupBaseUrl}\n\n請確認哪些提醒可以由 Seven Jr. 送出，或需要退回修改。`,
     };
   }
 
-  if (['followup-afternoon', 'followup-17', '17', '下午跟催'].includes(reportType)) {
+  if (['followup-afternoon', 'followup-17', '17', '下午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `下午 5 點跟催訊息發送確認：\n${followupBaseUrl}${followupBaseUrl.includes('?') ? '&' : '?'}slot=17\n\n請確認下班前哪些事項需要由 Seven Jr. 提醒各群組或負責人。未確認前不會對外發送。`,
+      text: `下午 5 點進度追蹤確認：\n${followupBaseUrl}${followupBaseUrl.includes('?') ? '&' : '?'}slot=17\n\n請確認下午要追蹤的對象與訊息，批准後再由 Seven Jr. 送出。`,
     };
   }
 
@@ -287,6 +500,34 @@ function richTextPlain(items) {
   return (items || []).map((item) => item.plain_text || item.text?.content || '').join('');
 }
 
+function compactProperties(properties) {
+  return Object.fromEntries(Object.entries(properties).filter(([, value]) => value !== undefined));
+}
+
+function titleProperty(value) {
+  return { title: [{ text: { content: clampNotionText(value) } }] };
+}
+
+function richTextProperty(value) {
+  return { rich_text: [{ text: { content: clampNotionText(value) } }] };
+}
+
+function selectProperty(name) {
+  return { select: { name } };
+}
+
+function dateProperty(value) {
+  return { date: { start: value instanceof Date ? value.toISOString() : new Date(value).toISOString() } };
+}
+
+function checkboxProperty(value) {
+  return { checkbox: Boolean(value) };
+}
+
+function urlProperty(value) {
+  return { url: value };
+}
+
 async function readJsonBody(req) {
   const rawBody = await readBody(req);
   if (!rawBody.trim()) {
@@ -310,7 +551,40 @@ function clampLineText(value) {
   return text.length > 4900 ? `${text.slice(0, 4897)}...` : text;
 }
 
+function clampNotionText(value) {
+  const text = String(value || '');
+  return text.length > 1900 ? `${text.slice(0, 1897)}...` : text;
+}
+
+function formatTaipeiDateTime(value) {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(value instanceof Date ? value : new Date(value));
+}
+
+function sendNoContent(res) {
+  res.writeHead(204, corsHeaders());
+  res.end();
+}
+
 function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.writeHead(statusCode, {
+    ...corsHeaders(),
+    'Content-Type': 'application/json; charset=utf-8',
+  });
   res.end(JSON.stringify(payload));
+}
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, authorization, x-seven-control-key, x-seven-approval-key',
+  };
 }
