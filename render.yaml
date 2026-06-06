@@ -12,3 +12,79 @@ services:
         sync: false
       - key: LINE_CHANNEL_SECRET
         sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: SEVEN_CONVERSATIONS_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_MESSAGES_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_ATTACHMENTS_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_CONTROL_API_KEY
+        sync: false
+
+  - type: cron
+    name: seven-jr-morning-brief
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run cron:report -- morning
+    schedule: "0 0 * * *"
+    envVars:
+      - key: CONTROL_API_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: SEVEN_CONTROL_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_CONTROL_API_KEY
+
+  - type: cron
+    name: seven-jr-followup-morning
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run cron:report -- followup-morning
+    schedule: "0 2 * * *"
+    envVars:
+      - key: CONTROL_API_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: SEVEN_CONTROL_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_CONTROL_API_KEY
+
+  - type: cron
+    name: seven-jr-followup-afternoon
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run cron:report -- followup-afternoon
+    schedule: "0 9 * * *"
+    envVars:
+      - key: CONTROL_API_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: SEVEN_CONTROL_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_CONTROL_API_KEY
+
+  - type: cron
+    name: seven-jr-daily-report
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run cron:report -- daily
+    schedule: "30 12 * * *"
+    envVars:
+      - key: CONTROL_API_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: SEVEN_CONTROL_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_CONTROL_API_KEY
