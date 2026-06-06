@@ -6,17 +6,33 @@ loadDotenv();
 
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
+const notionToken = process.env.NOTION_TOKEN;
+const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
+const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
+const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
+
+const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 
 if (!channelAccessToken || !channelSecret) {
   console.warn('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET.');
 }
 
+if (!notionConfigured) {
+  console.warn('Missing NOTION_TOKEN, SEVEN_CONVERSATIONS_DATA_SOURCE_ID, or SEVEN_MESSAGES_DATA_SOURCE_ID. LINE events will not be stored in Notion.');
+}
+
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
-    return sendJson(res, 200, { ok: true });
+  const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+
+  if (req.method === 'GET' && pathname === '/health') {
+    return sendJson(res, 200, {
+      ok: true,
+      notionConfigured,
+      attachmentsConfigured: Boolean(attachmentsDataSourceId),
+    });
   }
 
-  if (req.method !== 'POST' || req.url !== '/webhook/line') {
+  if (req.method !== 'POST' || pathname !== '/webhook/line') {
     return sendJson(res, 404, { error: 'Not found' });
   }
 
@@ -29,7 +45,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const body = JSON.parse(rawBody);
-    await Promise.all((body.events || []).map(handleEvent));
+    await Promise.all((body.events || []).map((event) => handleEvent(event, rawBody)));
     return sendText(res, 200, 'OK');
   } catch (error) {
     console.error(error);
@@ -37,15 +53,320 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-async function handleEvent(event) {
-  if (event.type !== 'message' || event.message?.type !== 'text') {
+async function handleEvent(event, rawBody) {
+  if (notionConfigured) {
+    await storeLineEventInNotion(event, rawBody);
+  }
+
+  if (event.type === 'message' && event.replyToken) {
+    await safeReply(event.replyToken, {
+      type: 'text',
+      text: notionConfigured ? '已收到，並已寫入 Seven LINE 資料庫。' : '已收到，但 Notion 寫入尚未設定完成。',
+    });
+  }
+}
+
+async function storeLineEventInNotion(event, rawBody) {
+  const source = event.source || {};
+  const context = resolveConversationContext(source);
+  const eventTime = event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString();
+  const message = event.message || {};
+  const messageId = message.id || `${event.type}-${event.webhookEventId || eventTime}`;
+  const messageType = message.type || event.type || 'unsupported';
+  const text = message.type === 'text' ? message.text || '' : buildNonTextMessagePreview(message);
+
+  const existingMessage = await findMessagePage(messageId);
+  if (existingMessage) {
+    console.log(`Skipping duplicate LINE message ${messageId}.`);
     return;
   }
 
-  await replyMessage(event.replyToken, {
-    type: 'text',
-    text: `收到：${event.message.text}`,
+  const display = await resolveDisplayNames(source, context);
+  const conversation = await findOrCreateConversation(context, display, eventTime, text);
+  const messagePage = await createMessagePage({
+    conversationId: conversation.id,
+    event,
+    rawBody,
+    messageId,
+    messageType,
+    text,
+    eventTime,
+    display,
+    context,
   });
+
+  await updateConversationAfterMessage(conversation, display, eventTime, text);
+
+  if (isAttachmentMessage(messageType) && attachmentsDataSourceId) {
+    await createAttachmentPage({
+      conversationId: conversation.id,
+      messagePageId: messagePage.id,
+      event,
+      message,
+      messageId,
+      messageType,
+      eventTime,
+    });
+  }
+}
+
+function resolveConversationContext(source) {
+  if (source.roomId) {
+    return {
+      identityProperty: 'Room ID',
+      identityValue: source.roomId,
+      entityType: '聊天室',
+      key: `room:${source.roomId}`,
+    };
+  }
+
+  if (source.groupId) {
+    return {
+      identityProperty: 'Group ID',
+      identityValue: source.groupId,
+      entityType: '群組',
+      key: `group:${source.groupId}`,
+    };
+  }
+
+  if (source.userId) {
+    return {
+      identityProperty: 'User ID',
+      identityValue: source.userId,
+      entityType: '個人',
+      key: `user:${source.userId}`,
+    };
+  }
+
+  return {
+    identityProperty: '對話統一鍵',
+    identityValue: 'unknown',
+    entityType: '未知',
+    key: 'unknown',
+  };
+}
+
+async function resolveDisplayNames(source, context) {
+  const fallbackConversationName = `${context.entityType} ${context.identityValue}`;
+  let conversationName = fallbackConversationName;
+  let actorName = source.userId || 'unknown';
+
+  try {
+    if (source.groupId) {
+      const groupSummary = await lineGet(`/v2/bot/group/${encodeURIComponent(source.groupId)}/summary`);
+      conversationName = groupSummary.groupName || fallbackConversationName;
+    } else if (source.userId && !source.roomId) {
+      const profile = await lineGet(`/v2/bot/profile/${encodeURIComponent(source.userId)}`);
+      conversationName = profile.displayName || fallbackConversationName;
+      actorName = profile.displayName || actorName;
+    }
+  } catch (error) {
+    console.warn(`Unable to resolve LINE conversation name: ${error.message}`);
+  }
+
+  try {
+    if (source.groupId && source.userId) {
+      const profile = await lineGet(`/v2/bot/group/${encodeURIComponent(source.groupId)}/member/${encodeURIComponent(source.userId)}`);
+      actorName = profile.displayName || actorName;
+    } else if (source.roomId && source.userId) {
+      const profile = await lineGet(`/v2/bot/room/${encodeURIComponent(source.roomId)}/member/${encodeURIComponent(source.userId)}`);
+      actorName = profile.displayName || actorName;
+    }
+  } catch (error) {
+    console.warn(`Unable to resolve LINE actor name: ${error.message}`);
+  }
+
+  return { conversationName, actorName };
+}
+
+async function findOrCreateConversation(context, display, eventTime, preview) {
+  const existing = await findConversationPage(context);
+  if (existing) {
+    return existing;
+  }
+
+  const properties = {
+    'LINE 對話名稱': title(display.conversationName),
+    '自定義名稱': richText(display.conversationName),
+    '對象類型': select(context.entityType),
+    '對話統一鍵': richText(context.key),
+    '最後訊息時間': date(eventTime),
+    '最新訊息預覽': richText(preview, 160),
+    '訊息數（總）': { number: 0 },
+    '監控狀態': select('啟用'),
+  };
+
+  if (context.identityProperty && context.identityValue) {
+    properties[context.identityProperty] = richText(context.identityValue);
+  }
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: conversationsDataSourceId },
+      properties,
+      children: [
+        paragraph('【Seven LINE】對話記錄（最新訊息由訊息紀錄資料庫保存）'),
+      ],
+    },
+  });
+}
+
+async function findConversationPage(context) {
+  if (!context.identityProperty || !context.identityValue) {
+    return null;
+  }
+
+  const result = await notionRequest(`/v1/data_sources/${conversationsDataSourceId}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: {
+        property: context.identityProperty,
+        rich_text: { equals: context.identityValue },
+      },
+    },
+  });
+
+  return result.results?.[0] || null;
+}
+
+async function findMessagePage(messageId) {
+  const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: {
+        property: '訊息 ID',
+        title: { equals: messageId },
+      },
+    },
+  });
+
+  return result.results?.[0] || null;
+}
+
+async function createMessagePage({ conversationId, event, rawBody, messageId, messageType, text, eventTime, display, context }) {
+  const eventId = event.webhookEventId || '';
+  const source = event.source || {};
+  const deliveryContext = event.deliveryContext || {};
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: messagesDataSourceId },
+      properties: {
+        '訊息 ID': title(messageId),
+        'LINE 事件 ID': richText(eventId),
+        'Webhook 重送序號': { number: Number(deliveryContext.redelivery ? 1 : 0) },
+        '對話主檔': relation(conversationId),
+        '訊息來源': select('line'),
+        '訊息類型': select(normalizeMessageType(messageType)),
+        '文字內容': richText(text, 1900),
+        '原始內容': richText(text, 1900),
+        '原始 payload': richText(JSON.stringify(event), 1900),
+        '發話者 ID': richText(source.userId || ''),
+        '發話者名稱': richText(display.actorName || ''),
+        '發話者類型': select('user'),
+        '群組標記': checkbox(Boolean(source.groupId || source.roomId)),
+        '排序時間': date(eventTime),
+        '已進入判斷層': checkbox(false),
+      },
+      children: [
+        paragraph(`來源：LINE / ${context.entityType}`),
+        paragraph(`內容：${text || '(非文字訊息)'}`),
+      ],
+    },
+  });
+}
+
+async function updateConversationAfterMessage(conversation, display, eventTime, preview) {
+  const currentCount = conversation.properties?.['訊息數（總）']?.number || 0;
+
+  await notionRequest(`/v1/pages/${conversation.id}`, {
+    method: 'PATCH',
+    body: {
+      properties: {
+        'LINE 對話名稱': title(display.conversationName),
+        '最後訊息時間': date(eventTime),
+        '最新訊息預覽': richText(preview, 160),
+        '訊息數（總）': { number: currentCount + 1 },
+      },
+    },
+  });
+}
+
+async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime }) {
+  const filename = message.fileName || `${messageType}-${messageId}`;
+  const needsConversion = ['image', 'file', 'video', 'audio'].includes(messageType);
+
+  await notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: attachmentsDataSourceId },
+      properties: {
+        '附件項目': title(filename),
+        '對話主檔': relation(conversationId),
+        '訊息紀錄': relation(messagePageId),
+        'LINE 事件 ID': richText(event.webhookEventId || ''),
+        'LINE 訊息 ID': richText(messageId),
+        '附件類型': select(normalizeAttachmentType(messageType)),
+        '檔案名稱': richText(filename),
+        '檔案大小': { number: Number(message.fileSize || 0) || null },
+        'Content-Type': richText(message.contentProvider?.type || ''),
+        '來源': select('line'),
+        '建立時間': date(eventTime),
+        '轉檔狀態': select(needsConversion ? '待轉檔' : '不需轉檔'),
+      },
+    },
+  });
+}
+
+async function lineGet(pathname) {
+  if (!channelAccessToken) {
+    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
+  }
+
+  const response = await fetch(`https://api.line.me${pathname}`, {
+    headers: { Authorization: `Bearer ${channelAccessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`LINE API failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
+async function notionRequest(pathname, { method, body }) {
+  if (!notionToken) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+
+  const response = await fetch(`https://api.notion.com${pathname}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${notionToken}`,
+      'Content-Type': 'application/json',
+      'Notion-Version': '2025-09-03',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Notion API failed: ${response.status} ${responseText}`);
+  }
+
+  return responseText ? JSON.parse(responseText) : {};
+}
+
+async function safeReply(replyToken, message) {
+  try {
+    await replyMessage(replyToken, message);
+  } catch (error) {
+    console.warn(`Unable to reply to LINE: ${error.message}`);
+  }
 }
 
 async function replyMessage(replyToken, message) {
@@ -68,6 +389,76 @@ async function replyMessage(replyToken, message) {
   if (!response.ok) {
     throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`);
   }
+}
+
+function buildNonTextMessagePreview(message) {
+  if (!message?.type) {
+    return '(非 message 事件)';
+  }
+
+  if (message.type === 'file') {
+    return `[file] ${message.fileName || message.id || ''}`.trim();
+  }
+
+  if (message.type === 'sticker') {
+    return `[sticker] package:${message.packageId || ''} sticker:${message.stickerId || ''}`.trim();
+  }
+
+  return `[${message.type}] ${message.id || ''}`.trim();
+}
+
+function isAttachmentMessage(messageType) {
+  return ['image', 'file', 'sticker', 'video', 'audio'].includes(messageType);
+}
+
+function normalizeMessageType(messageType) {
+  return ['text', 'image', 'sticker', 'file', 'location', 'video', 'audio'].includes(messageType) ? messageType : 'unsupported';
+}
+
+function normalizeAttachmentType(messageType) {
+  return ['image', 'file', 'sticker', 'video', 'audio'].includes(messageType) ? messageType : 'other';
+}
+
+function title(content) {
+  return { title: [{ type: 'text', text: { content: clampText(content, 1900) } }] };
+}
+
+function richText(content, maxLength = 1900) {
+  const value = content == null ? '' : String(content);
+  if (!value) {
+    return { rich_text: [] };
+  }
+
+  return { rich_text: [{ type: 'text', text: { content: clampText(value, maxLength) } }] };
+}
+
+function select(name) {
+  return { select: { name } };
+}
+
+function date(start) {
+  return { date: { start } };
+}
+
+function checkbox(value) {
+  return { checkbox: Boolean(value) };
+}
+
+function relation(id) {
+  return { relation: [{ id }] };
+}
+
+function paragraph(content) {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900) } }] },
+  };
+}
+
+function clampText(value, maxLength) {
+  const text = value == null ? '' : String(value);
+  return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
 }
 
 function isValidLineSignature(rawBody, signature) {
