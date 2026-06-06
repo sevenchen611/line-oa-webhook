@@ -8,7 +8,7 @@ const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOUR
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
-const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || '7Jr';
+const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
 
@@ -676,9 +676,9 @@ async function appendOutgoingConversationContent({ conversationId, target, messa
     const typeLabel = messageType === 'text' ? '文字訊息' : messageType;
     const meta = `【${formatTaipeiDateTime(sentAt)}】${OUTGOING_ACTOR_NAME}：${typeLabel}`;
     blocks.push(coloredParagraphProperty(meta, OUTGOING_BLOCK_COLOR));
-    blocks.push(coloredParagraphProperty(text || '(非文字訊息)', OUTGOING_BLOCK_COLOR));
+    blocks.push(paragraphProperty(text || '(非文字訊息)'));
     if (index < messages.length - 1) {
-      blocks.push(coloredParagraphProperty('', OUTGOING_BLOCK_COLOR));
+      blocks.push(paragraphProperty(''));
     }
   });
 

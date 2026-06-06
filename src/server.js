@@ -13,7 +13,7 @@ const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
-const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || '7Jr';
+const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -440,7 +440,7 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
   }
 
   const content = text || buildNonTextMessagePreview(message);
-  blocks.push(isOutgoing ? coloredParagraph(content, color) : paragraph(content));
+  blocks.push(paragraph(content));
   return blocks;
 }
 
