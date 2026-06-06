@@ -12,6 +12,7 @@ const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
+const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
 
 if (!channelAccessToken || !channelSecret) {
   console.warn('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET.');
@@ -30,6 +31,8 @@ const server = http.createServer(async (req, res) => {
       notionConfigured,
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
       autoReplyEnabled: false,
+      conversationPageBlocksEnabled: true,
+      storageMode: 'hozo-crm-style',
     });
   }
 
@@ -91,9 +94,20 @@ async function storeLineEventInNotion(event, rawBody) {
     context,
   });
 
+  await appendConversationContentFirst({
+    conversationId: conversation.id,
+    conversationName: display.conversationName,
+    actorName: display.actorName,
+    messageType,
+    text,
+    message,
+    messageId,
+    eventTime,
+  });
+
   await updateConversationAfterMessage(conversation, display, eventTime, text);
 
-  if (isAttachmentMessage(messageType) && attachmentsDataSourceId) {
+  if (messageType === 'file' && attachmentsDataSourceId) {
     await createAttachmentPage({
       conversationId: conversation.id,
       messagePageId: messagePage.id,
@@ -201,7 +215,7 @@ async function findOrCreateConversation(context, display, eventTime, preview) {
     body: {
       parent: { type: 'data_source_id', data_source_id: conversationsDataSourceId },
       properties,
-      children: [paragraph('【Seven LINE】對話記錄（最新訊息由訊息紀錄資料庫保存）')],
+      children: [conversationAnchorBlock()],
     },
   });
 }
@@ -274,6 +288,76 @@ async function createMessagePage({ conversationId, event, rawBody, messageId, me
   });
 }
 
+async function appendConversationContentFirst({ conversationId, conversationName, actorName, messageType, text, message, messageId, eventTime }) {
+  const anchorBlock = await findOrCreateConversationAnchor(conversationId);
+  const blocks = buildConversationMessageBlocks({
+    conversationName,
+    actorName,
+    messageType,
+    text,
+    message,
+    messageId,
+    eventTime,
+  });
+
+  await notionRequest(`/v1/blocks/${conversationId}/children`, {
+    method: 'PATCH',
+    body: {
+      after: anchorBlock.id,
+      children: blocks,
+    },
+  });
+}
+
+async function findOrCreateConversationAnchor(conversationId) {
+  const children = await getBlockChildren(conversationId);
+  const anchor = children.find((block) => plainBlockText(block).includes(conversationAnchorText));
+  if (anchor) {
+    return anchor;
+  }
+
+  const result = await notionRequest(`/v1/blocks/${conversationId}/children`, {
+    method: 'PATCH',
+    body: { children: [conversationAnchorBlock()] },
+  });
+
+  return result.results?.[0];
+}
+
+async function getBlockChildren(blockId) {
+  const blocks = [];
+  let startCursor;
+
+  do {
+    const query = startCursor ? `?page_size=100&start_cursor=${encodeURIComponent(startCursor)}` : '?page_size=100';
+    const result = await notionRequest(`/v1/blocks/${blockId}/children${query}`, { method: 'GET' });
+    blocks.push(...(result.results || []));
+    startCursor = result.has_more ? result.next_cursor : null;
+  } while (startCursor);
+
+  return blocks;
+}
+
+function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime }) {
+  const typeLabel = messageTypeLabel(messageType);
+  const meta = `【${formatTaipeiTime(eventTime)}】${conversationName} - ${actorName || '未知發話者'}（${typeLabel}）`;
+  const blocks = [coloredParagraph(meta, 'blue')];
+
+  if (messageType === 'image') {
+    blocks.push(paragraph(`圖片訊息：${messageId}`));
+    blocks.push(paragraph('圖片原始內容已由 LINE 保存；若需實體檔案保存，後續需接 LINE content 下載與 Notion file upload。'));
+    return blocks;
+  }
+
+  if (messageType === 'file') {
+    blocks.push(paragraph(`檔案：${message.fileName || messageId}`));
+    return blocks;
+  }
+
+  blocks.push(paragraph(text || buildNonTextMessagePreview(message)));
+  return blocks;
+}
+
 async function updateConversationAfterMessage(conversation, display, eventTime, preview) {
   const currentCount = conversation.properties?.['訊息數（總）']?.number || 0;
 
@@ -292,7 +376,6 @@ async function updateConversationAfterMessage(conversation, display, eventTime, 
 
 async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime }) {
   const filename = message.fileName || `${messageType}-${messageId}`;
-  const needsConversion = ['image', 'file', 'video', 'audio'].includes(messageType);
 
   await notionRequest('/v1/pages', {
     method: 'POST',
@@ -310,7 +393,7 @@ async function createAttachmentPage({ conversationId, messagePageId, event, mess
         'Content-Type': richText(message.contentProvider?.type || ''),
         '來源': select('line'),
         '建立時間': date(eventTime),
-        '轉檔狀態': select(needsConversion ? '待轉檔' : '不需轉檔'),
+        '轉檔狀態': select('待轉檔'),
       },
     },
   });
@@ -344,7 +427,7 @@ async function notionRequest(pathname, { method, body }) {
       'Content-Type': 'application/json',
       'Notion-Version': '2025-09-03',
     },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   const responseText = await response.text();
@@ -371,16 +454,43 @@ function buildNonTextMessagePreview(message) {
   return `[${message.type}] ${message.id || ''}`.trim();
 }
 
-function isAttachmentMessage(messageType) {
-  return ['image', 'file', 'sticker', 'video', 'audio'].includes(messageType);
-}
-
 function normalizeMessageType(messageType) {
   return ['text', 'image', 'sticker', 'file', 'location', 'video', 'audio'].includes(messageType) ? messageType : 'unsupported';
 }
 
 function normalizeAttachmentType(messageType) {
-  return ['image', 'file', 'sticker', 'video', 'audio'].includes(messageType) ? messageType : 'other';
+  return messageType === 'file' ? 'file' : 'other';
+}
+
+function messageTypeLabel(messageType) {
+  const labels = {
+    text: '文字訊息',
+    image: '圖片',
+    file: '檔案',
+    sticker: '貼圖',
+    location: '位置',
+    video: '影片',
+    audio: '語音',
+  };
+
+  return labels[messageType] || '其他訊息';
+}
+
+function formatTaipeiTime(value) {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(value));
+}
+
+function plainBlockText(block) {
+  const richText = block?.[block.type]?.rich_text || [];
+  return richText.map((item) => item.plain_text || item.text?.content || '').join('');
 }
 
 function title(content) {
@@ -410,6 +520,20 @@ function checkbox(value) {
 
 function relation(id) {
   return { relation: [{ id }] };
+}
+
+function conversationAnchorBlock() {
+  return coloredParagraph(conversationAnchorText, 'blue');
+}
+
+function coloredParagraph(content, color) {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: [{ type: 'text', text: { content: clampText(content, 1900) }, annotations: { color } }],
+    },
+  };
 }
 
 function paragraph(content) {
