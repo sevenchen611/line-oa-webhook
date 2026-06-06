@@ -1,6 +1,6 @@
 # LINE OA Webhook
 
-Seven Jr. 的 LINE OA Webhook 服務，用來接收 LINE 群組/個人對話、寫入 Notion，並提供安全的主動推送入口。
+Seven Jr. 的 LINE OA Webhook 服務，用來接收 LINE 群組/個人對話、寫入 Notion，並提供安全的主動推送入口與 Render Cron 定時報告。
 
 ## Webhook
 
@@ -24,7 +24,7 @@ https://line-oa-webhook-nn5j.onrender.com/control/health
 
 ## Render Environment
 
-必要設定：
+Web Service 必要設定：
 
 - `LINE_CHANNEL_ACCESS_TOKEN`
 - `LINE_CHANNEL_SECRET`
@@ -41,6 +41,32 @@ https://line-oa-webhook-nn5j.onrender.com/control/health
 - `SEVEN_REPORT_TARGET_NAME_KEYWORD`: 自動尋找個人對話時優先比對的關鍵字，預設為 `Seven`。
 - `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 GitHub 預設版。
 - `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 GitHub 預設版。
+- `FOLLOWUP_CONFIRMATION_URL`: 10 點 / 17 點跟催確認頁連結，可省略，省略時使用 GitHub 預設版。
+
+Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
+
+## Render Cron Jobs
+
+`render.yaml` 會建立 4 個固定報告排程。Render Cron 使用 UTC 時間，以下已換算台北時間：
+
+| Render Cron Job | 台北時間 | UTC cron | reportType |
+| --- | --- | --- | --- |
+| `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
+| `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
+| `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |
+| `seven-jr-daily-report` | 20:30 | `30 12 * * *` | `daily` |
+
+每個 Cron Job 執行：
+
+```powershell
+npm run cron:report -- <reportType>
+```
+
+實際會呼叫：
+
+```text
+POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+```
 
 ## 主動推送 API
 
@@ -72,38 +98,19 @@ POST /control/line/push
 }
 ```
 
-也可以一次推送多個對象：
-
-```json
-{
-  "targets": [
-    { "type": "user", "id": "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-    { "type": "group", "id": "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
-  ],
-  "text": "這是一則批次通知。"
-}
-```
-
-### 發送早報或晚報
+### 發送報告
 
 ```http
 POST /control/reports/send
 ```
 
-範例 body：
+支援：
 
 ```json
-{
-  "reportType": "morning"
-}
-```
-
-或：
-
-```json
-{
-  "reportType": "daily"
-}
+{ "reportType": "morning" }
+{ "reportType": "daily" }
+{ "reportType": "followup-morning" }
+{ "reportType": "followup-afternoon" }
 ```
 
 若 body 沒有指定 targets，系統會先看 `SEVEN_REPORT_TARGET_ID`。如果沒有設定，系統會自動從 Notion 的 Seven LINE 對話主檔找出你跟 Seven Jr. 的一對一對話，並推送到那裡。
