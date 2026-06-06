@@ -12,10 +12,12 @@ const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
+const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
 const reportCommands = new Set(['#報告', '報告', '#每日報告', '每日報告']);
+const morningBriefCommands = new Set(['#早報', '早報', '#今日早報', '今日早報', '#行程', '行程']);
 
 if (!channelAccessToken || !channelSecret) {
   console.warn('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET.');
@@ -35,7 +37,9 @@ const server = http.createServer(async (req, res) => {
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
       autoReplyEnabled: false,
       reportCommandEnabled: true,
+      morningBriefCommandEnabled: true,
       reportUrl,
+      morningBriefUrl,
       conversationPageBlocksEnabled: true,
       lineContentUploadEnabled: true,
       directFileBlocksEnabled: false,
@@ -79,14 +83,22 @@ async function handleEvent(event, rawBody) {
 
 function buildCommandReply(event) {
   const text = event.type === 'message' && event.message?.type === 'text' ? String(event.message.text || '').trim() : '';
-  if (!reportCommands.has(text)) {
-    return null;
+
+  if (morningBriefCommands.has(text)) {
+    return {
+      type: 'text',
+      text: `早上 8 點行程與待辦報告：\n${morningBriefUrl}\n\n目前這是試跑版，可以在手機上檢視今日行程、昨日未完成事項與今日優先處理清單。`,
+    };
   }
 
-  return {
-    type: 'text',
-    text: `每日總控報告網頁版：\n${reportUrl}\n\n目前這是試跑版，可以在手機上檢視附件解析與任務狀態確認畫面。`,
-  };
+  if (reportCommands.has(text)) {
+    return {
+      type: 'text',
+      text: `每日總控報告網頁版：\n${reportUrl}\n\n目前這是試跑版，可以在手機上檢視附件解析與任務狀態確認畫面。`,
+    };
+  }
+
+  return null;
 }
 
 async function replyLineMessage(replyToken, message) {
