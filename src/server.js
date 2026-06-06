@@ -13,7 +13,7 @@ const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
-const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
+const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || '7Jr';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -411,8 +411,12 @@ async function getBlockChildren(blockId) {
 
 function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const typeLabel = messageTypeLabel(messageType);
-  const meta = `【${formatTaipeiTime(eventTime)}】${conversationName} - ${actorName || '未知發話者'}（${typeLabel}）`;
-  const blocks = [coloredParagraph(meta, 'blue')];
+  const isOutgoing = actorName === outgoingActorName;
+  const color = isOutgoing ? 'orange' : 'blue';
+  const meta = isOutgoing
+    ? `【${formatTaipeiTime(eventTime)}】${actorName}：${typeLabel}`
+    : `【${formatTaipeiTime(eventTime)}】${conversationName} - ${actorName || '未知發話者'}（${typeLabel}）`;
+  const blocks = [coloredParagraph(meta, color)];
 
   if (messageType === 'image') {
     if (uploadedContent?.fileUploadId) {
@@ -435,7 +439,8 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
     return blocks;
   }
 
-  blocks.push(paragraph(text || buildNonTextMessagePreview(message)));
+  const content = text || buildNonTextMessagePreview(message);
+  blocks.push(isOutgoing ? coloredParagraph(content, color) : paragraph(content));
   return blocks;
 }
 

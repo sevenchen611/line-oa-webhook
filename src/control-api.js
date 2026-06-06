@@ -8,7 +8,9 @@ const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOUR
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
-const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
+const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || '7Jr';
+const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
+const OUTGOING_BLOCK_COLOR = 'orange';
 
 http.createServer = function createServerWithControlApi(listener) {
   return originalCreateServer(async (req, res) => {
@@ -667,18 +669,16 @@ async function createOutgoingMessagePage({ conversationId, messageId, message, m
 
 async function appendOutgoingConversationContent({ conversationId, target, messages, sentAt }) {
   const blocks = [];
-  const context = resolveOutgoingTargetContext(target);
-  const conversationName = target.name || `${context.entityType} ${target.id}`;
 
   messages.forEach((message, index) => {
     const messageType = normalizeOutgoingMessageType(message.type);
     const text = outgoingMessageText(message);
     const typeLabel = messageType === 'text' ? '文字訊息' : messageType;
-    const meta = `【${formatTaipeiDateTime(sentAt)}】${conversationName} - ${OUTGOING_ACTOR_NAME}：${typeLabel}`;
-    blocks.push(paragraphProperty(meta));
-    blocks.push(paragraphProperty(text || '(非文字訊息)'));
+    const meta = `【${formatTaipeiDateTime(sentAt)}】${OUTGOING_ACTOR_NAME}：${typeLabel}`;
+    blocks.push(coloredParagraphProperty(meta, OUTGOING_BLOCK_COLOR));
+    blocks.push(coloredParagraphProperty(text || '(非文字訊息)', OUTGOING_BLOCK_COLOR));
     if (index < messages.length - 1) {
-      blocks.push(paragraphProperty(''));
+      blocks.push(coloredParagraphProperty('', OUTGOING_BLOCK_COLOR));
     }
   });
 
@@ -686,10 +686,33 @@ async function appendOutgoingConversationContent({ conversationId, target, messa
     return;
   }
 
+  const anchorBlock = await findConversationAnchorBlock(conversationId);
   await notionRequest(`/v1/blocks/${conversationId}/children`, {
     method: 'PATCH',
-    body: { children: blocks },
+    body: { ...(anchorBlock ? { after: anchorBlock.id } : {}), children: blocks },
   });
+}
+
+async function findConversationAnchorBlock(conversationId) {
+  const blocks = await getBlockChildren(conversationId);
+  return blocks.find((block) => plainBlockText(block).includes(CONVERSATION_ANCHOR_TEXT)) || null;
+}
+
+async function getBlockChildren(blockId) {
+  const blocks = [];
+  let startCursor;
+  do {
+    const query = startCursor ? `?page_size=100&start_cursor=${encodeURIComponent(startCursor)}` : '?page_size=100';
+    const result = await notionRequest(`/v1/blocks/${blockId}/children${query}`, { method: 'GET' });
+    blocks.push(...(result.results || []));
+    startCursor = result.has_more ? result.next_cursor : null;
+  } while (startCursor);
+  return blocks;
+}
+
+function plainBlockText(block) {
+  const richText = block?.[block.type]?.rich_text || [];
+  return richText.map((item) => item.plain_text || item.text?.content || '').join('');
 }
 
 function buildOutgoingPreview(messages) {
@@ -793,6 +816,20 @@ function urlProperty(value) {
 
 function paragraphProperty(content) {
   return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(content) } }] } };
+}
+
+function coloredParagraphProperty(content, color) {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: [{
+        type: 'text',
+        text: { content: clampNotionText(content) },
+        annotations: { color },
+      }],
+    },
+  };
 }
 
 async function readJsonBody(req) {
