@@ -32,12 +32,13 @@ https://line-oa-webhook-nn5j.onrender.com/control/health
 - `SEVEN_CONVERSATIONS_DATA_SOURCE_ID`
 - `SEVEN_MESSAGES_DATA_SOURCE_ID`
 - `SEVEN_ATTACHMENTS_DATA_SOURCE_ID`
-
-主動推送功能需要新增：
-
 - `SEVEN_CONTROL_API_KEY`: 控制 API 密鑰，請使用一組夠長的隨機字串。
-- `SEVEN_REPORT_TARGET_ID`: 早報/晚報預設推送對象，可以是 userId、groupId 或 roomId。
+
+可選設定：
+
+- `SEVEN_REPORT_TARGET_ID`: 早報/晚報備用推送對象，可以是 userId、groupId 或 roomId。若不設定，系統會自動從 Seven LINE 對話主檔尋找最近的一對一個人對話，優先找名稱含 Seven 的對話。
 - `SEVEN_REPORT_TARGET_TYPE`: `user`、`group` 或 `room`，主要作為紀錄辨識用。
+- `SEVEN_REPORT_TARGET_NAME_KEYWORD`: 自動尋找個人對話時優先比對的關鍵字，預設為 `Seven`。
 - `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 GitHub 預設版。
 - `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 GitHub 預設版。
 
@@ -105,7 +106,7 @@ POST /control/reports/send
 }
 ```
 
-若 body 沒有指定 targets，系統會使用 `SEVEN_REPORT_TARGET_ID` 作為預設推送對象。
+若 body 沒有指定 targets，系統會先看 `SEVEN_REPORT_TARGET_ID`。如果沒有設定，系統會自動從 Notion 的 Seven LINE 對話主檔找出你跟 Seven Jr. 的一對一對話，並推送到那裡。
 
 ## LINE 指令回覆
 
