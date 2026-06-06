@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 
@@ -13,6 +13,7 @@ const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
+const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -118,6 +119,98 @@ async function replyLineMessage(replyToken, message) {
   if (!response.ok) {
     throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`);
   }
+}
+
+
+async function storeOutgoingReplyInNotion(event, message) {
+  const source = event.source || {};
+  const context = resolveConversationContext(source);
+  const sentAt = new Date().toISOString();
+  const messageType = normalizeMessageType(message?.type || 'unsupported');
+  const text = message?.type === 'text' ? String(message.text || '') : JSON.stringify(message || {});
+  const display = await resolveDisplayNames(source, context);
+  const conversation = await findOrCreateConversation(context, display, sentAt, text);
+  const messageId = buildOutgoingReplyMessageId(event, message);
+
+  const existingMessage = await findMessagePage(messageId);
+  if (existingMessage) {
+    console.log(`Skipping duplicate outgoing LINE message ${messageId}.`);
+    return;
+  }
+
+  await createOutgoingReplyMessagePage({
+    conversationId: conversation.id,
+    event,
+    message,
+    messageId,
+    messageType,
+    text,
+    sentAt,
+    context,
+  });
+
+  await appendConversationContentFirst({
+    conversationId: conversation.id,
+    conversationName: display.conversationName,
+    actorName: outgoingActorName,
+    messageType,
+    text,
+    message,
+    messageId,
+    eventTime: sentAt,
+  });
+
+  await updateConversationAfterMessage(conversation, display, sentAt, text);
+}
+
+async function createOutgoingReplyMessagePage({ conversationId, event, message, messageId, messageType, text, sentAt, context }) {
+  const source = event.source || {};
+  const payload = {
+    direction: 'outgoing',
+    actorName: outgoingActorName,
+    replyToWebhookEventId: event.webhookEventId || '',
+    source,
+    message,
+    sentAt,
+  };
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: messagesDataSourceId },
+      properties: {
+        '訊息 ID': title(messageId),
+        'LINE 事件 ID': richText('outgoing-reply'),
+        'Webhook 重送序號': { number: 0 },
+        '對話主檔': relation(conversationId),
+        '訊息來源': select('ai-engine'),
+        '訊息類型': select(messageType),
+        '文字內容': richText(text, 1900),
+        '原始內容': richText(text, 1900),
+        '原始 payload': richText(JSON.stringify(payload), 1900),
+        '發話者 ID': richText(outgoingActorName),
+        '發話者名稱': richText(outgoingActorName),
+        '發話者類型': select('oa'),
+        '群組標記': checkbox(Boolean(source.groupId || source.roomId)),
+        '排序時間': date(sentAt),
+        '已進入判斷層': checkbox(false),
+      },
+      children: [
+        paragraph(`來源：${outgoingActorName} 指令回覆`),
+        paragraph(`內容：${text || '(非文字訊息)'}`),
+        paragraph(`對話類型：${context.entityType}`),
+      ],
+    },
+  });
+}
+
+function buildOutgoingReplyMessageId(event, message) {
+  const base = event.webhookEventId || event.message?.id || event.timestamp || Date.now();
+  const hash = createHash('sha256')
+    .update(JSON.stringify({ base, message }))
+    .digest('hex')
+    .slice(0, 16);
+  return `out-reply:${base}:${hash}`;
 }
 
 async function storeLineEventInNotion(event, rawBody) {

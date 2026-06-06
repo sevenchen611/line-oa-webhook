@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import http from 'node:http';
 
 const originalCreateServer = http.createServer.bind(http);
@@ -5,6 +6,9 @@ const originalCreateServer = http.createServer.bind(http);
 const TASKS_DATA_SOURCE_ID = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOURCE_ID || '0792a903-d274-4a6a-9115-8c66473d1234';
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
+const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
+const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
+const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 
 http.createServer = function createServerWithControlApi(listener) {
   return originalCreateServer(async (req, res) => {
@@ -29,6 +33,7 @@ async function handleControlRequest(req, res, pathname) {
       controlApiEnabled: Boolean(process.env.SEVEN_CONTROL_API_KEY),
       linePushEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       approvalWriteBackEnabled: Boolean(process.env.NOTION_TOKEN),
+      outgoingMessageLoggingEnabled: Boolean(process.env.NOTION_TOKEN && CONVERSATIONS_DATA_SOURCE_ID && MESSAGES_DATA_SOURCE_ID),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-afternoon'],
@@ -390,12 +395,16 @@ async function pushLineMessages(body) {
 function normalizeTargets(targets, targetId, targetType) {
   if (Array.isArray(targets)) {
     return targets
-      .map((target) => ({ id: target.id || target.targetId || target.to, type: target.type || target.targetType || 'unknown' }))
+      .map((target) => ({
+        id: target.id || target.targetId || target.to,
+        type: target.type || target.targetType || inferTargetType(target.id || target.targetId || target.to),
+        name: target.name || target.targetName || target.displayName || '',
+      }))
       .filter((target) => target.id);
   }
 
   if (targetId) {
-    return [{ id: targetId, type: targetType || 'unknown' }];
+    return [{ id: targetId, type: targetType || inferTargetType(targetId), name: '' }];
   }
 
   return [];
@@ -429,11 +438,26 @@ function normalizeMessage(message) {
   return message && message.type ? message : null;
 }
 
+function inferTargetType(targetId) {
+  const value = String(targetId || '');
+  if (value.startsWith('U')) return 'user';
+  if (value.startsWith('C')) return 'group';
+  if (value.startsWith('R')) return 'room';
+  return 'unknown';
+}
+
 async function pushToTargets(targets, messages) {
   const results = [];
   for (const target of targets) {
     await pushLine(target.id, messages);
-    results.push({ targetId: target.id, targetType: target.type || 'unknown', source: target.source || 'request', ok: true });
+    const outgoingLog = await recordOutgoingMessages(target, messages);
+    results.push({
+      targetId: target.id,
+      targetType: target.type || 'unknown',
+      source: target.source || 'request',
+      ok: true,
+      outgoingLog,
+    });
   }
 
   return { ok: true, sent: results.length, results };
@@ -458,6 +482,207 @@ async function pushLine(to, messages) {
   if (!response.ok) {
     throw new Error(`LINE push failed: ${response.status} ${responseText}`);
   }
+}
+
+async function recordOutgoingMessages(target, messages) {
+  if (!process.env.NOTION_TOKEN || !CONVERSATIONS_DATA_SOURCE_ID || !MESSAGES_DATA_SOURCE_ID) {
+    return { skipped: true, reason: 'notion-message-logging-not-configured' };
+  }
+
+  try {
+    const sentAt = new Date().toISOString();
+    const context = resolveOutgoingTargetContext(target);
+    const preview = buildOutgoingPreview(messages);
+    const conversation = await findOrCreateOutgoingConversation(context, target, sentAt, preview);
+    const pages = [];
+
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      const messageId = buildOutgoingMessageId(target, message, sentAt, index);
+      const text = outgoingMessageText(message);
+      const messageType = normalizeOutgoingMessageType(message.type);
+      const existing = await findOutgoingMessagePage(messageId);
+      if (existing) {
+        pages.push({ messageId, pageId: existing.id, duplicate: true });
+        continue;
+      }
+
+      const page = await createOutgoingMessagePage({
+        conversationId: conversation.id,
+        messageId,
+        message,
+        messageType,
+        text,
+        sentAt,
+        target,
+        context,
+      });
+      pages.push({ messageId, pageId: page.id, duplicate: false });
+    }
+
+    await updateOutgoingConversation(conversation, target, sentAt, preview, messages.length);
+
+    return { skipped: false, conversationId: conversation.id, messagesLogged: pages.length, pages };
+  } catch (error) {
+    console.warn(`Unable to record outgoing LINE message for ${target.id}: ${error.message}`);
+    return { skipped: true, reason: error.message };
+  }
+}
+
+function resolveOutgoingTargetContext(target) {
+  const type = target.type || inferTargetType(target.id);
+  if (type === 'group') {
+    return { identityProperty: 'Group ID', identityValue: target.id, entityType: '群組', key: `group:${target.id}` };
+  }
+  if (type === 'room') {
+    return { identityProperty: 'Room ID', identityValue: target.id, entityType: '聊天室', key: `room:${target.id}` };
+  }
+  if (type === 'user') {
+    return { identityProperty: 'User ID', identityValue: target.id, entityType: '個人', key: `user:${target.id}` };
+  }
+  return { identityProperty: '對話統一鍵', identityValue: `unknown:${target.id}`, entityType: '未知', key: `unknown:${target.id}` };
+}
+
+async function findOrCreateOutgoingConversation(context, target, sentAt, preview) {
+  const existing = await findOutgoingConversation(context);
+  if (existing) {
+    return existing;
+  }
+
+  const name = target.name || `${context.entityType} ${target.id}`;
+  const properties = {
+    'LINE 對話名稱': titleProperty(name),
+    自定義名稱: richTextProperty(name),
+    對象類型: selectProperty(context.entityType),
+    對話統一鍵: richTextProperty(context.key),
+    最後訊息時間: dateProperty(sentAt),
+    最新訊息預覽: richTextProperty(preview),
+    '訊息數（總）': { number: 0 },
+    監控狀態: selectProperty('啟用'),
+  };
+
+  if (context.identityProperty && context.identityValue) {
+    properties[context.identityProperty] = richTextProperty(context.identityValue);
+  }
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: CONVERSATIONS_DATA_SOURCE_ID },
+      properties,
+    },
+  });
+}
+
+async function findOutgoingConversation(context) {
+  if (!context.identityProperty || !context.identityValue) {
+    return null;
+  }
+
+  const result = await notionRequest(`/v1/data_sources/${CONVERSATIONS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: { property: context.identityProperty, rich_text: { equals: context.identityValue } },
+    },
+  });
+
+  return result.results?.[0] || null;
+}
+
+async function updateOutgoingConversation(conversation, target, sentAt, preview, messageCount) {
+  const currentCount = conversation.properties?.['訊息數（總）']?.number || 0;
+  const context = resolveOutgoingTargetContext(target);
+  const name = target.name || pageTextProperty(conversation, 'LINE 對話名稱') || `${context.entityType} ${target.id}`;
+
+  await notionRequest(`/v1/pages/${conversation.id}`, {
+    method: 'PATCH',
+    body: {
+      properties: {
+        'LINE 對話名稱': titleProperty(name),
+        最後訊息時間: dateProperty(sentAt),
+        最新訊息預覽: richTextProperty(preview),
+        '訊息數（總）': { number: currentCount + messageCount },
+      },
+    },
+  });
+}
+
+async function findOutgoingMessagePage(messageId) {
+  const result = await notionRequest(`/v1/data_sources/${MESSAGES_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: { property: '訊息 ID', title: { equals: messageId } },
+    },
+  });
+
+  return result.results?.[0] || null;
+}
+
+async function createOutgoingMessagePage({ conversationId, messageId, message, messageType, text, sentAt, target, context }) {
+  const payload = {
+    direction: 'outgoing',
+    actorName: OUTGOING_ACTOR_NAME,
+    target: { id: target.id, type: target.type || inferTargetType(target.id), name: target.name || '' },
+    message,
+    sentAt,
+  };
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: MESSAGES_DATA_SOURCE_ID },
+      properties: {
+        '訊息 ID': titleProperty(messageId),
+        'LINE 事件 ID': richTextProperty('outgoing-control-api'),
+        'Webhook 重送序號': { number: 0 },
+        對話主檔: relationProperty(conversationId),
+        訊息來源: selectProperty('ai-engine'),
+        訊息類型: selectProperty(messageType),
+        文字內容: richTextProperty(text),
+        原始內容: richTextProperty(text),
+        '原始 payload': richTextProperty(JSON.stringify(payload)),
+        '發話者 ID': richTextProperty(OUTGOING_ACTOR_NAME),
+        發話者名稱: richTextProperty(OUTGOING_ACTOR_NAME),
+        發話者類型: selectProperty('oa'),
+        群組標記: checkboxProperty(['群組', '聊天室'].includes(context.entityType)),
+        排序時間: dateProperty(sentAt),
+        已進入判斷層: checkboxProperty(false),
+      },
+      children: [
+        paragraphProperty(`來源：${OUTGOING_ACTOR_NAME} 主動發送`),
+        paragraphProperty(text || '(非文字訊息)'),
+      ],
+    },
+  });
+}
+
+function buildOutgoingPreview(messages) {
+  const text = messages.map(outgoingMessageText).filter(Boolean).join('\n');
+  return text || `[${messages.length} outgoing message${messages.length > 1 ? 's' : ''}]`;
+}
+
+function outgoingMessageText(message) {
+  if (typeof message === 'string') {
+    return message;
+  }
+  if (message?.type === 'text') {
+    return message.text || '';
+  }
+  return message ? JSON.stringify(message) : '';
+}
+
+function normalizeOutgoingMessageType(messageType) {
+  return ['text', 'image', 'sticker', 'file', 'location', 'video', 'audio'].includes(messageType) ? messageType : 'unsupported';
+}
+
+function buildOutgoingMessageId(target, message, sentAt, index) {
+  const hash = createHash('sha256')
+    .update(JSON.stringify({ targetId: target.id, message, sentAt, index }))
+    .digest('hex')
+    .slice(0, 16);
+  return `out:${sentAt}:${target.id}:${index}:${hash}`;
 }
 
 async function notionRequest(pathname, { method, body }) {
@@ -524,8 +749,16 @@ function checkboxProperty(value) {
   return { checkbox: Boolean(value) };
 }
 
+function relationProperty(id) {
+  return { relation: [{ id }] };
+}
+
 function urlProperty(value) {
   return { url: value };
+}
+
+function paragraphProperty(content) {
+  return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(content) } }] } };
 }
 
 async function readJsonBody(req) {
