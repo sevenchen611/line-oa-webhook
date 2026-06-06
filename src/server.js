@@ -10,6 +10,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
+const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -32,6 +33,7 @@ const server = http.createServer(async (req, res) => {
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
       autoReplyEnabled: false,
       conversationPageBlocksEnabled: true,
+      lineContentUploadEnabled: true,
       storageMode: 'hozo-crm-style',
     });
   }
@@ -82,6 +84,7 @@ async function storeLineEventInNotion(event, rawBody) {
 
   const display = await resolveDisplayNames(source, context);
   const conversation = await findOrCreateConversation(context, display, eventTime, text);
+  const uploadedContent = await maybeUploadLineContent(message, messageType, messageId);
   const messagePage = await createMessagePage({
     conversationId: conversation.id,
     event,
@@ -94,6 +97,20 @@ async function storeLineEventInNotion(event, rawBody) {
     context,
   });
 
+  let attachmentPage;
+  if (messageType === 'file' && attachmentsDataSourceId) {
+    attachmentPage = await createAttachmentPage({
+      conversationId: conversation.id,
+      messagePageId: messagePage.id,
+      event,
+      message,
+      messageId,
+      messageType,
+      eventTime,
+      uploadedContent,
+    });
+  }
+
   await appendConversationContentFirst({
     conversationId: conversation.id,
     conversationName: display.conversationName,
@@ -103,21 +120,11 @@ async function storeLineEventInNotion(event, rawBody) {
     message,
     messageId,
     eventTime,
+    uploadedContent,
+    attachmentPageUrl: attachmentPage?.url,
   });
 
   await updateConversationAfterMessage(conversation, display, eventTime, text);
-
-  if (messageType === 'file' && attachmentsDataSourceId) {
-    await createAttachmentPage({
-      conversationId: conversation.id,
-      messagePageId: messagePage.id,
-      event,
-      message,
-      messageId,
-      messageType,
-      eventTime,
-    });
-  }
 }
 
 function resolveConversationContext(source) {
@@ -288,7 +295,7 @@ async function createMessagePage({ conversationId, event, rawBody, messageId, me
   });
 }
 
-async function appendConversationContentFirst({ conversationId, conversationName, actorName, messageType, text, message, messageId, eventTime }) {
+async function appendConversationContentFirst({ conversationId, conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const anchorBlock = await findOrCreateConversationAnchor(conversationId);
   const blocks = buildConversationMessageBlocks({
     conversationName,
@@ -298,6 +305,8 @@ async function appendConversationContentFirst({ conversationId, conversationName
     message,
     messageId,
     eventTime,
+    uploadedContent,
+    attachmentPageUrl,
   });
 
   await notionRequest(`/v1/blocks/${conversationId}/children`, {
@@ -338,19 +347,26 @@ async function getBlockChildren(blockId) {
   return blocks;
 }
 
-function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime }) {
+function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const typeLabel = messageTypeLabel(messageType);
   const meta = `【${formatTaipeiTime(eventTime)}】${conversationName} - ${actorName || '未知發話者'}（${typeLabel}）`;
   const blocks = [coloredParagraph(meta, 'blue')];
 
   if (messageType === 'image') {
-    blocks.push(paragraph(`圖片訊息：${messageId}`));
-    blocks.push(paragraph('圖片原始內容已由 LINE 保存；若需實體檔案保存，後續需接 LINE content 下載與 Notion file upload。'));
+    if (uploadedContent?.fileUploadId) {
+      blocks.push(imageBlock(uploadedContent.fileUploadId, messageId));
+    } else {
+      blocks.push(paragraph(`圖片訊息：${messageId}`));
+      blocks.push(paragraph('圖片下載或上傳 Notion 失敗，請查看 Render log。'));
+    }
     return blocks;
   }
 
   if (messageType === 'file') {
     blocks.push(paragraph(`檔案：${message.fileName || messageId}`));
+    if (attachmentPageUrl) {
+      blocks.push(paragraph(`附件資料庫：${attachmentPageUrl}`));
+    }
     return blocks;
   }
 
@@ -374,29 +390,114 @@ async function updateConversationAfterMessage(conversation, display, eventTime, 
   });
 }
 
-async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime }) {
-  const filename = message.fileName || `${messageType}-${messageId}`;
+async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime, uploadedContent }) {
+  const filename = uploadedContent?.filename || message.fileName || `${messageType}-${messageId}`;
+  const properties = {
+    '附件項目': title(filename),
+    '對話主檔': relation(conversationId),
+    '訊息紀錄': relation(messagePageId),
+    'LINE 事件 ID': richText(event.webhookEventId || ''),
+    'LINE 訊息 ID': richText(messageId),
+    '附件類型': select(normalizeAttachmentType(messageType)),
+    '檔案名稱': richText(filename),
+    '檔案大小': { number: Number(message.fileSize || uploadedContent?.contentLength || 0) || null },
+    'Content-Type': richText(uploadedContent?.contentType || message.contentProvider?.type || ''),
+    '來源': select('line'),
+    '建立時間': date(eventTime),
+    '轉檔狀態': select(uploadedContent?.fileUploadId ? '待轉檔' : '失敗'),
+  };
 
-  await notionRequest('/v1/pages', {
+  if (uploadedContent?.fileUploadId) {
+    properties['附件檔案'] = files(filename, uploadedContent.fileUploadId);
+  }
+
+  return notionRequest('/v1/pages', {
     method: 'POST',
     body: {
       parent: { type: 'data_source_id', data_source_id: attachmentsDataSourceId },
-      properties: {
-        '附件項目': title(filename),
-        '對話主檔': relation(conversationId),
-        '訊息紀錄': relation(messagePageId),
-        'LINE 事件 ID': richText(event.webhookEventId || ''),
-        'LINE 訊息 ID': richText(messageId),
-        '附件類型': select(normalizeAttachmentType(messageType)),
-        '檔案名稱': richText(filename),
-        '檔案大小': { number: Number(message.fileSize || 0) || null },
-        'Content-Type': richText(message.contentProvider?.type || ''),
-        '來源': select('line'),
-        '建立時間': date(eventTime),
-        '轉檔狀態': select('待轉檔'),
-      },
+      properties,
+      children: uploadedContent?.fileUploadId ? [fileBlock(uploadedContent.fileUploadId)] : [paragraph('LINE 檔案下載或 Notion 上傳失敗，請查看 Render log。')],
     },
   });
+}
+
+async function maybeUploadLineContent(message, messageType, messageId) {
+  if (!['image', 'file'].includes(messageType)) {
+    return null;
+  }
+
+  if (message.contentProvider && message.contentProvider.type !== 'line') {
+    console.warn(`Skipping ${messageType} ${messageId}: contentProvider is not line.`);
+    return null;
+  }
+
+  try {
+    const content = await downloadLineContent(messageId);
+    const filename = resolveLineFilename(message, messageType, messageId, content.contentType);
+    const upload = await uploadFileToNotion(content.buffer, filename, content.contentType);
+    return {
+      fileUploadId: upload.id,
+      filename,
+      contentType: content.contentType,
+      contentLength: content.buffer.byteLength,
+    };
+  } catch (error) {
+    console.warn(`Unable to upload LINE ${messageType} ${messageId} to Notion: ${error.message}`);
+    return null;
+  }
+}
+
+async function downloadLineContent(messageId) {
+  if (!channelAccessToken) {
+    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
+  }
+
+  const response = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
+    headers: { Authorization: `Bearer ${channelAccessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`LINE content download failed: ${response.status} ${await response.text()}`);
+  }
+
+  return {
+    buffer: await response.arrayBuffer(),
+    contentType: response.headers.get('content-type') || 'application/octet-stream',
+  };
+}
+
+async function uploadFileToNotion(buffer, filename, contentType) {
+  const upload = await notionRequest('/v1/file_uploads', {
+    method: 'POST',
+    body: {
+      filename,
+      content_type: contentType,
+    },
+  });
+
+  const formData = new FormData();
+  formData.append('file', new Blob([buffer], { type: contentType }), filename);
+
+  const response = await fetch(upload.upload_url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${notionToken}`,
+      'Notion-Version': notionVersion,
+    },
+    body: formData,
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Notion file upload failed: ${response.status} ${responseText}`);
+  }
+
+  const result = responseText ? JSON.parse(responseText) : upload;
+  if (result.status && result.status !== 'uploaded') {
+    throw new Error(`Notion file upload status is ${result.status}`);
+  }
+
+  return result.id ? result : upload;
 }
 
 async function lineGet(pathname) {
@@ -425,7 +526,7 @@ async function notionRequest(pathname, { method, body }) {
     headers: {
       Authorization: `Bearer ${notionToken}`,
       'Content-Type': 'application/json',
-      'Notion-Version': '2025-09-03',
+      'Notion-Version': notionVersion,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -452,6 +553,28 @@ function buildNonTextMessagePreview(message) {
   }
 
   return `[${message.type}] ${message.id || ''}`.trim();
+}
+
+function resolveLineFilename(message, messageType, messageId, contentType) {
+  if (message.fileName) {
+    return message.fileName;
+  }
+
+  const extension = extensionFromContentType(contentType) || (messageType === 'image' ? 'jpg' : 'bin');
+  return `line-${messageType}-${messageId}.${extension}`;
+}
+
+function extensionFromContentType(contentType) {
+  const extensions = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'application/pdf': 'pdf',
+    'text/plain': 'txt',
+  };
+
+  return extensions[String(contentType || '').split(';')[0].trim().toLowerCase()];
 }
 
 function normalizeMessageType(messageType) {
@@ -522,6 +645,10 @@ function relation(id) {
   return { relation: [{ id }] };
 }
 
+function files(name, fileUploadId) {
+  return { files: [{ name, type: 'file_upload', file_upload: { id: fileUploadId } }] };
+}
+
 function conversationAnchorBlock() {
   return coloredParagraph(conversationAnchorText, 'blue');
 }
@@ -532,6 +659,30 @@ function coloredParagraph(content, color) {
     type: 'paragraph',
     paragraph: {
       rich_text: [{ type: 'text', text: { content: clampText(content, 1900) }, annotations: { color } }],
+    },
+  };
+}
+
+function imageBlock(fileUploadId, caption) {
+  return {
+    object: 'block',
+    type: 'image',
+    image: {
+      type: 'file_upload',
+      file_upload: { id: fileUploadId },
+      caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [],
+    },
+  };
+}
+
+function fileBlock(fileUploadId) {
+  return {
+    object: 'block',
+    type: 'file',
+    file: {
+      type: 'file_upload',
+      file_upload: { id: fileUploadId },
+      caption: [],
     },
   };
 }
