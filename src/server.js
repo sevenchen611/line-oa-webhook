@@ -11,9 +11,11 @@ const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
+const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
+const reportCommands = new Set(['#報告', '報告', '#每日報告', '每日報告']);
 
 if (!channelAccessToken || !channelSecret) {
   console.warn('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET.');
@@ -32,6 +34,8 @@ const server = http.createServer(async (req, res) => {
       notionConfigured,
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
       autoReplyEnabled: false,
+      reportCommandEnabled: true,
+      reportUrl,
       conversationPageBlocksEnabled: true,
       lineContentUploadEnabled: true,
       directFileBlocksEnabled: false,
@@ -62,11 +66,46 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function handleEvent(event, rawBody) {
-  if (!notionConfigured) {
-    return;
+  const commandReply = buildCommandReply(event);
+
+  if (notionConfigured) {
+    await storeLineEventInNotion(event, rawBody);
   }
 
-  await storeLineEventInNotion(event, rawBody);
+  if (commandReply && event.replyToken) {
+    await replyLineMessage(event.replyToken, commandReply);
+  }
+}
+
+function buildCommandReply(event) {
+  const text = event.type === 'message' && event.message?.type === 'text' ? String(event.message.text || '').trim() : '';
+  if (!reportCommands.has(text)) {
+    return null;
+  }
+
+  return {
+    type: 'text',
+    text: `每日總控報告網頁版：\n${reportUrl}\n\n目前這是試跑版，可以在手機上檢視附件解析與任務狀態確認畫面。`,
+  };
+}
+
+async function replyLineMessage(replyToken, message) {
+  if (!channelAccessToken) {
+    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
+  }
+
+  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${channelAccessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ replyToken, messages: [message] }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`);
+  }
 }
 
 async function storeLineEventInNotion(event, rawBody) {
@@ -87,30 +126,11 @@ async function storeLineEventInNotion(event, rawBody) {
   const display = await resolveDisplayNames(source, context);
   const conversation = await findOrCreateConversation(context, display, eventTime, text);
   const uploadedContent = await maybeUploadLineContent(message, messageType, messageId);
-  const messagePage = await createMessagePage({
-    conversationId: conversation.id,
-    event,
-    rawBody,
-    messageId,
-    messageType,
-    text,
-    eventTime,
-    display,
-    context,
-  });
+  const messagePage = await createMessagePage({ conversationId: conversation.id, event, rawBody, messageId, messageType, text, eventTime, display, context });
 
   let attachmentPage;
   if (messageType === 'file' && attachmentsDataSourceId) {
-    attachmentPage = await createAttachmentPage({
-      conversationId: conversation.id,
-      messagePageId: messagePage.id,
-      event,
-      message,
-      messageId,
-      messageType,
-      eventTime,
-      uploadedContent,
-    });
+    attachmentPage = await createAttachmentPage({ conversationId: conversation.id, messagePageId: messagePage.id, event, message, messageId, messageType, eventTime, uploadedContent });
   }
 
   await appendConversationContentFirst({
@@ -133,15 +153,12 @@ function resolveConversationContext(source) {
   if (source.roomId) {
     return { identityProperty: 'Room ID', identityValue: source.roomId, entityType: '聊天室', key: `room:${source.roomId}` };
   }
-
   if (source.groupId) {
     return { identityProperty: 'Group ID', identityValue: source.groupId, entityType: '群組', key: `group:${source.groupId}` };
   }
-
   if (source.userId) {
     return { identityProperty: 'User ID', identityValue: source.userId, entityType: '個人', key: `user:${source.userId}` };
   }
-
   return { identityProperty: '對話統一鍵', identityValue: 'unknown', entityType: '未知', key: 'unknown' };
 }
 
@@ -201,11 +218,7 @@ async function findOrCreateConversation(context, display, eventTime, preview) {
 
   return notionRequest('/v1/pages', {
     method: 'POST',
-    body: {
-      parent: { type: 'data_source_id', data_source_id: conversationsDataSourceId },
-      properties,
-      children: [conversationAnchorBlock()],
-    },
+    body: { parent: { type: 'data_source_id', data_source_id: conversationsDataSourceId }, properties, children: [conversationAnchorBlock()] },
   });
 }
 
@@ -216,10 +229,7 @@ async function findConversationPage(context) {
 
   const result = await notionRequest(`/v1/data_sources/${conversationsDataSourceId}/query`, {
     method: 'POST',
-    body: {
-      page_size: 1,
-      filter: { property: context.identityProperty, rich_text: { equals: context.identityValue } },
-    },
+    body: { page_size: 1, filter: { property: context.identityProperty, rich_text: { equals: context.identityValue } } },
   });
 
   return result.results?.[0] || null;
@@ -228,10 +238,7 @@ async function findConversationPage(context) {
 async function findMessagePage(messageId) {
   const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
     method: 'POST',
-    body: {
-      page_size: 1,
-      filter: { property: '訊息 ID', title: { equals: messageId } },
-    },
+    body: { page_size: 1, filter: { property: '訊息 ID', title: { equals: messageId } } },
   });
 
   return result.results?.[0] || null;
@@ -263,32 +270,15 @@ async function createMessagePage({ conversationId, event, rawBody, messageId, me
         '排序時間': date(eventTime),
         '已進入判斷層': checkbox(false),
       },
-      children: [
-        paragraph(`來源：LINE / ${context.entityType}`),
-        paragraph(`內容：${text || '(非文字訊息)'}`),
-      ],
+      children: [paragraph(`來源：LINE / ${context.entityType}`), paragraph(`內容：${text || '(非文字訊息)'}`)],
     },
   });
 }
 
 async function appendConversationContentFirst({ conversationId, conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const anchorBlock = await findOrCreateConversationAnchor(conversationId);
-  const blocks = buildConversationMessageBlocks({
-    conversationName,
-    actorName,
-    messageType,
-    text,
-    message,
-    messageId,
-    eventTime,
-    uploadedContent,
-    attachmentPageUrl,
-  });
-
-  await notionRequest(`/v1/blocks/${conversationId}/children`, {
-    method: 'PATCH',
-    body: { after: anchorBlock.id, children: blocks },
-  });
+  const blocks = buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl });
+  await notionRequest(`/v1/blocks/${conversationId}/children`, { method: 'PATCH', body: { after: anchorBlock.id, children: blocks } });
 }
 
 async function findOrCreateConversationAnchor(conversationId) {
@@ -298,25 +288,19 @@ async function findOrCreateConversationAnchor(conversationId) {
     return anchor;
   }
 
-  const result = await notionRequest(`/v1/blocks/${conversationId}/children`, {
-    method: 'PATCH',
-    body: { children: [conversationAnchorBlock()] },
-  });
-
+  const result = await notionRequest(`/v1/blocks/${conversationId}/children`, { method: 'PATCH', body: { children: [conversationAnchorBlock()] } });
   return result.results?.[0];
 }
 
 async function getBlockChildren(blockId) {
   const blocks = [];
   let startCursor;
-
   do {
     const query = startCursor ? `?page_size=100&start_cursor=${encodeURIComponent(startCursor)}` : '?page_size=100';
     const result = await notionRequest(`/v1/blocks/${blockId}/children${query}`, { method: 'GET' });
     blocks.push(...(result.results || []));
     startCursor = result.has_more ? result.next_cursor : null;
   } while (startCursor);
-
   return blocks;
 }
 
@@ -352,17 +336,9 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
 
 async function updateConversationAfterMessage(conversation, display, eventTime, preview) {
   const currentCount = conversation.properties?.['訊息數（總）']?.number || 0;
-
   await notionRequest(`/v1/pages/${conversation.id}`, {
     method: 'PATCH',
-    body: {
-      properties: {
-        'LINE 對話名稱': title(display.conversationName),
-        '最後訊息時間': date(eventTime),
-        '最新訊息預覽': richText(preview, 160),
-        '訊息數（總）': { number: currentCount + 1 },
-      },
-    },
+    body: { properties: { 'LINE 對話名稱': title(display.conversationName), '最後訊息時間': date(eventTime), '最新訊息預覽': richText(preview, 160), '訊息數（總）': { number: currentCount + 1 } } },
   });
 }
 
@@ -392,9 +368,7 @@ async function createAttachmentPage({ conversationId, messagePageId, event, mess
     body: {
       parent: { type: 'data_source_id', data_source_id: attachmentsDataSourceId },
       properties,
-      children: uploadedContent?.fileUploadId
-        ? [fileBlock(uploadedContent.fileUploadId, filename)]
-        : [paragraph('LINE 檔案下載或 Notion 上傳失敗，請查看 Render log。')],
+      children: uploadedContent?.fileUploadId ? [fileBlock(uploadedContent.fileUploadId, filename)] : [paragraph('LINE 檔案下載或 Notion 上傳失敗，請查看 Render log。')],
     },
   });
 }
@@ -403,22 +377,15 @@ async function maybeUploadLineContent(message, messageType, messageId) {
   if (!['image', 'file'].includes(messageType)) {
     return null;
   }
-
   if (message.contentProvider && message.contentProvider.type !== 'line') {
     console.warn(`Skipping ${messageType} ${messageId}: contentProvider is not line.`);
     return null;
   }
-
   try {
     const content = await downloadLineContent(messageId);
     const filename = resolveLineFilename(message, messageType, messageId, content.contentType);
     const upload = await uploadFileToNotion(content.buffer, filename, content.contentType);
-    return {
-      fileUploadId: upload.id,
-      filename,
-      contentType: content.contentType,
-      contentLength: content.buffer.byteLength,
-    };
+    return { fileUploadId: upload.id, filename, contentType: content.contentType, contentLength: content.buffer.byteLength };
   } catch (error) {
     console.warn(`Unable to upload LINE ${messageType} ${messageId} to Notion: ${error.message}`);
     return null;
@@ -429,36 +396,21 @@ async function downloadLineContent(messageId) {
   if (!channelAccessToken) {
     throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
   }
-
-  const response = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
-    headers: { Authorization: `Bearer ${channelAccessToken}` },
-  });
-
+  const response = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, { headers: { Authorization: `Bearer ${channelAccessToken}` } });
   if (!response.ok) {
     throw new Error(`LINE content download failed: ${response.status} ${await response.text()}`);
   }
-
-  return {
-    buffer: await response.arrayBuffer(),
-    contentType: response.headers.get('content-type') || 'application/octet-stream',
-  };
+  return { buffer: await response.arrayBuffer(), contentType: response.headers.get('content-type') || 'application/octet-stream' };
 }
 
 async function uploadFileToNotion(buffer, filename, contentType) {
-  const upload = await notionRequest('/v1/file_uploads', {
-    method: 'POST',
-    body: { filename, content_type: contentType },
-  });
-
+  const upload = await notionRequest('/v1/file_uploads', { method: 'POST', body: { filename, content_type: contentType } });
   const formData = new FormData();
   formData.append('file', new Blob([buffer], { type: contentType }), filename);
 
   const response = await fetch(upload.upload_url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${notionToken}`,
-      'Notion-Version': notionVersion,
-    },
+    headers: { Authorization: `Bearer ${notionToken}`, 'Notion-Version': notionVersion },
     body: formData,
   });
 
@@ -466,12 +418,10 @@ async function uploadFileToNotion(buffer, filename, contentType) {
   if (!response.ok) {
     throw new Error(`Notion file upload failed: ${response.status} ${responseText}`);
   }
-
   const result = responseText ? JSON.parse(responseText) : upload;
   if (result.status && result.status !== 'uploaded') {
     throw new Error(`Notion file upload status is ${result.status}`);
   }
-
   return result.id ? result : upload;
 }
 
@@ -479,15 +429,10 @@ async function lineGet(pathname) {
   if (!channelAccessToken) {
     throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
   }
-
-  const response = await fetch(`https://api.line.me${pathname}`, {
-    headers: { Authorization: `Bearer ${channelAccessToken}` },
-  });
-
+  const response = await fetch(`https://api.line.me${pathname}`, { headers: { Authorization: `Bearer ${channelAccessToken}` } });
   if (!response.ok) {
     throw new Error(`LINE API failed: ${response.status} ${await response.text()}`);
   }
-
   return response.json();
 }
 
@@ -495,22 +440,15 @@ async function notionRequest(pathname, { method, body }) {
   if (!notionToken) {
     throw new Error('NOTION_TOKEN is not set.');
   }
-
   const response = await fetch(`https://api.notion.com${pathname}`, {
     method,
-    headers: {
-      Authorization: `Bearer ${notionToken}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': notionVersion,
-    },
+    headers: { Authorization: `Bearer ${notionToken}`, 'Content-Type': 'application/json', 'Notion-Version': notionVersion },
     body: body ? JSON.stringify(body) : undefined,
   });
-
   const responseText = await response.text();
   if (!response.ok) {
     throw new Error(`Notion API failed: ${response.status} ${responseText}`);
   }
-
   return responseText ? JSON.parse(responseText) : {};
 }
 
@@ -518,15 +456,12 @@ function buildNonTextMessagePreview(message) {
   if (!message?.type) {
     return '(非 message 事件)';
   }
-
   if (message.type === 'file') {
     return `[file] ${message.fileName || message.id || ''}`.trim();
   }
-
   if (message.type === 'sticker') {
     return `[sticker] package:${message.packageId || ''} sticker:${message.stickerId || ''}`.trim();
   }
-
   return `[${message.type}] ${message.id || ''}`.trim();
 }
 
@@ -534,21 +469,12 @@ function resolveLineFilename(message, messageType, messageId, contentType) {
   if (message.fileName) {
     return message.fileName;
   }
-
   const extension = extensionFromContentType(contentType) || (messageType === 'image' ? 'jpg' : 'bin');
   return `line-${messageType}-${messageId}.${extension}`;
 }
 
 function extensionFromContentType(contentType) {
-  const extensions = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/gif': 'gif',
-    'image/webp': 'webp',
-    'application/pdf': 'pdf',
-    'text/plain': 'txt',
-  };
-
+  const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'application/pdf': 'pdf', 'text/plain': 'txt' };
   return extensions[String(contentType || '').split(';')[0].trim().toLowerCase()];
 }
 
@@ -561,29 +487,12 @@ function normalizeAttachmentType(messageType) {
 }
 
 function messageTypeLabel(messageType) {
-  const labels = {
-    text: '文字訊息',
-    image: '圖片',
-    file: '檔案',
-    sticker: '貼圖',
-    location: '位置',
-    video: '影片',
-    audio: '語音',
-  };
-
+  const labels = { text: '文字訊息', image: '圖片', file: '檔案', sticker: '貼圖', location: '位置', video: '影片', audio: '語音' };
   return labels[messageType] || '其他訊息';
 }
 
 function formatTaipeiTime(value) {
-  return new Intl.DateTimeFormat('zh-TW', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value));
 }
 
 function plainBlockText(block) {
@@ -600,7 +509,6 @@ function richText(content, maxLength = 1900) {
   if (!value) {
     return { rich_text: [] };
   }
-
   return { rich_text: [{ type: 'text', text: { content: clampText(value, maxLength) } }] };
 }
 
@@ -629,55 +537,23 @@ function conversationAnchorBlock() {
 }
 
 function coloredParagraph(content, color) {
-  return {
-    object: 'block',
-    type: 'paragraph',
-    paragraph: {
-      rich_text: [{ type: 'text', text: { content: clampText(content, 1900) }, annotations: { color } }],
-    },
-  };
+  return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900) }, annotations: { color } }] } };
 }
 
 function imageBlock(fileUploadId, caption) {
-  return {
-    object: 'block',
-    type: 'image',
-    image: {
-      type: 'file_upload',
-      file_upload: { id: fileUploadId },
-      caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [],
-    },
-  };
+  return { object: 'block', type: 'image', image: { type: 'file_upload', file_upload: { id: fileUploadId }, caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [] } };
 }
 
 function fileBlock(fileUploadId, caption) {
-  return {
-    object: 'block',
-    type: 'file',
-    file: {
-      type: 'file_upload',
-      file_upload: { id: fileUploadId },
-      caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [],
-    },
-  };
+  return { object: 'block', type: 'file', file: { type: 'file_upload', file_upload: { id: fileUploadId }, caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [] } };
 }
 
 function linkParagraph(content, url) {
-  return {
-    object: 'block',
-    type: 'paragraph',
-    paragraph: {
-      rich_text: [{ type: 'text', text: { content: clampText(content, 1900), link: { url } } }],
-    },
-  };
+  return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900), link: { url } } }] } };
 }
 
 function paragraph(content) {
-  return {
-    object: 'block',
-    type: 'paragraph',
-    paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900) } }] },
-  };
+  return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900) } }] } };
 }
 
 function clampText(value, maxLength) {
@@ -689,7 +565,6 @@ function isValidLineSignature(rawBody, signature) {
   if (!channelSecret || typeof signature !== 'string') {
     return false;
   }
-
   const expected = createHmac('sha256', channelSecret).update(rawBody).digest('base64');
   return expected === signature;
 }
@@ -717,20 +592,17 @@ function loadDotenv() {
   if (!existsSync('.env')) {
     return;
   }
-
   const envFile = readFileSync('.env', 'utf8');
   for (const line of envFile.split(/\r?\n/)) {
     const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
     if (!match || process.env[match[1]]) {
       continue;
     }
-
     process.env[match[1]] = match[2].replace(/^["']|["']$/g, '');
   }
 }
 
 const port = Number(process.env.PORT || 3000);
-
 server.listen(port, () => {
   console.log(`LINE webhook server is listening on port ${port}`);
 });
