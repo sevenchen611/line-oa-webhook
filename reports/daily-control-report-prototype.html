@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>每日總控狀態總結報告</title>
+  <style>
+    :root{--bg:#f6f7f4;--panel:#fff;--ink:#20242a;--muted:#667085;--line:#d9ded7;--green:#2f6f5e;--yellow:#9b6b1f;--red:#9d3b3b;--shadow:0 10px 28px rgba(23,30,26,.08)}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft JhengHei","PingFang TC",system-ui,sans-serif;line-height:1.55}button,select,input{font:inherit}.app{min-height:100vh;display:grid;grid-template-columns:250px 1fr}.side{position:sticky;top:0;height:100vh;background:#25352f;color:#f4f7f2;padding:24px 18px}.side strong{display:block;font-size:20px}.side span{display:block;color:#bfd0c8;font-size:13px;margin-top:4px}.nav{display:grid;gap:8px;margin-top:26px}.nav a{color:#dce7e1;text-decoration:none;padding:9px 10px;border-radius:6px}.nav a:hover{background:rgba(255,255,255,.08)}main{padding:28px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}h1{margin:0;font-size:28px;line-height:1.25}.sub{margin-top:6px;color:var(--muted)}.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:9px 14px;cursor:pointer}.btn.primary{border-color:var(--green);background:var(--green);color:#fff}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric,section{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.metric{padding:14px}.metric span{display:block;color:var(--muted);font-size:13px}.metric strong{display:block;margin-top:6px;font-size:24px}section{margin-bottom:20px;overflow:hidden}.head{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:#fbfcfa}.head h2{margin:0;font-size:18px}.note{color:var(--muted);font-size:13px}.project{display:grid;grid-template-columns:150px 1fr 160px;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}.project:last-child{border-bottom:0}.name{font-weight:700}.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;font-size:12px;background:#edf3ef;color:var(--green);white-space:nowrap}.chip.warn{background:#fff4df;color:var(--yellow)}.chip.risk{background:#f9e8e8;color:var(--red)}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;vertical-align:middle}th{color:var(--muted);font-size:13px;font-weight:600;background:#fbfcfa}tr:last-child td{border-bottom:0}input[type=checkbox]{width:18px;height:18px;accent-color:var(--green)}select{width:100%;min-width:128px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 10px;color:var(--ink)}ol{margin:0;padding:16px 18px 16px 36px}li{margin-bottom:8px}.result{display:none;margin-top:16px;padding:14px 16px;border:1px solid #bfd9cd;background:#edf6f1;border-radius:8px;color:#1f4e42}.result.show{display:block}.muted{color:var(--muted)}@media(max-width:900px){.app{display:block}.side{position:static;height:auto}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.project{grid-template-columns:1fr}.top{display:block}.actions{margin-top:12px;justify-content:flex-start}table{display:block;overflow-x:auto}}@media(max-width:560px){main{padding:16px}.metrics{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <strong>每日總控</strong>
+      <span>2026-06-06｜20:30 試跑版</span>
+      <nav class="nav">
+        <a href="#overview">總覽</a>
+        <a href="#projects">專案進度</a>
+        <a href="#attachments">附件解析確認</a>
+        <a href="#tasks">任務狀態確認</a>
+        <a href="#tomorrow">明日優先</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="top" id="overview">
+        <div><h1>每日總控狀態總結報告</h1><div class="sub">可在手機上確認附件解析與任務狀態，最後一次送出。</div></div>
+        <div class="actions"><button class="btn" onclick="resetChoices()">重設</button><button class="btn primary" onclick="confirmReport()">確認今日處理</button></div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><span>活躍專案</span><strong>3</strong></div>
+        <div class="metric"><span>今日 LINE 訊息</span><strong>15+</strong></div>
+        <div class="metric"><span>待確認附件</span><strong>1</strong></div>
+        <div class="metric"><span>待處理任務</span><strong>3</strong></div>
+      </div>
+      <section id="projects"><div class="head"><h2>專案進度摘要</h2><span class="note">依 LINE 對話與 Notion 紀錄整理</span></div>
+        <div class="project"><div class="name">茲心園工程</div><div>台翰營造&茲心園改建群組已成功收訊，重點是廠商目前正在評估與尋找廠商，下週四前會有初步答案。</div><div class="chips"><span class="chip">進行中</span><span class="chip warn">需追蹤</span></div></div>
+        <div class="project"><div class="name">包租代管</div><div>今日用 HOZO CRM 的存檔方式作為參考，修正 Seven LINE 的圖片、檔案與附件紀錄規則。</div><div class="chips"><span class="chip">格式調整完成</span></div></div>
+        <div class="project"><div class="name">人資</div><div>Bonnie 群組待第一則訊息成功寫入後，建議指定為人資專案。</div><div class="chips"><span class="chip warn">待確認收訊</span></div></div>
+      </section>
+      <section id="attachments"><div class="head"><h2>附件解析確認</h2><span class="note">勾選後，按確認才會進入 OCR / 解析流程</span></div>
+        <table><thead><tr><th>解析</th><th>附件</th><th>來源</th><th>專案</th><th>建議</th><th>處理方式</th></tr></thead><tbody><tr><td><input type="checkbox" class="ocr-check" data-file="sample.pdf"></td><td><a href="https://app.notion.com/p/37751c686dac812eb252c9e7b444f43f" target="_blank">sample.pdf</a><div class="muted">PDF｜測試檔</div></td><td>Seven LINE 測試</td><td>未分類</td><td><span class="chip warn">不建議解析</span></td><td><select class="file-action"><option>不需轉檔</option><option>OCR 圖文辨識</option><option>PDF 文字解析</option><option>摘要與任務抽取</option></select></td></tr></tbody></table>
+      </section>
+      <section id="tasks"><div class="head"><h2>任務狀態確認</h2><span class="note">下拉選單決定任務下一步狀態</span></div>
+        <table><thead><tr><th>任務</th><th>專案</th><th>來源</th><th>建議狀態</th><th>確認後狀態</th></tr></thead><tbody>
+          <tr><td>追蹤台翰營造下週四前提供初步答案</td><td>茲心園工程</td><td>LINE 群組</td><td><span class="chip warn">等待回覆</span></td><td><select class="task-status" data-task="追蹤台翰營造下週四前提供初步答案"><option>等待回覆</option><option>未開始</option><option>進行中</option><option>已完成</option><option>封存</option></select></td></tr>
+          <tr><td>確認 Bonnie 人資群組是否成功寫入 Notion</td><td>人資</td><td>系統設定</td><td><span class="chip warn">待確認</span></td><td><select class="task-status" data-task="確認 Bonnie 人資群組是否成功寫入 Notion"><option>待確認</option><option>未開始</option><option>進行中</option><option>等待回覆</option><option>已完成</option></select></td></tr>
+          <tr><td>測試 #待辦 是否能進入總控任務庫</td><td>SmartFront / AI Brain</td><td>總控規則</td><td><span class="chip">未開始</span></td><td><select class="task-status" data-task="測試 #待辦 是否能進入總控任務庫"><option>未開始</option><option>進行中</option><option>等待回覆</option><option>已完成</option><option>封存</option></select></td></tr>
+        </tbody></table>
+      </section>
+      <section id="tomorrow"><div class="head"><h2>明日優先建議處理</h2><span class="note">以確認事項、轉檔與任務推進為主</span></div><ol><li>確認 Bonnie 人資群組是否已成功收訊，並指定為人資專案。</li><li>在 LINE 群組測試一則 #待辦，確認是否能建立到總控任務庫。</li><li>把茲心園「下週四前回覆」正式列為等待回覆追蹤事項。</li><li>挑一個真正有內容價值的附件，測試 OCR / 文件解析流程。</li><li>確認低信心任務的每日 20:30 確認流程是否符合使用習慣。</li></ol></section>
+      <div class="actions"><button class="btn" onclick="resetChoices()">重設</button><button class="btn primary" onclick="confirmReport()">確認今日處理</button></div><div class="result" id="result"></div>
+    </main>
+  </div>
+  <script>
+    function confirmReport(){const selectedFiles=Array.from(document.querySelectorAll('.ocr-check:checked')).map(input=>{const row=input.closest('tr');return{file:input.dataset.file,action:row.querySelector('.file-action').value}});const taskUpdates=Array.from(document.querySelectorAll('.task-status')).map(select=>({task:select.dataset.task,status:select.value}));const result=document.getElementById('result');const fileText=selectedFiles.length?selectedFiles.map(item=>`${item.file}：${item.action}`).join('<br>'):'沒有勾選需要解析的附件。';const taskText=taskUpdates.map(item=>`${item.task} → ${item.status}`).join('<br>');result.innerHTML=`<strong>已整理本次確認結果</strong><br><br><strong>附件處理：</strong><br>${fileText}<br><br><strong>任務狀態：</strong><br>${taskText}<br><br><span>正式版會在這一步把選擇寫回 Notion，並啟動已勾選附件的 OCR / 解析流程。</span>`;result.classList.add('show');result.scrollIntoView({behavior:'smooth',block:'nearest'})}function resetChoices(){document.querySelectorAll('.ocr-check').forEach(input=>input.checked=false);document.querySelectorAll('.file-action').forEach(select=>select.selectedIndex=0);document.querySelectorAll('.task-status').forEach(select=>select.selectedIndex=0);document.getElementById('result').classList.remove('show')}
+  </script>
+</body>
+</html>
