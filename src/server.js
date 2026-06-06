@@ -34,9 +34,8 @@ const server = http.createServer(async (req, res) => {
       autoReplyEnabled: false,
       conversationPageBlocksEnabled: true,
       lineContentUploadEnabled: true,
-      directFileBlocksEnabled: true,
+      directFileBlocksEnabled: false,
       attachmentLinksEnabled: true,
-      attachmentLinksPointToDatabaseIndex: true,
       storageMode: 'hozo-crm-style',
     });
   }
@@ -339,17 +338,11 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
   if (messageType === 'file') {
     const filename = message.fileName || uploadedContent?.filename || messageId;
     blocks.push(paragraph(`檔案：${filename}`));
-
-    if (uploadedContent?.fileUploadId) {
-      blocks.push(fileBlock(uploadedContent.fileUploadId, filename));
-    } else {
+    if (attachmentPageUrl) {
+      blocks.push(linkParagraph(`附件資料庫：${filename}`, attachmentPageUrl));
+    } else if (!uploadedContent?.fileUploadId) {
       blocks.push(paragraph('檔案下載或上傳 Notion 失敗，請查看 Render log。'));
     }
-
-    if (attachmentPageUrl) {
-      blocks.push(linkParagraph(`附件資料庫索引：${filename}`, attachmentPageUrl));
-    }
-
     return blocks;
   }
 
