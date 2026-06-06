@@ -34,6 +34,7 @@ const server = http.createServer(async (req, res) => {
       autoReplyEnabled: false,
       conversationPageBlocksEnabled: true,
       lineContentUploadEnabled: true,
+      attachmentLinksEnabled: true,
       storageMode: 'hozo-crm-style',
     });
   }
@@ -363,9 +364,10 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
   }
 
   if (messageType === 'file') {
-    blocks.push(paragraph(`檔案：${message.fileName || messageId}`));
+    const filename = message.fileName || uploadedContent?.filename || messageId;
+    blocks.push(paragraph(`檔案：${filename}`));
     if (attachmentPageUrl) {
-      blocks.push(paragraph(`附件資料庫：${attachmentPageUrl}`));
+      blocks.push(linkParagraph(`附件資料庫：${filename}`, attachmentPageUrl));
     }
     return blocks;
   }
@@ -683,6 +685,16 @@ function fileBlock(fileUploadId) {
       type: 'file_upload',
       file_upload: { id: fileUploadId },
       caption: [],
+    },
+  };
+}
+
+function linkParagraph(content, url) {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: [{ type: 'text', text: { content: clampText(content, 1900), link: { url } } }],
     },
   };
 }
