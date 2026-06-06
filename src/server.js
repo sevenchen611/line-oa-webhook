@@ -29,6 +29,7 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       notionConfigured,
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
+      autoReplyEnabled: false,
     });
   }
 
@@ -54,16 +55,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function handleEvent(event, rawBody) {
-  if (notionConfigured) {
-    await storeLineEventInNotion(event, rawBody);
+  if (!notionConfigured) {
+    return;
   }
 
-  if (event.type === 'message' && event.replyToken) {
-    await safeReply(event.replyToken, {
-      type: 'text',
-      text: notionConfigured ? '已收到，並已寫入 Seven LINE 資料庫。' : '已收到，但 Notion 寫入尚未設定完成。',
-    });
-  }
+  await storeLineEventInNotion(event, rawBody);
 }
 
 async function storeLineEventInNotion(event, rawBody) {
@@ -205,9 +201,7 @@ async function findOrCreateConversation(context, display, eventTime, preview) {
     body: {
       parent: { type: 'data_source_id', data_source_id: conversationsDataSourceId },
       properties,
-      children: [
-        paragraph('【Seven LINE】對話記錄（最新訊息由訊息紀錄資料庫保存）'),
-      ],
+      children: [paragraph('【Seven LINE】對話記錄（最新訊息由訊息紀錄資料庫保存）')],
     },
   });
 }
@@ -359,36 +353,6 @@ async function notionRequest(pathname, { method, body }) {
   }
 
   return responseText ? JSON.parse(responseText) : {};
-}
-
-async function safeReply(replyToken, message) {
-  try {
-    await replyMessage(replyToken, message);
-  } catch (error) {
-    console.warn(`Unable to reply to LINE: ${error.message}`);
-  }
-}
-
-async function replyMessage(replyToken, message) {
-  if (!channelAccessToken) {
-    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
-  }
-
-  const response = await fetch('https://api.line.me/v2/bot/message/reply', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${channelAccessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages: [message],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`);
-  }
 }
 
 function buildNonTextMessagePreview(message) {
