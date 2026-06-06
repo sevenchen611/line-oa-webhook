@@ -116,6 +116,9 @@ async function approveReport(req, body) {
   const submittedAt = body.submittedAt ? new Date(body.submittedAt) : new Date();
   const tasks = normalizeApprovalList(body.tasks);
   const attachments = normalizeApprovalList(body.attachments);
+  const reportContent = String(body.reportContent || body.editedReport || '').trim();
+  const decisions = normalizeApprovalList(body.decisions);
+  const followups = normalizeApprovalList(body.followups);
 
   const taskResults = [];
   for (const item of tasks) {
@@ -133,6 +136,9 @@ async function approveReport(req, body) {
     submittedAt,
     taskResults,
     attachmentResults,
+    reportContent,
+    decisions,
+    followups,
     notes: body.notes,
   });
 
@@ -244,7 +250,7 @@ async function createAttachmentConversionApproval(item, context) {
   return { file: fileName, action, conversionStatus, conversionType, pageId: created.id };
 }
 
-async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, notes }) {
+async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, reportContent, decisions, followups, notes }) {
   const title = `${reportType} 報告確認 ${formatTaipeiDateTime(submittedAt)}`;
   const taskLines = taskResults.length
     ? taskResults.map((item) => `${item.task} -> ${item.status} (${item.action})`).join('\n')
@@ -252,6 +258,18 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
   const attachmentLines = attachmentResults.length
     ? attachmentResults.map((item) => `${item.file} -> ${item.action} (${item.conversionStatus})`).join('\n')
     : '沒有附件轉檔確認。';
+  const decisionLines = decisions?.length
+    ? decisions.map((item) => `${item.item || item.title || '決策'} -> ${item.decision || item.value || item.status || ''}`).join('\n')
+    : '沒有額外決策選擇。';
+  const followupLines = followups?.length
+    ? followups.map((item) => [
+      `目標：${item.target || ''}`,
+      `動作：${item.action || ''}`,
+      `是否發送：${item.send ? '是' : '否'}`,
+      `訊息：${item.message || ''}`,
+    ].join('\n')).join('\n---\n')
+    : '沒有追蹤訊息確認。';
+  const reportText = reportContent || '沒有提供修改後報告內容。';
 
   return notionRequest('/v1/pages', {
     method: 'POST',
@@ -263,7 +281,7 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
         專案: selectProperty('跨專案'),
         狀態: selectProperty('已決策'),
         嚴重度: selectProperty('低'),
-        說明: richTextProperty(`確認人：${approvedBy}\n報告類型：${reportType}\n\n任務：\n${taskLines}\n\n附件：\n${attachmentLines}`),
+        說明: richTextProperty(`確認人：${approvedBy}\n報告類型：${reportType}\n\n修改後報告內容：\n${reportText}\n\n決策：\n${decisionLines}\n\n追蹤訊息：\n${followupLines}\n\n任務：\n${taskLines}\n\n附件：\n${attachmentLines}`),
         後續行動: richTextProperty(notes ? String(notes) : '依照本次確認結果更新任務與附件轉檔佇列。'),
       }),
     },
