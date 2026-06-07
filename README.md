@@ -68,6 +68,32 @@ npm run cron:report -- <reportType>
 POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
 ```
 
+### Cron tracing and failure alerts
+
+Each cron run now emits structured JSON logs from `scripts/render-cron-report.js` with:
+
+- `event`: `cron-report`
+- `status`: `started`, `succeeded`, or `failed`
+- `jobName`
+- `reportType`
+- `runId`
+- `startedAt`
+- `durationMs` on completion
+
+On failure, the cron script also sends a LINE warning to the same default report target by calling:
+
+```text
+POST /control/line/push
+```
+
+with `useDefaultReportTarget: true`.
+
+Recommended cron env vars:
+
+- `CRON_JOB_NAME`: set this to the Render cron job name.
+- `CONTROL_LINE_PUSH_URL`: defaults to `https://line-oa-webhook-nn5j.onrender.com/control/line/push`.
+- `SEVEN_CRON_ALERTS_ENABLED`: `true` to send LINE failure alerts, `false` to disable them.
+
 ## 主動推送 API
 
 所有控制 API 都需要帶其中一種授權：
@@ -131,3 +157,52 @@ npm start
 ```
 
 `npm start` 會同時啟動 Webhook 與控制 API。
+## Codex Command Queue
+
+Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation is enabled only when this Render environment variable is set:
+
+```text
+SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID=<Notion data source id>
+```
+
+Recommended Notion data source properties:
+
+| Property | Type |
+| --- | --- |
+| `Name` | Title |
+| `Status` | Select: `Pending`, `Processing`, `Done`, `Needs Confirmation`, `Failed`, `Archived` |
+| `Trigger` | Rich text |
+| `Command` | Rich text |
+| `Original Text` | Rich text |
+| `Source Type` | Select: `user`, `group`, `room`, `unknown` |
+| `Source ID` | Rich text |
+| `User ID` | Rich text |
+| `Conversation Name` | Rich text |
+| `Actor Name` | Rich text |
+| `Conversation Key` | Rich text |
+| `LINE Message ID` | Rich text |
+| `LINE Event ID` | Rich text |
+| `Message Page URL` | URL |
+| `Conversation Page URL` | URL |
+| `Received At` | Date |
+| `Risk Level` | Select: `Normal`, `High` |
+| `Result` | Rich text |
+| `Raw Event` | Rich text |
+
+Behavior:
+
+- `Eleven Junior`, `Eleven Jr.`, and `Elven Jr.` matching is case-insensitive.
+- `11 Jr`, `11 Jr.`, and spacing variants like `11Jr.` are supported.
+- Queue creation is non-blocking. If the queue database is not configured or its schema is wrong, normal LINE message collection continues.
+- High-risk command text containing finance, contract, HR, legal, or tax keywords is marked `High` so Codex can require confirmation before any external action.
+
+Local queue helper:
+
+```powershell
+npm run codex:commands -- pending 10
+npm run codex:commands -- mark <pageId> Processing
+npm run codex:commands -- mark <pageId> Done "Handled by Codex"
+npm run line:push -- user <targetUserId> "Reply text"
+```
+
+Codex queue processing should send LINE replies for completed low-risk commands. High-risk requests, including finance, contract, HR, legal, tax, or external-commitment requests, should be acknowledged but held for confirmation before action.

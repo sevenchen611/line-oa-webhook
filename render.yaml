@@ -20,6 +20,8 @@ services:
         sync: false
       - key: SEVEN_ATTACHMENTS_DATA_SOURCE_ID
         sync: false
+      - key: SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID
+        sync: false
       - key: SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID
         sync: false
       - key: SEVEN_CONTROL_API_KEY
@@ -33,8 +35,14 @@ services:
     startCommand: npm run cron:report -- morning
     schedule: "0 0 * * *"
     envVars:
+      - key: CRON_JOB_NAME
+        value: seven-jr-morning-brief
       - key: CONTROL_API_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: CONTROL_LINE_PUSH_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
+      - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -49,8 +57,14 @@ services:
     startCommand: npm run cron:report -- followup-morning
     schedule: "0 2 * * *"
     envVars:
+      - key: CRON_JOB_NAME
+        value: seven-jr-followup-morning
       - key: CONTROL_API_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: CONTROL_LINE_PUSH_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
+      - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -65,8 +79,14 @@ services:
     startCommand: npm run cron:report -- followup-afternoon
     schedule: "0 9 * * *"
     envVars:
+      - key: CRON_JOB_NAME
+        value: seven-jr-followup-afternoon
       - key: CONTROL_API_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: CONTROL_LINE_PUSH_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
+      - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -81,8 +101,14 @@ services:
     startCommand: npm run cron:report -- daily
     schedule: "30 12 * * *"
     envVars:
+      - key: CRON_JOB_NAME
+        value: seven-jr-daily-report
       - key: CONTROL_API_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+      - key: CONTROL_LINE_PUSH_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
+      - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook

@@ -188,6 +188,17 @@ When Seven Jr. receives LINE messages:
 
 General messages should not trigger automatic replies.
 
+Codex command trigger:
+
+- If a text message contains `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, or `11 Jr.`, Render should treat it as a Codex command request.
+- Render must still store the raw LINE message first.
+- If `SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID` is configured, Render should create a Codex command queue item with status `Pending`.
+- Current Codex command queue data source ID: `c4eee8de-e596-4d64-906b-1405d79e721c`.
+- Codex checks this queue every 15 minutes.
+- Low-risk analysis, sorting, summarizing, and internal task creation may be processed by Codex.
+- Financial, contractual, legal, HR, tax, or external commitment commands must require user confirmation before action.
+- Queue creation failure must not block normal LINE message storage.
+
 Allowed command replies:
 
 - `早報`, `#早報`, `今日早報`, `#今日早報`, `行程`, `#行程`

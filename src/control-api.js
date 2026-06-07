@@ -61,12 +61,12 @@ async function handleControlRequest(req, res, pathname) {
     const body = await readJsonBody(req);
 
     if (pathname === '/control/line/push') {
-      const result = await pushLineMessages(body);
+      const result = await pushLineMessages(req, body);
       return sendJson(res, 200, result);
     }
 
     if (pathname === '/control/reports/send') {
-      const result = await sendReport(body);
+      const result = await sendReport(req, body);
       return sendJson(res, 200, result);
     }
 
@@ -305,16 +305,27 @@ function resolveConversionType(action) {
   return '人工整理';
 }
 
-async function sendReport(body) {
+async function sendReport(req, body) {
   const reportType = String(body.reportType || body.type || '').trim().toLowerCase();
   const report = buildReportMessage(reportType, body.text);
   const targets = await resolveReportTargets(body);
+  const cronMeta = readCronMeta(req, body);
 
   if (!targets.length) {
     throw new Error('No LINE report target found. Send a message to Seven Jr. first, or set SEVEN_REPORT_TARGET_ID.');
   }
 
-  return pushToTargets(targets, [report]);
+  if (cronMeta) {
+    console.log(JSON.stringify({
+      event: 'control-report-send',
+      reportType,
+      cronMeta,
+      targetCount: targets.length,
+    }));
+  }
+
+  const result = await pushToTargets(targets, [report]);
+  return cronMeta ? { ...result, cronMeta } : result;
 }
 
 async function resolveReportTargets(body) {
@@ -398,9 +409,10 @@ function buildReportMessage(reportType, customText) {
   throw new Error('Unknown reportType. Use morning, daily, followup-morning, or followup-afternoon.');
 }
 
-async function pushLineMessages(body) {
-  const targets = normalizeTargets(body.targets, body.targetId, body.targetType);
+async function pushLineMessages(req, body) {
+  const targets = await resolvePushTargets(body);
   const messages = normalizeMessages(body.messages, body.message, body.text);
+  const cronMeta = readCronMeta(req, body);
 
   if (!targets.length) {
     throw new Error('Missing targetId or targets.');
@@ -409,7 +421,30 @@ async function pushLineMessages(body) {
     throw new Error('Missing text, message, or messages.');
   }
 
-  return pushToTargets(targets, messages);
+  if (cronMeta) {
+    console.log(JSON.stringify({
+      event: 'control-line-push',
+      cronMeta,
+      targetCount: targets.length,
+      messageCount: messages.length,
+    }));
+  }
+
+  const result = await pushToTargets(targets, messages);
+  return cronMeta ? { ...result, cronMeta } : result;
+}
+
+async function resolvePushTargets(body) {
+  const directTargets = normalizeTargets(body.targets, body.targetId, body.targetType);
+  if (directTargets.length) {
+    return directTargets;
+  }
+
+  if (body.useDefaultReportTarget) {
+    return resolveReportTargets({});
+  }
+
+  return [];
 }
 
 function normalizeTargets(targets, targetId, targetType) {
@@ -444,6 +479,28 @@ function normalizeMessages(messages, message, text) {
   }
 
   return [];
+}
+
+function readCronMeta(req, body) {
+  const cronMeta = body?.cronMeta && typeof body.cronMeta === 'object' ? body.cronMeta : null;
+  const headerJobName = body?.cronJobName || requestHeaderValue(req, 'x-seven-cron-job');
+  const headerRunId = body?.cronRunId || requestHeaderValue(req, 'x-seven-cron-run-id');
+  const headerReportType = body?.cronReportType || requestHeaderValue(req, 'x-seven-cron-scheduled-report');
+
+  const merged = {
+    jobName: cronMeta?.jobName || headerJobName || '',
+    runId: cronMeta?.runId || headerRunId || '',
+    reportType: cronMeta?.reportType || headerReportType || '',
+    startedAt: cronMeta?.startedAt || '',
+    source: cronMeta?.source || 'control-api',
+  };
+
+  return merged.jobName || merged.runId || merged.reportType ? merged : null;
+}
+
+function requestHeaderValue(req, headerName) {
+  const value = req?.headers?.[headerName];
+  return typeof value === 'string' ? value : '';
 }
 
 function normalizeMessage(message) {

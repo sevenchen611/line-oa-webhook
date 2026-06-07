@@ -10,6 +10,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
+const codexCommandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
@@ -36,6 +37,8 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       notionConfigured,
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
+      codexCommandQueueConfigured: Boolean(codexCommandsDataSourceId),
+      codexCommandTriggers: ['Eleven Junior', 'Eleven Jr.', 'Elven Jr.', '11 Jr.'],
       autoReplyEnabled: false,
       reportCommandEnabled: true,
       morningBriefCommandEnabled: true,
@@ -79,6 +82,9 @@ async function handleEvent(event, rawBody) {
 
   if (commandReply && event.replyToken) {
     await replyLineMessage(event.replyToken, commandReply);
+    if (notionConfigured) {
+      await storeOutgoingReplyInNotion(event, commandReply);
+    }
   }
 }
 
@@ -120,7 +126,6 @@ async function replyLineMessage(replyToken, message) {
     throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`);
   }
 }
-
 
 async function storeOutgoingReplyInNotion(event, message) {
   const source = event.source || {};
@@ -252,6 +257,123 @@ async function storeLineEventInNotion(event, rawBody) {
   });
 
   await updateConversationAfterMessage(conversation, display, eventTime, text);
+
+  if (isCodexCommandText(text)) {
+    await maybeCreateCodexCommandPage({
+      conversation,
+      messagePage,
+      event,
+      messageId,
+      text,
+      eventTime,
+      display,
+      context,
+    });
+  }
+}
+
+function isCodexCommandText(text) {
+  return findCodexCommandTrigger(text) !== null;
+}
+
+function findCodexCommandTrigger(text) {
+  const value = String(text || '');
+  const triggers = [
+    { label: 'Eleven Junior', pattern: /eleven\s+junior/i },
+    { label: 'Eleven Jr.', pattern: /eleven\s+jr\.?/i },
+    { label: 'Elven Jr.', pattern: /elven\s+jr\.?/i },
+    { label: '11 Jr.', pattern: /\b11\s*jr\.?\b/i },
+  ];
+  return triggers.find((trigger) => trigger.pattern.test(value)) || null;
+}
+
+function extractCodexCommand(text) {
+  const value = String(text || '').trim();
+  const trigger = findCodexCommandTrigger(value);
+  if (!trigger) {
+    return '';
+  }
+  return value.replace(trigger.pattern, '').replace(/^[\s:：,，。-]+/, '').trim();
+}
+
+async function maybeCreateCodexCommandPage({ conversation, messagePage, event, messageId, text, eventTime, display, context }) {
+  if (!codexCommandsDataSourceId) {
+    console.warn(`Codex command trigger detected in LINE message ${messageId}, but SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID is not set.`);
+    return null;
+  }
+
+  try {
+    return await createCodexCommandPage({ conversation, messagePage, event, messageId, text, eventTime, display, context });
+  } catch (error) {
+    console.warn(`Unable to create Codex command queue item for LINE message ${messageId}: ${error.message}`);
+    return null;
+  }
+}
+
+async function createCodexCommandPage({ conversation, messagePage, event, messageId, text, eventTime, display, context }) {
+  const source = event.source || {};
+  const trigger = findCodexCommandTrigger(text);
+  const commandText = extractCodexCommand(text);
+  const titleText = commandText || text || `LINE command ${messageId}`;
+  const sourceType = source.type || (source.groupId ? 'group' : source.roomId ? 'room' : source.userId ? 'user' : 'unknown');
+  const sourceId = source.groupId || source.roomId || source.userId || '';
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: codexCommandsDataSourceId },
+      properties: {
+        Name: title(titleText),
+        Status: select('Pending'),
+        Trigger: richText(trigger?.label || ''),
+        Command: richText(commandText, 1900),
+        'Original Text': richText(text, 1900),
+        'Source Type': select(sourceType),
+        'Source ID': richText(sourceId),
+        'User ID': richText(source.userId || ''),
+        'Conversation Name': richText(display.conversationName || ''),
+        'Actor Name': richText(display.actorName || ''),
+        'Conversation Key': richText(context.key || ''),
+        'LINE Message ID': richText(messageId),
+        'LINE Event ID': richText(event.webhookEventId || ''),
+        'Message Page URL': messagePage?.url ? url(messagePage.url) : undefined,
+        'Conversation Page URL': conversation?.url ? url(conversation.url) : undefined,
+        'Received At': date(eventTime),
+        'Risk Level': select(resolveCommandRiskLevel(commandText || text)),
+        'Raw Event': richText(JSON.stringify(event), 1900),
+      },
+      children: [
+        paragraph(`Trigger: ${trigger?.label || ''}`),
+        paragraph(`Command: ${commandText || '(no command text after trigger)'}`),
+        paragraph(`Source: ${sourceType} ${sourceId}`.trim()),
+      ],
+    },
+  });
+}
+
+function resolveCommandRiskLevel(text) {
+  const value = String(text || '').toLowerCase();
+  const highRiskTerms = [
+    'contract',
+    'legal',
+    'tax',
+    'salary',
+    'payment',
+    'invoice',
+    'fire ',
+    'terminate',
+    '合約',
+    '法律',
+    '稅',
+    '薪資',
+    '付款',
+    '匯款',
+    '發票',
+    '解僱',
+    '資遣',
+    '報價',
+  ];
+  return highRiskTerms.some((term) => value.includes(term)) ? 'High' : 'Normal';
 }
 
 function resolveConversationContext(source) {
@@ -382,7 +504,7 @@ async function createMessagePage({ conversationId, event, rawBody, messageId, me
 
 async function appendConversationContentFirst({ conversationId, conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const anchorBlock = await findOrCreateConversationAnchor(conversationId);
-  const blocks = buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl });
+  const blocks = await buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl });
   await notionRequest(`/v1/blocks/${conversationId}/children`, { method: 'PATCH', body: { after: anchorBlock.id, children: blocks } });
 }
 
@@ -409,7 +531,7 @@ async function getBlockChildren(blockId) {
   return blocks;
 }
 
-function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
+async function buildConversationMessageBlocks({ conversationName, actorName, messageType, text, message, messageId, eventTime, uploadedContent, attachmentPageUrl }) {
   const typeLabel = messageTypeLabel(messageType);
   const isOutgoing = actorName === outgoingActorName;
   const color = isOutgoing ? 'orange' : 'blue';
@@ -435,6 +557,18 @@ function buildConversationMessageBlocks({ conversationName, actorName, messageTy
       blocks.push(linkParagraph(`附件資料庫：${filename}`, attachmentPageUrl));
     } else if (!uploadedContent?.fileUploadId) {
       blocks.push(paragraph('檔案下載或上傳 Notion 失敗，請查看 Render log。'));
+    }
+    return blocks;
+  }
+
+  if (messageType === 'sticker') {
+    const stickerUrls = buildLineStickerUrls(message);
+    const content = text || buildNonTextMessagePreview(message);
+    blocks.push(paragraph(content));
+    if (stickerUrls?.imageUrl && (await isUsableExternalImage(stickerUrls.imageUrl))) {
+      blocks.push(externalImageBlock(stickerUrls.imageUrl, content));
+    } else if (stickerUrls?.productUrl) {
+      blocks.push(linkParagraph('LINE sticker shop page', stickerUrls.productUrl));
     }
     return blocks;
   }
@@ -575,6 +709,33 @@ function buildNonTextMessagePreview(message) {
   return `[${message.type}] ${message.id || ''}`.trim();
 }
 
+function buildLineStickerUrls(message) {
+  const stickerId = message?.stickerId ? String(message.stickerId).trim() : '';
+  const packageId = message?.packageId ? String(message.packageId).trim() : '';
+  if (!stickerId) {
+    return null;
+  }
+  return {
+    imageUrl: `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/android/sticker.png`,
+    productUrl: packageId ? `https://store.line.me/stickershop/product/${encodeURIComponent(packageId)}` : null,
+  };
+}
+
+async function isUsableExternalImage(imageUrl) {
+  try {
+    const response = await fetch(imageUrl, { method: 'HEAD' });
+    if (!response.ok) {
+      return false;
+    }
+    const contentType = response.headers.get('content-type') || '';
+    const contentLength = response.headers.get('content-length');
+    return contentType.toLowerCase().startsWith('image/') && contentLength !== '0';
+  } catch (error) {
+    console.warn(`Unable to verify LINE sticker image ${imageUrl}: ${error.message}`);
+    return false;
+  }
+}
+
 function resolveLineFilename(message, messageType, messageId, contentType) {
   if (message.fileName) {
     return message.fileName;
@@ -642,6 +803,10 @@ function files(name, fileUploadId) {
   return { files: [{ name, type: 'file_upload', file_upload: { id: fileUploadId } }] };
 }
 
+function url(value) {
+  return { url: value || null };
+}
+
 function conversationAnchorBlock() {
   return coloredParagraph(conversationAnchorText, 'blue');
 }
@@ -652,6 +817,10 @@ function coloredParagraph(content, color) {
 
 function imageBlock(fileUploadId, caption) {
   return { object: 'block', type: 'image', image: { type: 'file_upload', file_upload: { id: fileUploadId }, caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [] } };
+}
+
+function externalImageBlock(imageUrl, caption) {
+  return { object: 'block', type: 'image', image: { type: 'external', external: { url: imageUrl }, caption: caption ? [{ type: 'text', text: { content: clampText(caption, 1900) } }] : [] } };
 }
 
 function fileBlock(fileUploadId, caption) {
