@@ -85,6 +85,26 @@ services:
         value: fc5e4e21-6af6-4de2-9380-aa95126ee13e
 
   - type: cron
+    name: seven-jr-responsibility-candidate-sync
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run responsibility:sync
+    schedule: "15 0-14 * * *"
+    envVars:
+      - key: NOTION_TOKEN
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: NOTION_TOKEN
+      - key: SEVEN_RESPONSIBILITY_DATA_SOURCE_ID
+        value: e8c2f582-edbe-42ab-9d7f-ba063bbf8b99
+      - key: SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID
+        value: b6cfffbf-e7b2-4da4-b21d-d055bc68af69
+      - key: SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID
+        value: 979949aa-bac3-45ac-a4cc-a38585addb89
+
+  - type: cron
     name: seven-jr-morning-brief
     runtime: node
     plan: starter

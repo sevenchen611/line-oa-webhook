@@ -119,14 +119,22 @@ Rules:
 
 - Use this table before guessing who should own, follow up, or receive notices for
   a task.
-- In `權責定義表`, the title field is `專案或任務名稱`. Use it for the project,
-  department, LINE group mapping, or task whose responsibility is being defined.
-- Use `對話群組（Group ID）` to select the relevant LINE group by display name,
-  then use `主要負責人（User ID）` to select the responsible person from the
-  LINE group member option table. These are Notion relation dropdowns; the
-  underlying option rows retain Group ID and User ID.
-- Use `代理人對話群組（Group ID）` and `代理人（User ID）` the same way when a backup
-  contact is needed.
+- `權責定義表` is primarily a project / responsibility mapping table. Task
+  ownership should normally be derived from the task's project first; only use a
+  task-level override when the task explicitly needs a different owner.
+- Use `第一層：總控專案` as the first narrowing layer. The responsibility sync
+  script reads `LINE 群組選項表` and fills
+  `候選對話群組（依專案自動帶出）` with only the LINE groups whose `總控專案`
+  matches this project.
+- Use `第二層：主要對話群組` to select the main LINE group from the candidate
+  groups. The selected group's Group ID is retained in the option row.
+- After a main group is selected, the responsibility sync script fills
+  `候選負責人（依群組自動帶出）` with only known members of that group. Use
+  `第三層：主要負責人` to select the responsible person. The selected person's
+  User ID is retained in the option row.
+- Use `代理人對話群組` and `代理人` the same way when a backup contact is needed.
+- Run `npm run responsibility:sync` to refresh candidate groups, candidate
+  members, candidate counts, selection status, and LINE target result fields.
 - `LINE對象名稱（結果）`, `LINE對象類型（結果）`, and `LINE對象ID（結果）` are
   system-facing result fields for sending or logging. They should not replace
   the group/person selection flow above.
@@ -144,15 +152,20 @@ Rules:
 
 Important fields:
 
-- 專案或任務名稱
+- 權責項目名稱
 - 類型
-- 用途
-- 對應總控專案
+- 定義層級
+- 第一層：總控專案
 - 狀態
-- 對話群組（Group ID）
-- 主要負責人（User ID）
-- 代理人對話群組（Group ID）
-- 代理人（User ID）
+- 第二層：主要對話群組
+- 候選對話群組（依專案自動帶出）
+- 候選群組數
+- 第三層：主要負責人
+- 候選負責人（依群組自動帶出）
+- 候選負責人數
+- 代理人對話群組
+- 代理人
+- 選擇狀態
 - 主管或主負責人（文字備註）
 - 代理人（文字備註）
 - 預設任務負責人
@@ -416,6 +429,7 @@ Render Cron uses UTC. Taipei time is UTC+8.
 | --- | --- | --- | --- |
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE message judgement sync |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
+| `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
 | `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
@@ -448,10 +462,21 @@ npm run line:judgements -- --include-outgoing-groups --limit 50
 
 It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies LINE text in Assistant Manager mode, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Scheduled judgement includes normal `line` source messages and Seven Jr. outgoing `ai-engine` messages sent to groups/rooms through the control API; personal report notifications to Seven are excluded. Low-signal messages are marked judged without creating tasks.
 
-Hourly judgement has two lanes:
+Responsibility candidate sync runs:
+
+```bash
+npm run responsibility:sync
+```
+
+It refreshes the `權責定義表` candidate lists so each project row shows only
+LINE groups assigned to that project, and each selected group shows only known
+members from that group.
+
+Hourly assistant maintenance has three lanes:
 
 - Meeting lane: `npm run meetings:sync -- --limit 50`
 - LINE lane: `npm run line:judgements -- --include-outgoing-groups --limit 50`
+- Responsibility lane: `npm run responsibility:sync`
 
 Local full hourly run:
 

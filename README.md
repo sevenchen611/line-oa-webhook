@@ -59,11 +59,20 @@ Web Service 必要設定：
 
 權責定義表的主要填寫邏輯：
 
-- `專案或任務名稱`: 這列要定義的專案、部門、LINE 群組對口或任務。
-- `對話群組（Group ID）`: 先選相關 LINE 對話群組，選項顯示群組名稱，底層保留 Group ID。
-- `主要負責人（User ID）`: 再選該群組中的主辦人，選項顯示「群組 / 人名」，底層保留 User ID。
-- `代理人對話群組（Group ID）` / `代理人（User ID）`: 代理人使用同樣的兩段式選法。
+- `權責項目名稱`: 這列要定義的專案、部門、LINE 群組對口或特殊權責項目。
+- `第一層：總控專案`: 先選專案。系統會依這個專案自動帶出候選 LINE 群組。
+- `候選對話群組（依專案自動帶出）`: 只顯示該專案底下的 LINE 群組，避免從全部群組裡找。
+- `第二層：主要對話群組`: 從候選群組裡選主群組，選項顯示群組名稱，底層保留 Group ID。
+- `候選負責人（依群組自動帶出）`: 選完主要群組後，系統自動帶出該群組已知成員。
+- `第三層：主要負責人`: 從候選成員裡選主辦人，選項顯示「群組 / 人名」，底層保留 User ID。
+- `代理人對話群組` / `代理人`: 代理人使用同樣的兩段式選法。
 - `LINE對象名稱（結果）` / `LINE對象類型（結果）` / `LINE對象ID（結果）`: 系統送訊息與紀錄用的結果欄位，主要人工選擇仍以上述群組與人員關聯欄位為準。
+
+刷新權責候選清單：
+
+```powershell
+npm run responsibility:sync
+```
 
 Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
 
@@ -75,6 +84,7 @@ Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 
 | --- | --- | --- | --- |
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 每小時 | `10 0-14 * * *` | LINE 訊息判斷同步 |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 每小時 | `0 0-14 * * *` | 會議紀錄同步 |
+| `seven-jr-responsibility-candidate-sync` | 08:15-22:15 每小時 | `15 0-14 * * *` | 權責候選清單同步 |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
 | `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
