@@ -45,6 +45,7 @@ The following important artifacts are backed up in GitHub:
 - `reports/morning-brief-prototype.html`: 08:00 morning brief prototype.
 - `reports/daily-control-report-prototype.html`: 20:30 daily control report prototype.
 - `reports/followup-confirmation-prototype.html`: 10:00 / 17:00 follow-up confirmation prototype.
+- `scripts/automation-run-log.js`: local + Notion automation execution logging helper.
 - `README.md`: deployment, environment, API, and cron documentation.
 - `AGENTS.md`: this operating guide.
 
@@ -79,6 +80,14 @@ It should contain:
 - Risks and decisions
 - Attachment parsing confirmations
 - New LINE group project assignment confirmations
+- Automation run logs
+
+Direct child pages:
+
+- `Seven LINE CRM 原始紀錄層` lives directly under `Codex 總控中心`.
+- `Automation Run Log` database lives directly under `Codex 總控中心`.
+- Do not recreate a `Seven AI` wrapper layer for the LINE CRM raw record layer unless it later contains real analysis dashboards or AI operation records.
+- The LINE CRM child databases are accessed by Notion database/data source IDs, not by their visual page path, so moving this page under the control center does not change the Render API configuration.
 
 ### 總控專案庫
 
@@ -118,6 +127,26 @@ Recommended statuses:
 - 待確認完成
 - 已完成
 - 封存
+
+### Automation Run Log
+
+Tracks whether scheduled automations truly started and completed.
+
+Current location:
+
+- Notion database: `Automation Run Log`
+- Data source ID: `25036a0e-84a7-4590-8f5c-10914207b16b`
+- Local config file: `line-oa-webhook/config/automation-run-log.json`
+- Local append-only mirrors:
+  - `D:\Codex\LineNotion\logs\automation-execution.log`
+  - `D:\Codex\LineNotion\logs\automation-execution.jsonl`
+
+Rules:
+
+- Every scheduled automation should write one `started` record before work begins.
+- It should then write one terminal record: `completed`, `skipped`, or `failed`.
+- If a timeslot has no run log record at all, treat it as not successfully triggered.
+- The local files are the fallback audit trail if Notion writing is temporarily unavailable.
 
 ### Seven LINE 對話主檔
 
