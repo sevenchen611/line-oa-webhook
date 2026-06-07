@@ -190,7 +190,7 @@ General messages should not trigger automatic replies.
 
 Codex command trigger:
 
-- If a text message contains `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, or `11 Jr.`, Render should treat it as a Codex command request.
+- If a text message contains `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, `7 Junior`, or `11 Jr.`, Render should treat it as a Codex command request.
 - Render must still store the raw LINE message first.
 - If `SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID` is configured, Render should create a Codex command queue item with status `Pending`.
 - Current Codex command queue data source ID: `c4eee8de-e596-4d64-906b-1405d79e721c`.

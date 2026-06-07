@@ -10,7 +10,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
-const codexCommandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID;
+const codexCommandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
@@ -38,7 +38,7 @@ const server = http.createServer(async (req, res) => {
       notionConfigured,
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
       codexCommandQueueConfigured: Boolean(codexCommandsDataSourceId),
-      codexCommandTriggers: ['Eleven Junior', 'Eleven Jr.', 'Elven Jr.', '11 Jr.'],
+      codexCommandTriggers: ['Eleven Junior', 'Eleven Jr.', 'Elven Jr.', 'Seven Junior', '7 Junior', '11 Jr.'],
       autoReplyEnabled: false,
       reportCommandEnabled: true,
       morningBriefCommandEnabled: true,
@@ -282,6 +282,8 @@ function findCodexCommandTrigger(text) {
     { label: 'Eleven Junior', pattern: /eleven\s+junior/i },
     { label: 'Eleven Jr.', pattern: /eleven\s+jr\.?/i },
     { label: 'Elven Jr.', pattern: /elven\s+jr\.?/i },
+    { label: 'Seven Junior', pattern: /seven\s+junior/i },
+    { label: '7 Junior', pattern: /\b7\s*junior\b/i },
     { label: '11 Jr.', pattern: /\b11\s*jr\.?\b/i },
   ];
   return triggers.find((trigger) => trigger.pattern.test(value)) || null;

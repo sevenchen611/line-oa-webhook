@@ -174,7 +174,7 @@ npm start
 `npm start` 會同時啟動 Webhook 與控制 API。
 ## Codex Command Queue
 
-Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation is enabled only when this Render environment variable is set:
+Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, `7 Junior`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation uses this Render environment variable when set:
 
 ```text
 SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID=<Notion data source id>
@@ -206,7 +206,7 @@ Recommended Notion data source properties:
 
 Behavior:
 
-- `Eleven Junior`, `Eleven Jr.`, and `Elven Jr.` matching is case-insensitive.
+- `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, and `7 Junior` matching is case-insensitive.
 - `11 Jr`, `11 Jr.`, and spacing variants like `11Jr.` are supported.
 - Queue creation is non-blocking. If the queue database is not configured or its schema is wrong, normal LINE message collection continues.
 - High-risk command text containing finance, contract, HR, legal, or tax keywords is marked `High` so Codex can require confirmation before any external action.
