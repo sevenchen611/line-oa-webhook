@@ -3,79 +3,164 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>跟催訊息發送確認</title>
+  <title>追蹤確認與新任務確認</title>
   <style>
-    :root{--bg:#f5f6f2;--panel:#fff;--ink:#20242a;--muted:#68707c;--line:#d9ded6;--green:#2f6f5e;--blue:#315f8c;--red:#9d3b3b;--yellow:#9b6b1f;--shadow:0 10px 28px rgba(23,30,26,.08)}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft JhengHei","PingFang TC",system-ui,sans-serif;line-height:1.55}.app{min-height:100vh;display:grid;grid-template-columns:250px 1fr}aside{position:sticky;top:0;height:100vh;padding:24px 18px;background:#26342f;color:#f4f7f2}.brand strong{display:block;font-size:20px}.brand span{display:block;margin-top:4px;color:#bed0c7;font-size:13px}nav{display:grid;gap:8px;margin-top:28px}nav a{color:#dce7e1;text-decoration:none;padding:9px 10px;border-radius:6px}nav a:hover{background:rgba(255,255,255,.08)}main{padding:28px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}h1{margin:0;font-size:28px;line-height:1.25}.subtitle{margin-top:6px;color:var(--muted)}.date-card{min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow);text-align:right}.date-card strong{display:block;font-size:20px}.date-card span{display:block;color:var(--muted);font-size:13px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric,section{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.metric{padding:14px}.metric span{display:block;color:var(--muted);font-size:13px}.metric strong{display:block;margin-top:6px;font-size:24px}section{margin-bottom:20px;overflow:hidden}.head{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:#fbfcfa}.head h2{margin:0;font-size:18px}.note{color:var(--muted);font-size:13px}.queue-list{display:grid;gap:14px;padding:16px}.followup-card{border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden}.card-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,240px);gap:12px;align-items:center;padding:12px 14px;background:#fbfcfa;border-bottom:1px solid var(--line)}.send-toggle{display:flex;gap:10px;align-items:center;font-weight:700}.send-toggle span{color:var(--muted);font-size:13px;font-weight:600}.card-body{display:grid;gap:14px;padding:14px}.field{display:grid;gap:6px}.label{color:var(--muted);font-size:13px;font-weight:700}.target{font-weight:700;font-size:18px}.reason{margin:0;color:var(--ink)}table{width:100%;border-collapse:collapse}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#fbfcfa;color:var(--muted);font-size:13px;font-weight:600}tr:last-child td{border-bottom:0}input[type=checkbox]{width:20px;height:20px;accent-color:var(--green);flex:0 0 auto}select,button,textarea{font:inherit}select,textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;padding:9px 10px;color:var(--ink)}textarea{min-height:150px;resize:vertical;line-height:1.6}.chip{display:inline-flex;align-items:center;min-height:24px;width:max-content;padding:2px 8px;border-radius:999px;font-size:12px;background:#edf3ef;color:var(--green);white-space:nowrap}.chip.warn{background:#fff4df;color:var(--yellow)}.chip.risk{background:#f9e8e8;color:var(--red)}.chip.info{background:#eaf2fb;color:var(--blue)}.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:16px}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:9px 14px;cursor:pointer}.btn.primary{border-color:var(--green);background:var(--green);color:#fff}.btn:disabled{opacity:.65;cursor:wait}.result{display:none;margin-top:16px;padding:14px 16px;border:1px solid #bfd9cd;background:#edf6f1;border-radius:8px;color:#1f4e42}.result.show{display:block}.result.error{border-color:#efc3c3;background:#fff0f0;color:#873333}.muted{color:var(--muted);font-size:13px}@media(max-width:980px){.app{display:block}aside{position:static;height:auto}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.top{display:block}.date-card{text-align:left;margin-top:12px}.card-top{grid-template-columns:1fr}table{display:block;overflow-x:auto}}@media(max-width:560px){main{padding:16px}.metrics{grid-template-columns:1fr}.head{display:block}.note{display:block;margin-top:4px}.queue-list{padding:12px}.card-body{padding:12px}.target{font-size:17px}textarea{min-height:180px}.actions{justify-content:stretch}.btn{width:100%}}
+    :root{--bg:#f5f6f2;--panel:#fff;--ink:#20242a;--muted:#68707c;--line:#d9ded6;--green:#2f6f5e;--blue:#315f8c;--red:#9d3b3b;--yellow:#9b6b1f;--shadow:0 10px 28px rgba(23,30,26,.08)}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft JhengHei","PingFang TC",system-ui,sans-serif;line-height:1.55}.app{min-height:100vh;display:grid;grid-template-columns:250px 1fr}aside{position:sticky;top:0;height:100vh;padding:24px 18px;background:#26342f;color:#f4f7f2}.brand strong{display:block;font-size:20px}.brand span{display:block;margin-top:4px;color:#bed0c7;font-size:13px}nav{display:grid;gap:8px;margin-top:28px}nav a{color:#dce7e1;text-decoration:none;padding:9px 10px;border-radius:6px}nav a:hover{background:rgba(255,255,255,.08)}main{padding:28px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}h1{margin:0;font-size:28px;line-height:1.25}.subtitle{margin-top:6px;color:var(--muted)}.date-card{min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow);text-align:right}.date-card strong{display:block;font-size:20px}.date-card span{display:block;color:var(--muted);font-size:13px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric,section{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}.metric{padding:14px}.metric span{display:block;color:var(--muted);font-size:13px}.metric strong{display:block;margin-top:6px;font-size:24px}section{margin-bottom:20px;overflow:hidden}.head{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:#fbfcfa}.head h2{margin:0;font-size:18px}.note{color:var(--muted);font-size:13px}.list{display:grid;gap:14px;padding:16px}.card{border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden}.card-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,260px);gap:12px;align-items:center;padding:12px 14px;background:#fbfcfa;border-bottom:1px solid var(--line)}.send-toggle{display:flex;gap:10px;align-items:center;font-weight:700}.send-toggle span{color:var(--muted);font-size:13px;font-weight:600}.card-body{display:grid;gap:12px;padding:14px}.field{display:grid;gap:6px}.label{color:var(--muted);font-size:13px;font-weight:700}.target,.task-name{font-weight:700;font-size:18px}.reason{margin:0;color:var(--ink)}.meta{display:flex;gap:8px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;min-height:24px;width:max-content;padding:2px 8px;border-radius:999px;font-size:12px;background:#edf3ef;color:var(--green);white-space:nowrap}.chip.warn{background:#fff4df;color:var(--yellow)}.chip.risk{background:#f9e8e8;color:var(--red)}.chip.info{background:#eaf2fb;color:var(--blue)}.chip.gray{background:#eef0f2;color:#4f5965}input[type=checkbox]{width:20px;height:20px;accent-color:var(--green);flex:0 0 auto}select,button,textarea{font:inherit}select,textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;padding:9px 10px;color:var(--ink)}textarea{min-height:130px;resize:vertical;line-height:1.6}.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:16px}.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:9px 14px;cursor:pointer}.btn.primary{border-color:var(--green);background:var(--green);color:#fff}.btn:disabled{opacity:.65;cursor:wait}.result{display:none;margin-top:16px;padding:14px 16px;border:1px solid #bfd9cd;background:#edf6f1;border-radius:8px;color:#1f4e42}.result.show{display:block}.result.error{border-color:#efc3c3;background:#fff0f0;color:#873333}.hint{padding:14px 16px;border-top:1px solid var(--line);background:#fbfcfa;color:var(--muted);font-size:14px}.muted{color:var(--muted);font-size:13px}@media(max-width:980px){.app{display:block}aside{position:static;height:auto}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.top{display:block}.date-card{text-align:left;margin-top:12px}.card-top{grid-template-columns:1fr}}@media(max-width:560px){main{padding:16px}.metrics{grid-template-columns:1fr}.head{display:block}.note{display:block;margin-top:4px}.list{padding:12px}.card-body{padding:12px}.target,.task-name{font-size:17px}textarea{min-height:170px}.actions{justify-content:stretch}.btn{width:100%}}
   </style>
 </head>
 <body>
   <div class="app">
-    <aside><div class="brand"><strong>追蹤與任務確認</strong><span>10:00 / 13:00 / 17:00 審核</span></div><nav><a href="#queue">候選訊息</a><a href="#risks">風險與保留</a><a href="#summary">確認結果</a></nav></aside>
+    <aside>
+      <div class="brand"><strong>追蹤與任務確認</strong><span>10:00 / 13:00 / 17:00 審核</span></div>
+      <nav><a href="#followups">候選訊息</a><a href="#tasks">待確認任務</a><a href="#rules">確認規則</a><a href="#summary">確認結果</a></nav>
+    </aside>
     <main>
-      <div class="top"><div><h1>Seven Jr. 追蹤確認與新任務確認</h1><div class="subtitle">這裡列出建議發送的訊息與待確認任務。勾選後才會由 Seven Jr. 發到指定群組或負責人。</div></div><div class="date-card"><strong id="briefTime">上午 10:00</strong><span>確認時段</span></div></div>
-      <div class="metrics"><div class="metric"><span>建議發送</span><strong>3</strong></div><div class="metric"><span>需要你改寫</span><strong>1</strong></div><div class="metric"><span>暫緩</span><strong>1</strong></div><div class="metric"><span>高風險</span><strong>0</strong></div></div>
-      <section id="queue">
-        <div class="head"><h2>候選跟催訊息</h2><span class="note">正式版會由 Notion 任務與 LINE 對話自動帶入</span></div>
-        <div class="queue-list">
-          <article class="followup-card">
+      <div class="top">
+        <div>
+          <h1>Seven Jr. 追蹤確認與新任務確認</h1>
+          <div class="subtitle">這份 17:00 報告分成兩部分：先確認是否要對外追蹤，再確認候選任務是否正式成立。</div>
+        </div>
+        <div class="date-card"><strong id="briefTime">下午 5:00</strong><span>確認時段</span></div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><span>候選追蹤訊息</span><strong>3</strong></div>
+        <div class="metric"><span>未確認任務</span><strong>11</strong></div>
+        <div class="metric"><span>高風險需人工看</span><strong>2</strong></div>
+        <div class="metric"><span>預設不自動確認</span><strong>11</strong></div>
+      </div>
+
+      <section id="followups">
+        <div class="head"><h2>候選追蹤訊息</h2><span class="note">勾選後才代表允許 Seven Jr. 後續發送或安排追蹤</span></div>
+        <div class="list">
+          <article class="card followup-card">
             <div class="card-top">
-              <label class="send-toggle"><input type="checkbox" checked><span>發送</span></label>
+              <label class="send-toggle"><input type="checkbox" checked><span>納入追蹤</span></label>
               <select><option>批准發送</option><option>修改後發送</option><option>暫緩</option><option>取消</option></select>
             </div>
             <div class="card-body">
-              <div class="field"><div class="label">對象</div><div class="target">台翰營造&茲心園改建</div><span class="chip warn">等待回覆</span></div>
-              <div class="field"><div class="label">原因</div><p class="reason">下週四前會有初步答案，今天先保持輕量追蹤。</p></div>
-              <div class="field"><div class="label">建議訊息</div><textarea>學姐好，這邊協助記錄一下：茲心園改建目前廠商評估預計下週四前會有初步答案。若中間有需要我們補圖面或資料，再麻煩跟我說，我這邊會配合整理。</textarea></div>
+              <div class="field"><div class="label">對象</div><div class="target">台翰營造&茲心園改建</div><div class="meta"><span class="chip warn">等待回覆</span><span class="chip info">茲心園工程</span></div></div>
+              <div class="field"><div class="label">原因</div><p class="reason">已有估價與圖面相關進度，但仍需要確認正式報價流程與後續回覆。</p></div>
+              <div class="field"><div class="label">建議訊息</div><textarea>學姐好，我這邊協助確認一下：茲心園改建估價資料目前是否已正式進入報價流程？如果還需要補 D 棟或本棟圖面資料，我這邊可以協助整理。</textarea></div>
             </div>
           </article>
-          <article class="followup-card">
+          <article class="card followup-card">
             <div class="card-top">
-              <label class="send-toggle"><input type="checkbox" checked><span>發送</span></label>
-              <select><option>批准發送</option><option>修改後發送</option><option>暫緩</option><option>取消</option></select>
-            </div>
-            <div class="card-body">
-              <div class="field"><div class="label">對象</div><div class="target">Bonnie 人資群組</div><span class="chip info">確認接入</span></div>
-              <div class="field"><div class="label">原因</div><p class="reason">新群組剛加入 Seven Jr.，需要確認是否已成功收訊並歸到人資。</p></div>
-              <div class="field"><div class="label">建議訊息</div><textarea>Bonnie 你好，我這邊先測試 Seven Jr. 是否已順利加入人資群組。之後這裡的待辦與進度，我會整理到人資專案底下。</textarea></div>
-            </div>
-          </article>
-          <article class="followup-card">
-            <div class="card-top">
-              <label class="send-toggle"><input type="checkbox"><span>發送</span></label>
+              <label class="send-toggle"><input type="checkbox"><span>納入追蹤</span></label>
               <select><option>暫緩</option><option>批准發送</option><option>修改後發送</option><option>取消</option></select>
             </div>
             <div class="card-body">
-              <div class="field"><div class="label">對象</div><div class="target">HOZO 包租代管</div><span class="chip">一般提醒</span></div>
-              <div class="field"><div class="label">原因</div><p class="reason">可提醒昱晴整理系統修改需求，但目前不是急件。</p></div>
+              <div class="field"><div class="label">對象</div><div class="target">包租代管 / 昱晴</div><div class="meta"><span class="chip warn">待釐清</span><span class="chip info">包租代管</span></div></div>
+              <div class="field"><div class="label">原因</div><p class="reason">登入頁不實用與 Codex 使用教學都還缺明確範圍，建議先不急著對外催。</p></div>
               <div class="field"><div class="label">建議訊息</div><textarea>昱晴，方便的話你可以先把後台想調整的地方用條列方式整理，我晚點再協助判斷哪些可以交給 Codex 修改。</textarea></div>
+            </div>
+          </article>
+          <article class="card followup-card">
+            <div class="card-top">
+              <label class="send-toggle"><input type="checkbox"><span>納入追蹤</span></label>
+              <select><option>取消</option><option>暫緩</option><option>批准發送</option><option>修改後發送</option></select>
+            </div>
+            <div class="card-body">
+              <div class="field"><div class="label">對象</div><div class="target">私人事務</div><div class="meta"><span class="chip gray">內部整理</span><span class="chip risk">不對外發送</span></div></div>
+              <div class="field"><div class="label">原因</div><p class="reason">私人事務類任務不需要對外發 LINE，只需要在任務庫確認是否保留。</p></div>
+              <div class="field"><div class="label">建議訊息</div><textarea>這類任務僅作為內部整理，不建議發送對外訊息。</textarea></div>
             </div>
           </article>
         </div>
       </section>
-      <section id="risks"><div class="head"><h2>風險與保留</h2><span class="note">高風險訊息預設不自動發</span></div><table><thead><tr><th>事項</th><th>判斷</th><th>建議</th></tr></thead><tbody><tr><td>金額、合約、人資處分、法律、稅務</td><td><span class="chip risk">需人工確認</span></td><td>這類訊息只會列入確認頁，不會直接送出。</td></tr><tr><td>語氣可能造成壓力的催辦</td><td><span class="chip warn">建議修稿</span></td><td>先以協助整理、確認狀態為主，避免讓對方感覺被追責。</td></tr></tbody></table></section>
-      <div class="actions"><button class="btn" onclick="resetChoices()">重設</button><button class="btn primary js-confirm" onclick="confirmSend()">確認並寫回</button></div><div class="result" id="summary"></div>
+
+      <section id="tasks">
+        <div class="head"><h2>11 筆未確認任務</h2><span class="note">預設保留未確認；只有你選了正式狀態才會寫回任務庫</span></div>
+        <div class="hint">如果這件事不要、不需要追蹤、也不需要再發訊息，請選「不成立 / 封存」。這會把任務狀態改成封存，並把確認狀態改成已確認，代表它已被你判定不繼續追。</div>
+        <div class="list" id="taskList"></div>
+      </section>
+
+      <section id="rules">
+        <div class="head"><h2>確認規則</h2><span class="note">避免把候選內容誤當正式承諾</span></div>
+        <div class="list">
+          <article class="card"><div class="card-body"><div class="task-name">保留未確認</div><p class="reason">不寫回任務狀態，下一次報告仍會列出。適合你還沒時間判斷。</p></div></article>
+          <article class="card"><div class="card-body"><div class="task-name">確認成立 / 等待回覆 / 未開始 / 待確認完成</div><p class="reason">寫回總控任務庫，確認狀態改為已確認，後續可進入追蹤或進度報告。</p></div></article>
+          <article class="card"><div class="card-body"><div class="task-name">不成立 / 封存</div><p class="reason">用在你不要、不需要追蹤、不需要繼續發的任務。它會從待確認清單退場。</p></div></article>
+        </div>
+      </section>
+
+      <div class="actions"><button class="btn" onclick="resetChoices()">重設</button><button class="btn primary js-confirm" onclick="confirmSend()">確認並寫回</button></div>
+      <div class="result" id="summary"></div>
     </main>
   </div>
   <script>
     const APPROVAL_API='https://line-oa-webhook-nn5j.onrender.com/control/reports/approve';
-    const params=new URLSearchParams(location.search);const hashParams=new URLSearchParams(location.hash.replace(/^#/,''));const slot=params.get('slot')||hashParams.get('slot')||'10';const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[10];
+    const pendingTasks=[
+      {task:'私人事務：建立生活行政與家庭事項追蹤清單',project:'私人事務',source:'Codex 手動整理',summary:'建立生活行政與家庭事項追蹤清單；目前缺少明細，需確認是否保留。',risk:'一般'},
+      {task:'私人事務：建立個人財務與帳務追蹤清單',project:'私人事務',source:'Codex 手動整理',summary:'建立個人財務與帳務追蹤清單；涉及財務，建議人工確認後再追蹤。',risk:'高風險'},
+      {task:'私人事務：建立私人文件與證件整理清單',project:'私人事務',source:'Codex 手動整理',summary:'建立私人文件與證件整理清單；目前缺少明細，需確認是否保留。',risk:'一般'},
+      {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',source:'Codex 手動整理',summary:'報稅逾期處理具時效與稅務風險，需 Seven 明確確認。',risk:'高風險'},
+      {task:'私人事務：盤點目前私人待辦清單',project:'私人事務',source:'Codex 手動整理',summary:'盤點私人待辦清單；屬於內部整理，不需要對外發送。',risk:'一般'},
+      {task:'個人待辦：報稅今天完成',project:'財務',source:'LINE OA',summary:'使用者明確提到今天一定要先處理報稅。',risk:'高風險'},
+      {task:'茲心園工程：再發設計圖給 2-3 家營造廠估價',project:'茲心園工程',source:'LINE OA',summary:'明確交辦，比價需要更多廠商報價。',risk:'一般'},
+      {task:'茲心園工程：確認學姐估價資料是否已正式進入報價流程',project:'茲心園工程',source:'LINE OA',summary:'需確認估價資料是否已正式進入報價流程。',risk:'一般'},
+      {task:'包租代管：釐清登入頁不實用的具體問題',project:'包租代管',source:'LINE OA',summary:'問題存在，但缺少明確修改範圍，需先收集操作卡點。',risk:'一般'},
+      {task:'包租代管：建立昱晴使用 Codex 的教學與安全規則',project:'包租代管',source:'LINE OA',summary:'建立 Codex 使用教學、安全規則、修改流程與回復機制。',risk:'一般'},
+      {task:'HOZO 後臺：建立 Local / Staging / Production 隔離確認表',project:'HOZO 後臺',source:'LINE OA',summary:'環境隔離不清楚，需建立確認表避免改壞正式環境。',risk:'一般'}
+    ];
+    const params=new URLSearchParams(location.search);
+    const hashParams=new URLSearchParams(location.hash.replace(/^#/,''));
+    const slot=params.get('slot')||hashParams.get('slot')||'17';
+    const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};
+    document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[17];
+    renderTasks();
+
+    function renderTasks(){
+      const list=document.getElementById('taskList');
+      list.innerHTML=pendingTasks.map((item,index)=>`
+        <article class="card task-card">
+          <div class="card-top">
+            <div>
+              <div class="task-name">${escapeHtml(item.task)}</div>
+              <div class="meta"><span class="chip info">${escapeHtml(item.project)}</span><span class="chip gray">${escapeHtml(item.source)}</span><span class="chip ${item.risk==='高風險'?'risk':'warn'}">${escapeHtml(item.risk)}</span></div>
+            </div>
+            <select class="task-decision" data-task="${escapeHtml(item.task)}">
+              <option value="keep">保留未確認</option>
+              <option value="進行中">確認成立：進行中</option>
+              <option value="未開始">確認成立：未開始</option>
+              <option value="等待回覆">確認成立：等待回覆</option>
+              <option value="待確認完成">已做完：待確認完成</option>
+              <option value="封存">不成立 / 封存</option>
+            </select>
+          </div>
+          <div class="card-body">
+            <div class="field"><div class="label">Codex 判斷</div><p class="reason">${escapeHtml(item.summary)}</p></div>
+            <div class="field"><div class="label">你的備註</div><textarea class="task-note" placeholder="可留空；例如：先不要追、改到明天、這不是任務。"></textarea></div>
+          </div>
+        </article>`).join('');
+    }
+
     async function confirmSend(){
-      const cards=[...document.querySelectorAll('.followup-card')];
-      const followups=cards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('select')?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
-      const selected=followups.filter(item=>item.send).map(item=>item.target).filter(Boolean);
+      const followupCards=[...document.querySelectorAll('.followup-card')];
+      const followups=followupCards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('select')?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
+      const selectedFollowups=followups.filter(item=>item.send).map(item=>item.target).filter(Boolean);
+      const taskDecisions=[...document.querySelectorAll('.task-card')].map(card=>{
+        const select=card.querySelector('.task-decision');
+        const note=card.querySelector('.task-note')?.value.trim()||'';
+        return {task:select.dataset.task,status:select.value,note};
+      });
+      const tasks=taskDecisions.filter(item=>item.status!=='keep').map(item=>({task:item.task,status:item.status,note:item.note}));
+      const deferred=taskDecisions.filter(item=>item.status==='keep');
       const reportType=slot==='17'?'followup-afternoon':slot==='13'?'followup-midday':'followup-morning';
       const slotLabel=slot==='17'?'17:00':slot==='13'?'13:00':'10:00';
       const result=document.getElementById('summary');
       const buttons=document.querySelectorAll('.js-confirm');
       buttons.forEach(button=>{button.disabled=true;button.textContent='寫回中...'});
       result.className='result show';
-      result.innerHTML='<strong>正在寫回追蹤確認...</strong>';
+      result.innerHTML='<strong>正在寫回追蹤與任務確認...</strong>';
       try{
-        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),reportContent:followups.map(item=>`${item.target}\n${item.action}\n${item.message}`).join('\n---\n'),followups,notes:`${slotLabel} 追蹤確認與新任務確認寫回`})});
+        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),reportContent:buildReportContent(followups,taskDecisions),followups,tasks,decisions:deferred.map(item=>({item:item.task,decision:'保留未確認',status:'未處理'})),notes:`${slotLabel} 追蹤確認與新任務確認寫回；未選正式狀態者保留未確認。`})});
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok){throw new Error(data.error||`寫回失敗 (${response.status})`)}
+        const sentText=selectedFollowups.length?selectedFollowups.map(escapeHtml).join('<br>'):'沒有勾選要對外追蹤的訊息。';
+        const taskText=tasks.length?tasks.map(item=>`${escapeHtml(item.task)}：${escapeHtml(item.status)}`).join('<br>'):'沒有任務被正式確認或封存。';
         result.className='result show';
-        result.innerHTML=`<strong>追蹤確認已寫回 Notion。</strong><br><br>${selected.length?selected.join('<br>'):'尚未勾選任何訊息。'}<br><br><span>已建立決策紀錄，可依這份確認內容進行後續發送或退回。</span>`;
+        result.innerHTML=`<strong>已寫回 Notion。</strong><br><br><strong>追蹤訊息：</strong><br>${sentText}<br><br><strong>任務確認：</strong><br>${taskText}<br><br><span>保留未確認 ${deferred.length} 筆；寫回任務 ${data.tasksWritten||0} 筆。</span>`;
       }catch(error){
         result.className='result show error';
         result.innerHTML=`<strong>寫回失敗。</strong><br>${escapeHtml(error.message||'未知錯誤')}`;
@@ -84,7 +169,19 @@
         result.scrollIntoView({behavior:'smooth',block:'nearest'});
       }
     }
-    function resetChoices(){document.querySelectorAll('.followup-card input[type="checkbox"]').forEach((input,index)=>{input.checked=index<2});document.querySelectorAll('.followup-card select').forEach((select,index)=>{select.selectedIndex=index===2?0:0});document.getElementById('summary').className='result'}
+
+    function buildReportContent(followups,taskDecisions){
+      const followupText=followups.map(item=>`${item.target}\n${item.action}\n${item.message}`).join('\n---\n');
+      const taskText=taskDecisions.map(item=>`${item.task}\n${item.status}${item.note?`\n備註：${item.note}`:''}`).join('\n---\n');
+      return `追蹤訊息\n${followupText}\n\n待確認任務\n${taskText}`;
+    }
+    function resetChoices(){
+      document.querySelectorAll('.followup-card input[type="checkbox"]').forEach((input,index)=>{input.checked=index===0});
+      document.querySelectorAll('.followup-card select').forEach((select,index)=>{select.selectedIndex=index===0?0:0});
+      document.querySelectorAll('.task-decision').forEach(select=>{select.value='keep'});
+      document.querySelectorAll('.task-note').forEach(input=>{input.value=''});
+      document.getElementById('summary').className='result';
+    }
     function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]))}
   </script>
 </body>
