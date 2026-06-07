@@ -35,6 +35,7 @@ async function handleControlRequest(req, res, pathname) {
       controlApiEnabled: Boolean(process.env.SEVEN_CONTROL_API_KEY),
       linePushEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       approvalWriteBackEnabled: Boolean(process.env.NOTION_TOKEN),
+      approvalAcknowledgementEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       outgoingMessageLoggingEnabled: Boolean(process.env.NOTION_TOKEN && CONVERSATIONS_DATA_SOURCE_ID && MESSAGES_DATA_SOURCE_ID),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
@@ -141,16 +142,105 @@ async function approveReport(req, body) {
     followups,
     notes: body.notes,
   });
+  const acknowledgement = await sendReportApprovalAcknowledgement(body, {
+    reportType,
+    approvedBy,
+    submittedAt,
+    taskResults,
+    attachmentResults,
+    decisions,
+    followups,
+    decisionPage,
+  });
 
   return {
     ok: true,
     reportType,
     decisionPageId: decisionPage.id,
+    acknowledgement,
     tasksWritten: taskResults.length,
     attachmentsWritten: attachmentResults.length,
     taskResults,
     attachmentResults,
   };
+}
+
+async function sendReportApprovalAcknowledgement(body, context) {
+  if (body.sendAcknowledgement === false || body.acknowledgement === false) {
+    return { ok: false, skipped: true, reason: 'disabled-by-request' };
+  }
+
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    return { ok: false, skipped: true, reason: 'LINE_CHANNEL_ACCESS_TOKEN is not set.' };
+  }
+
+  try {
+    const targets = await resolveAcknowledgementTargets(body);
+    if (!targets.length) {
+      return { ok: false, skipped: true, reason: 'No acknowledgement target found.' };
+    }
+
+    const message = buildApprovalAcknowledgementMessage(context);
+    const result = await pushToTargets(targets, [message]);
+    return { ok: true, targets: result.results || [], message: message.text };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Unable to send report approval acknowledgement: ${message}`);
+    return { ok: false, error: message };
+  }
+}
+
+async function resolveAcknowledgementTargets(body) {
+  const ackTargets = normalizeTargets(body.ackTargets || body.acknowledgementTargets, body.ackTargetId, body.ackTargetType);
+  if (ackTargets.length) {
+    return ackTargets;
+  }
+
+  return resolveReportTargets({
+    targets: body.targets,
+    targetId: body.targetId,
+    targetType: body.targetType,
+  });
+}
+
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, decisionPage }) {
+  const label = reportTypeLabel(reportType);
+  const lines = [
+    `Seven Jr. 已收到你送出的${label}確認。`,
+    `確認人：${approvedBy}`,
+    `時間：${formatTaipeiDateTime(submittedAt)}`,
+  ];
+
+  const summary = [];
+  if (decisions.length) summary.push(`決策 ${decisions.length} 項`);
+  if (followups.length) summary.push(`追蹤 ${followups.length} 項`);
+  if (taskResults.length) summary.push(`任務 ${taskResults.length} 項`);
+  if (attachmentResults.length) summary.push(`附件 ${attachmentResults.length} 項`);
+
+  lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
+
+  if (decisionPage?.url) {
+    lines.push(`Notion 紀錄：${decisionPage.url}`);
+  }
+
+  lines.push('我會依照這次確認結果更新後續追蹤。');
+
+  return { type: 'text', text: clampLineText(lines.join('\n')) };
+}
+
+function reportTypeLabel(reportType) {
+  const labels = {
+    morning: '早報',
+    'morning-brief': '早報',
+    daily: '每日總控報告',
+    evening: '每日總控報告',
+    night: '每日總控報告',
+    'followup-morning': '10:00 追蹤確認',
+    'followup-afternoon': '17:00 追蹤確認',
+    'followup-10': '10:00 追蹤確認',
+    'followup-17': '17:00 追蹤確認',
+  };
+  return labels[String(reportType || '').trim().toLowerCase()] || `${reportType || '報告'}報告`;
 }
 
 function normalizeApprovalList(value) {

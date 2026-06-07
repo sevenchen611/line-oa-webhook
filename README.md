@@ -141,6 +141,21 @@ POST /control/reports/send
 
 若 body 沒有指定 targets，系統會先看 `SEVEN_REPORT_TARGET_ID`。如果沒有設定，系統會自動從 Notion 的 Seven LINE 對話主檔找出你跟 Seven Jr. 的一對一對話，並推送到那裡。
 
+### 報告確認回應
+
+```http
+POST /control/reports/approve
+```
+
+早報、10:00 追蹤、17:00 追蹤、20:30 每日總控報告的確認頁都會送到這個端點。Render 會先把確認結果寫入 Notion；寫入成功後，Seven Jr. 會再推一則 LINE 確認訊息給預設報告對象，讓使用者明確知道系統已收到決策。
+
+標準行為：
+
+- Notion 寫入成功後才送 LINE 確認。
+- 若 LINE 確認推送失敗，不回滾已寫入的 Notion 決策，但 API 回傳會包含 `acknowledgement.ok=false`。
+- 可用 `sendAcknowledgement:false` 關閉單次確認回覆。
+- 可用 `ackTargets` / `ackTargetId` / `ackTargetType` 指定確認訊息推送目標；未指定時使用預設報告對象。
+
 ## LINE 指令回覆
 
 一般訊息只會收集到 Notion，不會自動回覆。以下指令例外：

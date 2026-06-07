@@ -299,6 +299,19 @@ Current layout rule:
 - Then editable suggested message.
 - Textarea must be large enough for mobile and Windows editing.
 
+### Report Approval Acknowledgement
+
+After any report confirmation page submits to `POST /control/reports/approve`, Render should first write the confirmation result to Notion. Only after the Notion write succeeds, Seven Jr. should send a LINE acknowledgement to the default report target so the user knows the decision was received.
+
+This applies to:
+
+- 08:00 morning brief
+- 10:00 follow-up confirmation
+- 17:00 follow-up confirmation
+- 20:30 daily control report
+
+If the LINE acknowledgement fails, the Notion write remains valid. The API response should include `acknowledgement.ok=false` for troubleshooting.
+
 ## Render Control API
 
 Control endpoints:
