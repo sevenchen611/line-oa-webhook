@@ -94,7 +94,18 @@ LINE 訊息判斷同步 Cron Job 執行：
 npm run line:judgements -- --limit 50
 ```
 
-它會掃描 `Seven LINE 訊息紀錄` 中 `已進入判斷層 = false` 的 LINE 文字訊息，保守判斷是否要建立候選任務或專案進度報表，處理完成後把原訊息標記為 `已進入判斷層 = true`。一般寒暄或低訊號訊息只會標記為已判斷，不會建立任務。
+每小時判斷採雙軌：
+
+- `seven-jr-meeting-action-sync` 在整點掃描新的會議紀錄，萃取行動項目與專案進度。
+- `seven-jr-line-message-judgement-sync` 在 10 分掃描新的 LINE 原始訊息，萃取待確認任務、決策、健康/家庭提醒、財務/保險、房客/客戶問題與進度更新。
+
+LINE 判斷現在採 Assistant Manager 模式：只要訊息可能需要 Seven 留意、追蹤、關心、決策或負責處理，就會建立候選任務。低訊號訊息才只標記為已判斷，不建立任務。
+
+若要本機一次跑完整小時判斷，可執行：
+
+```powershell
+npm run assistant:hourly
+```
 
 它只掃描 `Codex 總控中心` 底下的 `會議紀錄` data source，將 `行動項目`
 轉成 `總控任務庫` 的候選任務，並在能判斷專案時寫入 `專案進度報表庫`。
@@ -259,13 +270,30 @@ npm run line:judgements -- --dry-run --limit 20
 npm run line:judgements -- --limit 50
 ```
 
+重新判斷最近訊息，適合規則更新後補漏：
+
+```powershell
+npm run line:judgements -- --reprocess --since-hours 24 --limit 100
+```
+
 同步邏輯：
 
 - 只處理 `訊息來源 = line` 且 `已進入判斷層 = false` 的訊息。
+- 加上 `--reprocess` 時，會重新掃描已判斷過的近期訊息，並用任務名稱去重避免重複建立。
 - 預設只掃最近 36 小時，可用 `--since-hours 72` 調整。
 - 低訊號訊息，例如簡短寒暄、貼圖、純圖片紀錄，不建立任務。
-- 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、追蹤、決策、卡點、進度訊號時，會建立候選任務或進度報表。
+- 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、交辦、健康、家庭、財務、保險、房客/客戶問題、追蹤、決策、卡點、會議或進度訊號時，會建立候選任務或進度報表。
 - 處理後會把原訊息改為 `已進入判斷層 = true`，並盡量把 `關聯總控事件` 指到新建任務或進度報表。
+
+## Report Preview
+
+可用控制 API 預覽報告內容，不推送 LINE：
+
+```text
+POST /control/reports/preview
+```
+
+此端點需要 `SEVEN_CONTROL_API_KEY`。20:30 每日報告會動態整理今天的 LINE 原始訊息、判斷層任務與進度報表；如果 Notion 暫時無法讀取，才會退回固定報告連結文字。
 ## Codex Command Queue
 
 Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, `7 Junior`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation uses this Render environment variable when set:

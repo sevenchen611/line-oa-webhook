@@ -326,6 +326,10 @@ Rules:
 - If project, owner, or due date is missing, the task can still be created but must be marked incomplete/insufficient.
 - Sensitive or high-risk tasks are not auto-confirmed.
 - High-risk topics include money, contracts, HR discipline, legal, tax, and external commitments.
+- Assistant Manager mode is intentionally broad: health, family, insurance, fire insurance, mortgage insurance, tax, tenant issues, customer complaints, delegated responsibility, uncertainty, decisions, meetings, and progress signals should be captured when there is any reasonable chance Seven should notice them.
+- Important but low-confidence LINE items should become `待確認` tasks instead of being silently ignored.
+- When one LINE message contains multiple concerns, split it into multiple candidate tasks where practical.
+- Use `--reprocess` after changing judgement rules so already-judged recent messages can be rescanned and deduped.
 
 Suggested forced LINE tags:
 
@@ -376,7 +380,30 @@ LINE message judgement sync runs:
 npm run line:judgements -- --limit 50
 ```
 
-It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies actionable LINE text conservatively, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Low-signal messages are marked judged without creating tasks.
+It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies LINE text in Assistant Manager mode, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Low-signal messages are marked judged without creating tasks.
+
+Hourly judgement has two lanes:
+
+- Meeting lane: `npm run meetings:sync -- --limit 50`
+- LINE lane: `npm run line:judgements -- --limit 50`
+
+Local full hourly run:
+
+```bash
+npm run assistant:hourly
+```
+
+Rule-update backfill:
+
+```bash
+npm run line:judgements -- --reprocess --since-hours 24 --limit 100
+```
+
+The 20:30 daily report is dynamic. It reads today's LINE raw messages, judgement-created tasks, and progress reports. To inspect the generated report without sending LINE:
+
+```text
+POST /control/reports/preview
+```
 
 Render has already been confirmed to build these jobs through Blueprint, and the user successfully triggered one run and received the LINE message.
 

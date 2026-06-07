@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
 loadEnvFile('.env');
@@ -12,6 +13,7 @@ const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOUR
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
 const includeOutgoing = Boolean(args['include-outgoing']);
+const reprocess = Boolean(args.reprocess || args['include-judged']);
 const sinceHours = clampNumber(Number(args['since-hours'] || process.env.SEVEN_LINE_JUDGEMENT_SINCE_HOURS || 36), 1, 24 * 14);
 const limit = clampNumber(Number(args.limit || 50), 1, 100);
 
@@ -22,7 +24,7 @@ if (!progressReportsDataSourceId) fail('SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID is
 
 try {
   const startedAt = new Date();
-  const messages = await listUnjudgedMessages();
+  const messages = await listMessagesForJudgement();
   const results = [];
 
   for (const message of messages) {
@@ -33,10 +35,12 @@ try {
     ok: true,
     dryRun,
     includeOutgoing,
+    reprocess,
     sinceHours,
     scannedMessages: messages.length,
-    createdTasks: results.filter((item) => item.createdTask).length,
-    createdProgressReports: results.filter((item) => item.createdProgressReport).length,
+    createdTasks: results.reduce((count, item) => count + item.createdTasks.filter((task) => task.action === 'created').length, 0),
+    createdProgressReports: results.reduce((count, item) => count + item.createdProgressReports.filter((report) => report.action === 'created').length, 0),
+    importantMessages: results.filter((item) => item.importanceScore > 0).length,
     markedJudged: results.filter((item) => item.markedJudged).length,
     skipped: results.filter((item) => item.action === 'ignored' || item.action === 'skipped').length,
     startedAt: startedAt.toISOString(),
@@ -48,12 +52,15 @@ try {
   process.exitCode = 1;
 }
 
-async function listUnjudgedMessages() {
+async function listMessagesForJudgement() {
   const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
   const filters = [
-    { property: '已進入判斷層', checkbox: { equals: false } },
     { property: '排序時間', date: { on_or_after: since } },
   ];
+
+  if (!reprocess) {
+    filters.unshift({ property: '已進入判斷層', checkbox: { equals: false } });
+  }
 
   if (!includeOutgoing) {
     filters.push({ property: '訊息來源', select: { equals: 'line' } });
@@ -78,39 +85,46 @@ async function processMessage(message) {
     messagePageId: message.id,
     time: message.time,
     actor: message.actor,
+    conversation: message.conversationName,
     action: analysis.action,
-    project: analysis.project,
-    reason: analysis.reason,
-    createdTask: null,
-    createdProgressReport: null,
+    importanceScore: analysis.importanceScore,
+    importanceReasons: analysis.importanceReasons,
+    candidates: analysis.candidates.map((candidate) => ({
+      name: candidate.name,
+      project: candidate.project,
+      category: candidate.category,
+      priority: candidate.priority,
+    })),
+    createdTasks: [],
+    createdProgressReports: [],
     markedJudged: false,
   };
 
-  if (analysis.task) {
-    const existing = await findExistingTask(analysis.task.name);
+  for (const candidate of analysis.candidates) {
+    const existing = await findExistingTask(candidate.name);
     if (existing) {
-      result.createdTask = { action: 'skipped-duplicate', pageId: existing.id, url: existing.url, name: analysis.task.name };
+      result.createdTasks.push({ action: 'skipped-duplicate', pageId: existing.id, url: existing.url, name: candidate.name });
     } else if (dryRun) {
-      result.createdTask = { action: 'dry-run', name: analysis.task.name, properties: analysis.task.properties };
+      result.createdTasks.push({ action: 'dry-run', name: candidate.name, properties: candidate.taskProperties });
     } else {
-      const created = await createTask(analysis.task);
-      result.createdTask = { action: 'created', pageId: created.id, url: created.url, name: analysis.task.name };
+      const created = await createTask(candidate);
+      result.createdTasks.push({ action: 'created', pageId: created.id, url: created.url, name: candidate.name });
+    }
+
+    if (candidate.progressProperties) {
+      const existingProgress = await findExistingProgressReport(candidate.progressName);
+      if (existingProgress) {
+        result.createdProgressReports.push({ action: 'skipped-duplicate', pageId: existingProgress.id, url: existingProgress.url, name: candidate.progressName });
+      } else if (dryRun) {
+        result.createdProgressReports.push({ action: 'dry-run', name: candidate.progressName, properties: candidate.progressProperties });
+      } else {
+        const createdProgress = await createProgressReport(candidate);
+        result.createdProgressReports.push({ action: 'created', pageId: createdProgress.id, url: createdProgress.url, name: candidate.progressName });
+      }
     }
   }
 
-  if (analysis.progressReport) {
-    const existing = await findExistingProgressReport(analysis.progressReport.name);
-    if (existing) {
-      result.createdProgressReport = { action: 'skipped-duplicate', pageId: existing.id, url: existing.url, name: analysis.progressReport.name };
-    } else if (dryRun) {
-      result.createdProgressReport = { action: 'dry-run', name: analysis.progressReport.name, properties: analysis.progressReport.properties };
-    } else {
-      const created = await createProgressReport(analysis.progressReport);
-      result.createdProgressReport = { action: 'created', pageId: created.id, url: created.url, name: analysis.progressReport.name };
-    }
-  }
-
-  if (!dryRun) {
+  if (!dryRun && (!message.judged || reprocess)) {
     await markMessageJudged(message, firstCreatedUrl(result));
     result.markedJudged = true;
   }
@@ -119,85 +133,219 @@ async function processMessage(message) {
 }
 
 function analyzeMessage(message) {
-  const text = message.text.trim();
-
+  const text = String(message.text || '').trim();
   if (!text || !isTextMessageType(message.type)) {
-    return { action: 'ignored', project: inferProject(text), reason: 'non-text-or-empty' };
-  }
-
-  if (isLowSignal(text)) {
-    return { action: 'ignored', project: inferProject(text), reason: 'low-signal-message' };
+    return emptyAnalysis('non-text-or-empty');
   }
 
   if (isCommandTriggerMessage(text)) {
-    return { action: 'ignored', project: inferProject(text), reason: 'command-trigger-message' };
+    return emptyAnalysis('command-trigger-message');
   }
 
-  const project = inferProject(text);
-  const category = inferCategory(text);
-  const highRisk = inferRiskLevel(text) === 'High';
-  const taskSignal = hasTaskSignal(text, category);
-  const progressSignal = hasProgressSignal(text, category, project);
-  const isTaskLike = taskSignal && (category === 'task' || category === 'followup' || category === 'blocked' || category === 'decision');
-  const isProgressLike = progressSignal;
-  const shouldCreate = isTaskLike || isProgressLike;
-
-  if (!shouldCreate) {
-    return { action: 'ignored', project, reason: 'no-actionable-signal' };
+  const importance = scoreImportance(text, message);
+  if (importance.score <= 0 && isLowSignal(text)) {
+    return emptyAnalysis('low-signal-message');
   }
 
-  const summary = summarizeText(text);
-  const action = category === 'progress' && !isTaskLike ? 'progress' : 'task';
-  const dueDate = inferDueDate(text);
-  const owner = inferOwner(text) || (message.actor && message.actor !== 'unknown' ? message.actor : '');
-  const priority = highRisk || category === 'blocked' ? '高' : text.length >= 160 ? '中' : '低';
-  const confidence = project === '未分類' ? '中' : '高';
-  const status = highRisk || category === 'decision' ? '待確認' : '待確認';
-  const confirmation = highRisk || category === 'decision' ? '未確認' : '未確認';
-
-  const taskName = buildTaskName(project, category, text);
-  const task = action === 'task' || isTaskLike ? {
-    name: taskName,
-    properties: compactProperties({
-      任務名稱: titleProperty(taskName),
-      專案: selectProperty(project),
-      狀態: selectProperty(status),
-      確認狀態: selectProperty(confirmation),
-      優先級: selectProperty(priority),
-      負責人: richTextProperty(owner),
-      截止日: dueDate ? dateProperty(dueDate) : undefined,
-      來源: selectProperty('LINE'),
-      來源原文: richTextProperty(`LINE 訊息：${message.url}\n${text}`, 1900),
-      'Codex 判斷摘要': richTextProperty(buildJudgementSummary({ category, summary, highRisk, confidence }), 1900),
-      信心等級: selectProperty(confidence),
-      下一步: richTextProperty(inferNextStep(text, category), 800),
-      '關聯 Notion 頁面': urlProperty(message.url),
-      最後更新: dateProperty(new Date()),
-    }),
-  } : null;
-
-  const progressReport = isProgressLike && project !== '未分類' ? {
-    name: buildProgressName(project, message.time),
-    properties: compactProperties({
-      報表名稱: titleProperty(buildProgressName(project, message.time)),
-      專案: selectProperty(project),
-      報表週期: dateProperty(message.time ? new Date(message.time) : new Date()),
-      目前狀態: selectProperty(highRisk ? '需注意' : '更新'),
-      負責人: richTextProperty(owner),
-      本週進展: richTextProperty(summary, 1200),
-      主要卡點: richTextProperty(inferBlockerText(text), 800),
-      下一步: richTextProperty(inferNextStep(text, category), 800),
-      '需要 Seven 決策': richTextProperty(highRisk || category === 'decision' ? '需要 Seven 確認後再推進。' : '暫無明確決策需求。', 800),
-      關聯頁面: urlProperty(message.url),
-    }),
-  } : null;
+  const concerns = buildConcerns(text, message, importance);
+  if (!concerns.length) {
+    return {
+      action: 'ignored',
+      importanceScore: importance.score,
+      importanceReasons: importance.reasons,
+      candidates: [],
+    };
+  }
 
   return {
-    action,
+    action: 'assistant-manager-capture',
+    importanceScore: importance.score,
+    importanceReasons: importance.reasons,
+    candidates: concerns.map((concern) => buildCandidate(concern, message, importance)),
+  };
+}
+
+function emptyAnalysis(reason) {
+  return {
+    action: reason === 'low-signal-message' ? 'ignored' : 'skipped',
+    importanceScore: 0,
+    importanceReasons: [reason],
+    candidates: [],
+  };
+}
+
+function scoreImportance(text, message) {
+  const rules = [
+    ['health', 5, /頭痛|身體不舒服|生病|發燒|醫院|診所|看醫生|吃藥|疼痛|疼|受傷|失眠/],
+    ['insurance-finance', 5, /火險|保險|保單|房貸|續保|到期|報稅|稅|發票|付款|匯款|費用|金額|銀行/],
+    ['assigned-to-seven', 5, /你處理|你要|你來|交給你|麻煩你|提醒你|你確認|你安排|請你|幫我/],
+    ['customer-or-tenant-issue', 5, /房客|租客|發黴|漏水|故障|燈光|浴室|投訴|反應|抱怨|修繕|客人.*(問題|反應|投訴|抱怨)/],
+    ['decision-needed', 4, /要不要|是不是|是否|怎麼辦|怎麼處理|要怎麼|可不可以|需不需要|同不同意|決定|決策|確認/],
+    ['meeting-or-record', 4, /會議|會議記錄|月會|例會|紀錄|討論|結論|行動項目/],
+    ['project-progress', 4, /進度|狀態|完成|卡住|卡點|下一步|本週|今天.*安排|方向|策略|想法|看法/],
+    ['family-private', 3, /媽媽|媽，|老婆|太太|家裡|家人|小孩|私人|西周|天才家族/],
+    ['follow-up', 3, /追蹤|提醒|通知|回覆|再跟|後續|待辦|處理/],
+    ['explicit-tag', 5, /#待辦|#todo|#完成|#done|#追蹤|#followup|#決策|#decision|#卡點|#blocked/i],
+  ];
+
+  const reasons = [];
+  let score = 0;
+  for (const [reason, points, pattern] of rules) {
+    if (pattern.test(text)) {
+      score += points;
+      reasons.push(reason);
+    }
+  }
+
+  if (String(message.conversationName || '').match(/西周|天才家族|家族|家庭/)) {
+    score += 2;
+    reasons.push('family-conversation');
+  }
+
+  if (text.length >= 80) {
+    score += 1;
+    reasons.push('substantial-message');
+  }
+
+  return { score, reasons: [...new Set(reasons)] };
+}
+
+function buildConcerns(text, message, importance) {
+  const concerns = [];
+  const segments = splitIntoSegments(text);
+
+  for (const segment of segments) {
+    const segmentImportance = scoreImportance(segment, message);
+    if (segmentImportance.score <= 0 && isLowSignal(segment)) continue;
+
+    const detected = detectConcern(segment, message, segmentImportance.score ? segmentImportance : importance);
+    if (detected) concerns.push(detected);
+  }
+
+  if (!concerns.length && importance.score > 0) {
+    concerns.push(detectConcern(text, message, importance));
+  }
+
+  return dedupeConcerns(concerns.filter(Boolean));
+}
+
+function splitIntoSegments(text) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const numbered = [];
+  let current = '';
+
+  for (const line of lines) {
+    if (/^(\d+[.、)]|[（(]?\d+[）)]|[一二三四五六七八九十]+[、.．])\s*/.test(line) && current) {
+      numbered.push(current.trim());
+      current = line;
+    } else {
+      current = current ? `${current}\n${line}` : line;
+    }
+  }
+  if (current) numbered.push(current.trim());
+
+  if (numbered.length > 1) return numbered.slice(0, 8);
+
+  const clauses = text
+    .split(/(?<=[。！？!?])\s+|[；;]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 10);
+
+  return clauses.length > 1 ? clauses.slice(0, 8) : [text];
+}
+
+function detectConcern(text, message, importance) {
+  const category = inferCategory(text);
+  const project = inferProject(text, message, category);
+  const priority = inferPriority(text, category, importance.score);
+  const summary = summarizeText(text);
+  const owner = inferOwner(text) || (category === 'delegation' || /你處理|你要|交給你|提醒你/.test(text) ? 'Seven 陳聖文' : message.actor || '');
+  const dueDate = inferDueDate(text);
+
+  if (importance.score <= 0 && category === 'note') return null;
+
+  return {
+    category,
     project,
-    reason: `${category}${highRisk ? '-high-risk' : ''}`,
-    task,
-    progressReport,
+    priority,
+    summary,
+    owner,
+    dueDate,
+    sourceText: text,
+    nextStep: inferNextStep(text, category),
+    createsProgress: shouldCreateProgress(project, category, text),
+    reasons: importance.reasons,
+  };
+}
+
+function dedupeConcerns(concerns) {
+  const seen = new Set();
+  return concerns.filter((concern) => {
+    const key = `${concern.project}:${concern.category}:${normalizeKey(concern.summary).slice(0, 60)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildCandidate(concern, message, importance) {
+  const syncId = buildSyncId(message.id, concern.sourceText);
+  const name = buildTaskName(concern, message);
+  const sourceText = [
+    `LINE 訊息：${message.url}`,
+    message.conversationName ? `對話：${message.conversationName}` : '',
+    message.actor ? `發話者：${message.actor}` : '',
+    `同步識別碼：${syncId}`,
+    '',
+    concern.sourceText,
+  ].filter(Boolean).join('\n');
+
+  const judgementSummary = [
+    `助理經理判斷：${categoryLabel(concern.category)}`,
+    `重要原因：${concern.reasons.join('、') || importance.reasons.join('、') || '一般注意事項'}`,
+    `重要分數：${importance.score}`,
+    `建議處理：${concern.nextStep}`,
+    `摘要：${concern.summary}`,
+  ].join('\n');
+
+  const taskProperties = compactProperties({
+    任務名稱: titleProperty(name),
+    專案: selectProperty(concern.project),
+    狀態: selectProperty('待確認'),
+    確認狀態: selectProperty('未確認'),
+    優先級: selectProperty(concern.priority),
+    負責人: richTextProperty(concern.owner),
+    截止日: concern.dueDate ? dateProperty(concern.dueDate) : undefined,
+    來源: selectProperty('LINE'),
+    來源原文: richTextProperty(sourceText, 1900),
+    'Codex 判斷摘要': richTextProperty(judgementSummary, 1900),
+    信心等級: selectProperty(concern.project === '未分類' ? '中' : '高'),
+    下一步: richTextProperty(concern.nextStep, 900),
+    '關聯 Notion 頁面': urlProperty(message.url),
+    最後更新: dateProperty(new Date()),
+  });
+
+  const progressName = concern.createsProgress ? buildProgressName(concern, message) : '';
+  const progressProperties = concern.createsProgress ? compactProperties({
+    報表名稱: titleProperty(progressName),
+    專案: selectProperty(concern.project),
+    報表週期: dateProperty(message.time ? new Date(message.time) : new Date()),
+    目前狀態: selectProperty(concern.priority === '高' ? '需注意' : '更新'),
+    負責人: richTextProperty(concern.owner),
+    本週進展: richTextProperty(concern.summary, 1200),
+    主要卡點: richTextProperty(inferBlockerText(concern.sourceText), 800),
+    下一步: richTextProperty(concern.nextStep, 800),
+    '需要 Seven 決策': richTextProperty(needsSevenDecision(concern) ? '需要 Seven 確認後再推進。' : '暫無明確決策需求。', 800),
+    關聯頁面: urlProperty(message.url),
+  }) : null;
+
+  return {
+    ...concern,
+    name,
+    syncId,
+    taskProperties,
+    progressName,
+    progressProperties,
   };
 }
 
@@ -212,80 +360,58 @@ function normalizeMessagePage(page) {
     type: selectName(properties['訊息類型']),
     time: dateValue(properties['排序時間']),
     text: textProperty(properties['文字內容']) || textProperty(properties['原始內容']),
+    judged: checkboxValue(properties['已進入判斷層']),
+    conversationName: relationMentionName(properties['對話主檔']),
   };
 }
 
-function isLowSignal(text) {
-  const compact = text.replace(/\s+/g, '');
-  if (compact.length < 12) return true;
-  if (/^\[[a-z]+\]\s*\d+$/i.test(text.trim())) return true;
-  if (/^[()a-zA-Z\s]+$/.test(text.trim()) && compact.length < 30) return true;
-  const lowSignalTerms = ['辛苦了', '謝謝', '感謝你', '是的，正確', '收到', '了解', 'OK', 'ok'];
-  return lowSignalTerms.some((term) => compact === term.replace(/\s+/g, ''));
+function inferCategory(text) {
+  if (/#完成|#done|已處理|已完成|完成了|處理完/.test(text) && !/希望完成/.test(text)) return 'done';
+  if (/頭痛|身體不舒服|生病|發燒|醫院|診所|看醫生|吃藥|疼痛|疼|受傷|失眠/.test(text)) return 'health';
+  if (/火險|保險|保單|房貸|續保/.test(text)) return 'insurance';
+  if (/報稅|稅|發票|付款|匯款|費用|金額|銀行/.test(text)) return 'finance';
+  if (/房客|租客|發黴|漏水|故障|燈光|浴室|修繕|投訴|反應|抱怨|客人.*(問題|反應|投訴|抱怨)/.test(text)) return 'customerIssue';
+  if (/你處理|你要|你來|交給你|麻煩你|提醒你|你確認|你安排/.test(text)) return 'delegation';
+  if (/#卡點|#blocked|卡住|卡點|無法|不能|問題/.test(text)) return 'blocked';
+  if (/#決策|#decision|決定|批准|同意|是否|要不要|是不是|怎麼辦|怎麼處理|需要.*確認/.test(text)) return 'decision';
+  if (/#追蹤|#followup|追蹤|提醒|通知|確認一下|再跟|回覆/.test(text)) return 'followup';
+  if (/會議|會議記錄|月會|例會|紀錄|討論|結論|行動項目/.test(text)) return 'meeting';
+  if (/進度|狀態|目前|本週|今天|看法|想法|策略|方向|下一步/.test(text)) return 'progress';
+  if (/#待辦|#todo|請|麻煩|幫我|我要|需要|希望/.test(text)) return 'task';
+  return 'note';
 }
 
-function isTextMessageType(value) {
-  return ['text', '文字', '文字訊息'].includes(String(value || '').trim().toLowerCase())
-    || ['文字', '文字訊息'].includes(String(value || '').trim());
-}
-
-function hasForcedTag(text) {
-  return /#待辦|#todo|#完成|#done|#追蹤|#followup|#決策|#decision|#卡點|#blocked/i.test(text);
-}
-
-function isCommandTriggerMessage(text) {
-  return /\b(Seven|Eleven|Elven)\s+(Junior|Jr\.?)\b|\b(7|11)\s*(Junior|Jr\.?)\b/i.test(text);
-}
-
-function hasTaskSignal(text, category) {
-  if (hasForcedTag(text)) return true;
-  if (/請幫我記錄|請.*記錄|備註以下|判斷是否需要列入|列入待辦|列入.*事項/.test(text)) return true;
-  if (/請.*(提醒|通知|追蹤|確認|處理|回覆)|麻煩.*(提醒|通知|追蹤|確認|處理)|幫我.*(提醒|通知|追蹤|確認|處理)/.test(text)) return true;
-  if (/房客|租客/.test(text) && /問題|反應|處理|發黴|漏水|燈|故障/.test(text)) return true;
-  if (/保單|保險/.test(text) && /到期|續保|申請書|簽名/.test(text)) return true;
-  if (category === 'blocked' && text.length >= 50) return true;
-  if (category === 'decision' && text.length >= 80) return true;
-  return false;
-}
-
-function hasProgressSignal(text, category, project) {
-  if (project === '未分類') return false;
-  if (/目前.*(進度|狀態)|本週.*進展|今天.*安排|我的看法如下|想法如下|策略|方向/.test(text)) return true;
-  if (category === 'progress' && text.length >= 180) return true;
-  return false;
-}
-
-function inferProject(text) {
+function inferProject(text, message, category) {
   const rules = [
     ['茲心園工程', /茲心園|改建|營造|工程|工地/],
-    ['包租代管', /包租代管|包租|代管|房客|租客|租屋|出租|招租|好住寓好|HOZO|後臺|後台/],
     ['HOZO 後臺', /HOZO\s*後|HOZO後|後臺|後台|登入頁|CRM/],
+    ['包租代管', /包租代管|包租|代管|房客|租客|租屋|出租|招租|好住寓好|HOZO|發黴|浴室|燈光/],
     ['SmartFront / AI Brain', /SmartFront|AI Brain|AI腦|智能前台/],
-    ['財務', /財務|付款|匯款|發票|報稅|稅|保單|保險|續保|薪資/],
+    ['財務', /財務|付款|匯款|發票|報稅|稅|薪資|銀行/],
+    ['財務', /火險|保險|保單|房貸|續保/],
+    ['財務', /十幾年.*沒買過|line提醒你|LINE提醒你/],
     ['人資', /人資|招募|面試|員工|同仁|資遣|解僱/],
-    ['營運', /營運|月會|例會|流程|SOP|會議/],
-    ['私人事務', /老婆|媽媽|媽，|家裡|私人/],
+    ['營運', /營運|月會|例會|流程|SOP|會議|公司助理系統|手機.*會議記錄/],
+    ['私人事務', /老婆|太太|媽媽|媽，|家裡|家人|小孩|私人|西周|天才家族/],
   ];
 
   for (const [project, pattern] of rules) {
     if (pattern.test(text)) return project;
   }
+
+  const conversationName = String(message.conversationName || '');
+  if (/西周|天才家族|家族|家庭/.test(conversationName)) return '私人事務';
+  if (['health'].includes(category)) return '私人事務';
+  if (['insurance', 'finance'].includes(category)) return '財務';
+  if (['meeting', 'progress'].includes(category)) return '營運';
   return '未分類';
 }
 
-function inferCategory(text) {
-  if (/#完成|#done|已處理|已完成|完成了|處理完/.test(text)) return 'done';
-  if (/#卡點|#blocked|卡住|卡點|無法|不能|問題|發黴|漏水|故障/.test(text)) return 'blocked';
-  if (/#決策|#decision|決定|批准|同意|是否|我的看法|原則上|不予|需要.*確認/.test(text)) return 'decision';
-  if (/#追蹤|#followup|追蹤|提醒|通知|確認一下|再跟|回覆/.test(text)) return 'followup';
-  if (/#待辦|#todo|請|麻煩|幫我|我要|需要|希望/.test(text)) return 'task';
-  if (/進度|狀態|目前|本週|今天|看法|想法|策略|方向/.test(text)) return 'progress';
-  return 'note';
-}
-
-function inferRiskLevel(text) {
-  const highRiskTerms = ['合約', '法律', '稅', '薪資', '付款', '匯款', '發票', '解僱', '資遣', '報價', '保險', '續保', '對外承諾', '賠償'];
-  return highRiskTerms.some((term) => text.includes(term)) ? 'High' : 'Normal';
+function inferPriority(text, category, score) {
+  if (['health', 'insurance', 'finance', 'customerIssue', 'blocked'].includes(category)) return '高';
+  if (score >= 8) return '高';
+  if (['decision', 'delegation', 'followup', 'meeting'].includes(category)) return '中';
+  return '低';
 }
 
 function inferDueDate(text) {
@@ -304,70 +430,119 @@ function inferDueDate(text) {
 function inferOwner(text) {
   const mention = text.match(/@([^\s，,。]+)/);
   if (mention) return mention[1];
-  const named = text.match(/(昱晴|Seven|Bonnie|逸凡|宜穎|嘉娜|Maggie)/i);
+  const named = text.match(/(Seven|Bonnie|逸凡|宜穎|嘉娜|Maggie|昱晴|聖文)/i);
   return named ? named[1] : '';
+}
+
+function inferNextStep(text, category) {
+  if (category === 'health') return '列為私人健康關心事項，確認是否需要回覆、探問狀況或安排後續協助。';
+  if (category === 'insurance') return '確認保單/火險/房貸火險是否需要續保、文件、期限與承辦窗口，避免漏保或逾期。';
+  if (category === 'finance') return '列為財務/稅務高優先事項，確認責任人、期限、金額或申報資料是否完整。';
+  if (category === 'customerIssue') return '整理房客/客戶問題、回覆口徑、修繕責任與下一步，待 Seven 確認。';
+  if (category === 'delegation') return '對方已把事情交給 Seven 或提醒 Seven，需確認是否建立正式待辦與期限。';
+  if (category === 'decision') return '保留為待確認決策，請 Seven 確認是否採納與是否需要對外回覆。';
+  if (category === 'meeting') return '確認是否有新的會議結論、行動項目或需要同步到總控任務庫的事項。';
+  if (category === 'followup') return '建立追蹤項目，確認對象、期限與是否需要由 Seven Jr. 發出提醒。';
+  if (category === 'blocked') return '確認卡點原因、責任人與下一步處理方式。';
+  if (category === 'done') return '確認是否可以將對應任務標記為完成，或是否還有驗收/回報動作。';
+  return '請確認是否成立為正式任務，並補齊負責人與期限。';
+}
+
+function shouldCreateProgress(project, category, text) {
+  if (project === '未分類') return false;
+  if (['customerIssue', 'meeting', 'progress', 'blocked', 'decision'].includes(category)) return true;
+  return /進度|狀態|看法|想法|策略|方向|本週|今天.*安排/.test(text);
+}
+
+function needsSevenDecision(concern) {
+  return ['insurance', 'finance', 'customerIssue', 'decision', 'delegation', 'blocked'].includes(concern.category);
+}
+
+function isLowSignal(text) {
+  const compact = text.replace(/\s+/g, '');
+  if (compact.length < 6) return true;
+  if (/^\[[a-z]+\]\s*\d+$/i.test(text.trim())) return true;
+  if (/^[()a-zA-Z\s]+$/.test(text.trim()) && compact.length < 20) return true;
+  const lowSignalTerms = ['辛苦了', '謝謝', '感謝你', '是的，正確', '收到', '了解', 'OK', 'ok', '好', '嗯'];
+  return lowSignalTerms.some((term) => compact === term.replace(/\s+/g, ''));
+}
+
+function isTextMessageType(value) {
+  return ['text', '文字', '文字訊息'].includes(String(value || '').trim().toLowerCase())
+    || ['文字', '文字訊息'].includes(String(value || '').trim());
+}
+
+function isCommandTriggerMessage(text) {
+  return /\b(Seven|Eleven|Elven)\s+(Junior|Jr\.?)\b|\b(7|11)\s*(Junior|Jr\.?)\b/i.test(text);
 }
 
 function summarizeText(text) {
   return text.replace(/\s+/g, ' ').trim().slice(0, 900);
 }
 
-function inferNextStep(text, category) {
-  if (/房客|租客/.test(text) && /燈|亮/.test(text) && /發黴|浴室/.test(text)) {
-    return '整理回覆房客的口徑：燈光以委婉說明與立燈建議處理；浴室發黴需安排檢查與處理方式，待主管確認。';
-  }
-  if (category === 'decision') return '保留為待確認決策，請 Seven 確認是否採納與是否需要對外回覆。';
-  if (category === 'followup') return '建立追蹤項目，確認對象、期限與是否需要由 Seven Jr. 發出提醒。';
-  if (category === 'blocked') return '確認卡點原因、責任人與下一步處理方式。';
-  return '請確認是否成立為正式任務，並補齊負責人與期限。';
-}
-
 function inferBlockerText(text) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const matched = lines.filter((line) => /問題|卡點|無法|不能|發黴|故障|不足|不夠|逾期/.test(line));
+  const matched = lines.filter((line) => /問題|卡點|無法|不能|發黴|故障|不足|不夠|逾期|頭痛|身體不舒服|到期/.test(line));
   return matched.length ? matched.slice(0, 4).join('\n') : '暫無明確卡點。';
 }
 
-function buildTaskName(project, category, text) {
-  if (/房客|租客/.test(text) && /燈|亮/.test(text) && /發黴|浴室/.test(text)) {
-    return `${project}：確認房客燈光與浴室發黴處理口徑`;
-  }
+function buildTaskName(concern, message) {
+  if (concern.category === 'health') return `${concern.project}：關心與追蹤健康狀況 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'insurance') return `${concern.project}：確認保險/火險續保處理 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'finance') return `${concern.project}：確認財務/稅務事項 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'customerIssue') return `${concern.project}：處理房客/客戶問題 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'delegation') return `${concern.project}：確認交由 Seven 處理事項 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'meeting') return `${concern.project}：同步會議/討論行動項目 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'decision') return `${concern.project}：確認決策 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'followup') return `${concern.project}：追蹤 ${shortSubject(concern.summary)}`;
+  if (concern.category === 'blocked') return `${concern.project}：處理卡點 ${shortSubject(concern.summary)}`;
+  if (concern.category === 'done') return `${concern.project}：確認完成 ${shortSubject(concern.summary)}`;
 
-  const cleaned = text
+  const source = message.conversationName ? `${message.conversationName} ` : '';
+  return `${concern.project}：判斷 ${source}${shortSubject(concern.summary)}`;
+}
+
+function shortSubject(text) {
+  return text
     .replace(/#\S+/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/^.*?(請|麻煩|幫我|我要|需要|希望)/, '$1')
-    .trim();
-  const prefix = categoryLabel(category);
-  const subject = cleaned.slice(0, 34).replace(/[，。,.：:]+$/g, '') || 'LINE 訊息待判斷';
-  return `${project}：${prefix}${subject}`;
+    .replace(/^.*?(請|麻煩|幫我|我要|需要|希望|是否|要不要|是不是)/, '$1')
+    .trim()
+    .slice(0, 34)
+    .replace(/[，。,.：:]+$/g, '') || 'LINE 訊息待判斷';
 }
 
 function categoryLabel(category) {
   const labels = {
-    task: '',
-    followup: '追蹤 ',
-    blocked: '處理卡點 ',
-    decision: '確認決策 ',
-    done: '確認完成 ',
-    progress: '更新進度 ',
-    note: '判斷 ',
+    health: '健康/家人關心',
+    insurance: '保險/火險',
+    finance: '財務/稅務',
+    customerIssue: '房客/客戶問題',
+    delegation: '交辦給 Seven',
+    blocked: '卡點',
+    decision: '決策',
+    followup: '追蹤',
+    meeting: '會議/討論',
+    task: '待辦',
+    done: '完成確認',
+    progress: '進度',
+    note: '重要觀察',
   };
-  return labels[category] || '';
+  return labels[category] || category;
 }
 
-function buildProgressName(project, time) {
-  const date = formatDateKey(time ? new Date(time) : new Date());
-  return `${date} ${project} LINE 訊息更新`;
+function buildProgressName(concern, message) {
+  const date = formatDateKey(message.time ? new Date(message.time) : new Date());
+  const hash = createHash('sha1').update(`${message.id}:${concern.sourceText}`).digest('hex').slice(0, 6);
+  return `${date} ${concern.project} LINE 訊息更新 ${hash}`;
 }
 
-function buildJudgementSummary({ category, summary, highRisk, confidence }) {
-  return [
-    `分類：${categoryLabel(category).trim() || category}`,
-    `信心：${confidence}`,
-    highRisk ? '風險：高，需人工確認。' : '風險：一般。',
-    `摘要：${summary}`,
-  ].join('\n');
+function buildSyncId(messageId, text) {
+  const hash = createHash('sha1')
+    .update(`${messageId}:${normalizeKey(text)}`)
+    .digest('hex')
+    .slice(0, 12);
+  return `line:${messageId}:${hash}`;
 }
 
 async function findExistingTask(taskName) {
@@ -383,7 +558,7 @@ async function createTask(candidate) {
     method: 'POST',
     body: {
       parent: { type: 'data_source_id', data_source_id: tasksDataSourceId },
-      properties: candidate.properties,
+      properties: candidate.taskProperties,
     },
   });
 }
@@ -401,7 +576,7 @@ async function createProgressReport(candidate) {
     method: 'POST',
     body: {
       parent: { type: 'data_source_id', data_source_id: progressReportsDataSourceId },
-      properties: candidate.properties,
+      properties: candidate.progressProperties,
     },
   });
 }
@@ -419,28 +594,45 @@ async function markMessageJudged(message, relatedUrl) {
 }
 
 function firstCreatedUrl(result) {
-  if (result.createdTask?.url) return result.createdTask.url;
-  if (result.createdProgressReport?.url) return result.createdProgressReport.url;
-  return '';
+  const task = result.createdTasks.find((item) => item.url);
+  if (task?.url) return task.url;
+  const progress = result.createdProgressReports.find((item) => item.url);
+  return progress?.url || '';
 }
 
 async function notionRequest(pathname, { method, body }) {
-  const response = await fetch(`https://api.notion.com${pathname}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${notionToken}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': notionVersion,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const maxAttempts = 3;
+  let lastError = null;
 
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`Notion API ${method} ${pathname} failed: ${response.status} ${responseText}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`https://api.notion.com${pathname}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${notionToken}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': notionVersion,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const responseText = await response.text();
+    if (response.ok) {
+      return responseText ? JSON.parse(responseText) : {};
+    }
+
+    lastError = new Error(`Notion API ${method} ${pathname} failed: ${response.status} ${responseText}`);
+    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === maxAttempts) {
+      throw lastError;
+    }
+
+    await sleep(600 * attempt);
   }
 
-  return responseText ? JSON.parse(responseText) : {};
+  throw lastError;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function textProperty(property) {
@@ -456,6 +648,15 @@ function selectName(property) {
 
 function dateValue(property) {
   return property?.type === 'date' ? property.date?.start || '' : '';
+}
+
+function checkboxValue(property) {
+  return property?.type === 'checkbox' ? Boolean(property.checkbox) : false;
+}
+
+function relationMentionName(property) {
+  if (property?.type !== 'relation') return '';
+  return (property.relation || []).map((item) => item.name || item.id || '').filter(Boolean).join('、');
 }
 
 function titleProperty(value) {
@@ -496,6 +697,10 @@ function formatDateKey(value) {
     day: '2-digit',
   });
   return formatter.format(value);
+}
+
+function normalizeKey(value) {
+  return String(value || '').replace(/\s+/g, '').toLowerCase();
 }
 
 function parseArgs(argv) {

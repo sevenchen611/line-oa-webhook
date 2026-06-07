@@ -11,6 +11,7 @@ const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOUR
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
 const CODEX_COMMANDS_DATA_SOURCE_ID = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID = process.env.SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID || '8f7f95a5-7428-4490-9327-7943499a0e22';
+const PROGRESS_REPORTS_DATA_SOURCE_ID = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || 'fc5e4e21-6af6-4de2-9380-aa95126ee13e';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
@@ -60,7 +61,7 @@ async function handleControlRequest(req, res, pathname) {
       codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/approve', 'POST /control/codex-commands/test'],
+      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -88,6 +89,11 @@ async function handleControlRequest(req, res, pathname) {
 
     if (pathname === '/control/reports/send') {
       const result = await sendReport(req, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/reports/preview') {
+      const result = await previewReport(body);
       return sendJson(res, 200, result);
     }
 
@@ -544,7 +550,7 @@ function isConfirmedNoConversion(action) {
 
 async function sendReport(req, body) {
   const reportType = String(body.reportType || body.type || '').trim().toLowerCase();
-  const report = buildReportMessage(reportType, body.text);
+  const report = await buildReportMessage(reportType, body.text);
   const targets = await resolveReportTargets(body);
   const cronMeta = readCronMeta(req, body);
 
@@ -570,6 +576,17 @@ async function sendReport(req, body) {
     sentAt: new Date(),
   });
   return { ...result, ...(cronMeta ? { cronMeta } : {}), ...(snapshot ? { snapshot } : {}) };
+}
+
+async function previewReport(body) {
+  const reportType = String(body.reportType || body.type || '').trim().toLowerCase();
+  const report = await buildReportMessage(reportType, body.text);
+  return {
+    ok: true,
+    reportType,
+    report,
+    wouldSend: false,
+  };
 }
 
 async function resolveReportTargets(body) {
@@ -699,7 +716,7 @@ async function findDefaultReportTargetFromNotion() {
   return userId ? { id: userId, type: 'user', source: 'notion-auto' } : null;
 }
 
-function buildReportMessage(reportType, customText) {
+async function buildReportMessage(reportType, customText) {
   if (customText) {
     return { type: 'text', text: clampLineText(customText) };
   }
@@ -716,6 +733,11 @@ function buildReportMessage(reportType, customText) {
   }
 
   if (['daily', 'evening', 'night', '晚報', '每日報告'].includes(reportType)) {
+    const dynamicText = await buildDynamicDailyReportText(dailyReportUrl);
+    if (dynamicText) {
+      return { type: 'text', text: clampLineText(dynamicText) };
+    }
+
     return {
       type: 'text',
       text: `晚上 8 點半每日總控總確認：\n${dailyReportUrl}\n\n請確認專案進度、待辦狀態、新任務、附件解析需求與明日優先事項。`,
@@ -746,6 +768,239 @@ function buildReportMessage(reportType, customText) {
   throw new Error('Unknown reportType. Use morning, daily, followup-morning, followup-midday, or followup-afternoon.');
 }
 
+async function buildDynamicDailyReportText(dailyReportUrl) {
+  if (!process.env.NOTION_TOKEN || !TASKS_DATA_SOURCE_ID || !MESSAGES_DATA_SOURCE_ID) {
+    return '';
+  }
+
+  try {
+    const reportDate = taipeiDateOnly(new Date());
+    const [tasks, messages, progressReports] = await Promise.all([
+      listRecentTasksForDailyReport(),
+      listImportantMessagesForDailyReport(),
+      listRecentProgressReportsForDailyReport(),
+    ]);
+
+    const sections = [
+      `20:30 每日總控報告（動態整理）`,
+      `日期：${reportDate}`,
+      '',
+      buildDailySection('高優先 / 需要你留意', mergeHighPriorityItems(tasks, messages), 8),
+      buildDailySection('包租代管 / 客戶與房客', filterReportItems(tasks, messages, ['包租代管', 'customerIssue', 'tenant']), 6),
+      buildDailySection('私人 / 家庭 / 健康', filterReportItems(tasks, messages, ['私人事務', 'health', 'family']), 6),
+      buildDailySection('財務 / 保險 / 報稅', filterReportItems(tasks, messages, ['財務', 'finance', 'insurance']), 6),
+      buildDailySection('營運 / 會議 / 系統', filterReportItems(tasks, messages, ['營運', 'meeting', 'progress']), 6),
+      buildDailySection('今天新增或更新的進度', progressReports, 5),
+      '',
+      `報告頁：${dailyReportUrl}`,
+      '提醒：以上是從今天 LINE 原始訊息、判斷層任務與會議/進度資料動態整理；低信心或敏感事項會先保留待確認。',
+    ].filter((line) => line !== null && line !== undefined);
+
+    return sections.join('\n');
+  } catch (error) {
+    console.warn(`Unable to build dynamic daily report: ${error.message}`);
+    return '';
+  }
+}
+
+async function listRecentTasksForDailyReport() {
+  const result = await notionRequest(`/v1/data_sources/${TASKS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 50,
+      sorts: [{ property: '最後更新', direction: 'descending' }],
+    },
+  });
+
+  const today = taipeiDateOnly(new Date());
+  return (result.results || [])
+    .map((page) => ({
+      source: 'task',
+      title: pageTextProperty(page, '任務名稱'),
+      project: pageSelectProperty(page, '專案'),
+      priority: pageSelectProperty(page, '優先級'),
+      status: pageSelectProperty(page, '狀態'),
+      confirmation: pageSelectProperty(page, '確認狀態'),
+      sourceType: pageSelectProperty(page, '來源'),
+      summary: pageTextProperty(page, 'Codex 判斷摘要') || pageTextProperty(page, '下一步') || pageTextProperty(page, '來源原文'),
+      updatedAt: pageDateProperty(page, '最後更新') || page.last_edited_time || '',
+      url: page.url,
+    }))
+    .filter((item) => isTodayTaipei(item.updatedAt, today) || ['待確認', '未確認', '進行中', '等待回覆'].includes(item.status) || item.confirmation === '未確認')
+    .slice(0, 30);
+}
+
+async function listImportantMessagesForDailyReport() {
+  if (!MESSAGES_DATA_SOURCE_ID) return [];
+
+  const since = taipeiStartOfDayIso(new Date());
+  const result = await notionRequest(`/v1/data_sources/${MESSAGES_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 80,
+      filter: {
+        and: [
+          { property: '排序時間', date: { on_or_after: since } },
+          { property: '訊息來源', select: { equals: 'line' } },
+        ],
+      },
+      sorts: [{ property: '排序時間', direction: 'ascending' }],
+    },
+  });
+
+  return (result.results || [])
+    .map((page) => {
+      const text = pageTextProperty(page, '文字內容') || pageTextProperty(page, '原始內容');
+      const score = scoreDailyMessageImportance(text);
+      return {
+        source: 'message',
+        title: buildMessageReportTitle(text),
+        project: inferDailyMessageProject(text),
+        priority: score >= 5 ? '高' : score >= 3 ? '中' : '低',
+        status: pageTextProperty(page, '發話者名稱'),
+        summary: text,
+        updatedAt: pageDateProperty(page, '排序時間'),
+        url: page.url,
+        tags: dailyMessageTags(text),
+        score,
+      };
+    })
+    .filter((item) => item.score > 0)
+    .slice(0, 30);
+}
+
+async function listRecentProgressReportsForDailyReport() {
+  if (!PROGRESS_REPORTS_DATA_SOURCE_ID) return [];
+
+  const result = await notionRequest(`/v1/data_sources/${PROGRESS_REPORTS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 20,
+      sorts: [{ property: '報表週期', direction: 'descending' }],
+    },
+  });
+
+  const today = taipeiDateOnly(new Date());
+  return (result.results || [])
+    .map((page) => ({
+      source: 'progress',
+      title: pageTextProperty(page, '報表名稱'),
+      project: pageSelectProperty(page, '專案'),
+      priority: pageSelectProperty(page, '目前狀態') === '需注意' ? '高' : '中',
+      status: pageSelectProperty(page, '目前狀態'),
+      summary: pageTextProperty(page, '本週進展') || pageTextProperty(page, '下一步'),
+      updatedAt: pageDateProperty(page, '報表週期') || page.last_edited_time,
+      url: page.url,
+    }))
+    .filter((item) => isTodayTaipei(item.updatedAt, today))
+    .slice(0, 10);
+}
+
+function buildDailySection(title, items, limit) {
+  const uniqueItems = dedupeReportItems(items).slice(0, limit);
+  if (!uniqueItems.length) {
+    return `${title}\n- 今天沒有抓到明確項目。`;
+  }
+
+  return [
+    title,
+    ...uniqueItems.map((item) => `- ${formatReportItem(item)}`),
+  ].join('\n');
+}
+
+function mergeHighPriorityItems(tasks, messages) {
+  return [...tasks, ...messages].filter((item) => item.priority === '高' || item.score >= 5);
+}
+
+function filterReportItems(tasks, messages, keywords) {
+  return [...tasks, ...messages].filter((item) => {
+    const haystack = [
+      item.project,
+      item.title,
+      item.summary,
+      item.priority,
+      item.status,
+      ...(item.tags || []),
+    ].join('\n');
+    return keywords.some((keyword) => haystack.includes(keyword));
+  });
+}
+
+function dedupeReportItems(items) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = normalizeReportKey(item.title || item.summary);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function formatReportItem(item) {
+  const project = item.project ? `[${item.project}] ` : '';
+  const priority = item.priority ? `(${item.priority}) ` : '';
+  const title = String(item.title || item.summary || '').replace(/\s+/g, ' ').slice(0, 58);
+  const detail = cleanReportSummary(item.summary).replace(/\s+/g, ' ').slice(0, 90);
+  if (!detail || detail === title) return `${priority}${project}${title}`;
+  return `${priority}${project}${title}：${detail}`;
+}
+
+function cleanReportSummary(value) {
+  const text = String(value || '').trim();
+  const summaryMatch = text.match(/摘要：([\s\S]+)/);
+  if (summaryMatch) return summaryMatch[1].trim();
+  const nextStepMatch = text.match(/建議處理：([^\n]+)/);
+  if (nextStepMatch) return nextStepMatch[1].trim();
+  return text;
+}
+
+function scoreDailyMessageImportance(text) {
+  const value = String(text || '');
+  const rules = [
+    [5, /頭痛|身體不舒服|生病|醫院|吃藥|疼痛|疼|受傷/],
+    [5, /火險|保險|保單|房貸|續保|報稅|稅|發票|付款|匯款/],
+    [5, /房客|租客|發黴|漏水|故障|燈光|浴室|修繕|投訴|反應|客人.*(問題|反應|投訴|抱怨)/],
+    [5, /你處理|你要|交給你|麻煩你|提醒你|請你|幫我/],
+    [4, /要不要|是不是|是否|怎麼辦|怎麼處理|確認|決定|決策/],
+    [4, /會議|會議記錄|月會|例會|結論|行動項目/],
+    [3, /進度|狀態|下一步|卡住|卡點|今天.*安排|想法|看法|策略|方向/],
+    [3, /媽媽|媽，|老婆|太太|家裡|家人|西周|天才家族/],
+  ];
+  return rules.reduce((score, [points, pattern]) => (pattern.test(value) ? score + points : score), 0);
+}
+
+function dailyMessageTags(text) {
+  const tags = [];
+  if (/頭痛|身體不舒服|生病|疼痛|疼|醫院|吃藥/.test(text)) tags.push('health', 'family');
+  if (/火險|保險|保單|房貸|續保/.test(text)) tags.push('insurance', 'finance');
+  if (/報稅|稅|發票|付款|匯款/.test(text)) tags.push('finance');
+  if (/房客|租客|發黴|漏水|故障|燈光|浴室|客人.*(問題|反應|投訴|抱怨)/.test(text)) tags.push('customerIssue', 'tenant');
+  if (/會議|會議記錄|月會|例會/.test(text)) tags.push('meeting');
+  if (/進度|狀態|策略|方向|看法|想法/.test(text)) tags.push('progress');
+  return tags;
+}
+
+function inferDailyMessageProject(text) {
+  if (/茲心園|改建|營造|工程|工地/.test(text)) return '茲心園工程';
+  if (/HOZO\s*後|HOZO後|後臺|後台|登入頁|CRM/.test(text)) return 'HOZO 後臺';
+  if (/包租代管|包租|代管|房客|租客|租屋|出租|招租|好住寓好|HOZO|發黴|浴室|燈光/.test(text)) return '包租代管';
+  if (/SmartFront|AI Brain|AI腦|智能前台/.test(text)) return 'SmartFront / AI Brain';
+  if (/火險|保險|保單|房貸|續保|財務|付款|匯款|發票|報稅|稅|薪資/.test(text)) return '財務';
+  if (/人資|招募|面試|員工|同仁|資遣|解僱/.test(text)) return '人資';
+  if (/營運|月會|例會|流程|SOP|會議|公司助理系統|手機.*會議記錄/.test(text)) return '營運';
+  if (/老婆|太太|媽媽|媽，|家裡|家人|小孩|私人|西周|天才家族/.test(text)) return '私人事務';
+  return '未分類';
+}
+
+function buildMessageReportTitle(text) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (/頭痛|身體不舒服|生病|疼痛|疼/.test(value)) return `健康關心：${value.slice(0, 34)}`;
+  if (/火險|保險|保單|房貸|續保/.test(value)) return `保險/火險：${value.slice(0, 34)}`;
+  if (/房客|租客|發黴|漏水|燈光|浴室/.test(value)) return `房客問題：${value.slice(0, 34)}`;
+  if (/報稅|稅/.test(value)) return `報稅/稅務：${value.slice(0, 34)}`;
+  return value.slice(0, 46);
+}
+
 function withFollowupSlot(baseUrl, slot) {
   if (baseUrl.includes('htmlpreview.github.io/?')) {
     return `${baseUrl}#slot=${encodeURIComponent(slot)}`;
@@ -769,6 +1024,22 @@ function taipeiDateOnly(value) {
     month: '2-digit',
     day: '2-digit',
   }).format(value instanceof Date ? value : new Date(value));
+}
+
+function taipeiStartOfDayIso(value) {
+  const date = taipeiDateOnly(value instanceof Date ? value : new Date(value));
+  return `${date}T00:00:00+08:00`;
+}
+
+function isTodayTaipei(value, today = taipeiDateOnly(new Date())) {
+  if (!value) return false;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return taipeiDateOnly(date) === today;
+}
+
+function normalizeReportKey(value) {
+  return String(value || '').replace(/\s+/g, '').toLowerCase().slice(0, 80);
 }
 
 async function pushLineMessages(req, body) {
@@ -1180,22 +1451,38 @@ function buildOutgoingMessageId(target, message, sentAt, index) {
 }
 
 async function notionRequest(pathname, { method, body }) {
-  const response = await fetch(`https://api.notion.com${pathname}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': process.env.NOTION_VERSION || '2025-09-03',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const maxAttempts = 3;
+  let lastError = null;
 
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(`Notion API failed: ${response.status} ${responseText}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`https://api.notion.com${pathname}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': process.env.NOTION_VERSION || '2025-09-03',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const responseText = await response.text();
+    if (response.ok) {
+      return responseText ? JSON.parse(responseText) : {};
+    }
+
+    lastError = new Error(`Notion API failed: ${response.status} ${responseText}`);
+    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === maxAttempts) {
+      throw lastError;
+    }
+
+    await sleep(600 * attempt);
   }
 
-  return responseText ? JSON.parse(responseText) : {};
+  throw lastError;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function pageTextProperty(page, propertyName) {
@@ -1213,6 +1500,16 @@ function pageTextProperty(page, propertyName) {
   }
 
   return '';
+}
+
+function pageSelectProperty(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'select' ? property.select?.name || '' : '';
+}
+
+function pageDateProperty(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'date' ? property.date?.start || '' : '';
 }
 
 function richTextPlain(items) {
