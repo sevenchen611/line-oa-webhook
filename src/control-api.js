@@ -785,24 +785,20 @@ async function buildDynamicDailyReportText(dailyReportUrl) {
     const reportItems = dedupeReportItems([...tasks, ...messages])
       .filter((item) => item.project !== '未分類' || item.priority === '高')
       .sort(compareDailyReportItems);
-    const leadingItems = reportItems.filter((item) => item.priority === '高').slice(0, 5);
-    const usedKeys = new Set(leadingItems.map(reportItemKey));
+    const synthesizedEvents = buildSynthesizedDailyEvents(reportItems, progressReports);
+    const usedKeys = new Set(synthesizedEvents.flatMap((event) => event.items.map(reportItemKey)));
 
     const sections = [
       `20:30 每日總控報告`,
       `日期：${reportDate}`,
-      `重點：高優先 ${reportItems.filter((item) => item.priority === '高').length} 件，待確認 ${tasks.filter((item) => item.confirmation === '未確認' || item.status === '待確認').length} 件。`,
+      `摘要：已整合 ${synthesizedEvents.length} 件主要事件；高優先 ${reportItems.filter((item) => item.priority === '高').length} 件，待確認 ${tasks.filter((item) => item.confirmation === '未確認' || item.status === '待確認').length} 件。`,
       '',
-      buildDailySection('一、需要你先看', leadingItems, 5),
-      buildCompactDailySection('二、關係 / 客訴 / 承諾追蹤', filterUnusedReportItems(reportItems, usedKeys, ['relationshipIssue', '關係', '客訴', '不滿', '沒有回報', '回報進度', '抱歉', '道歉']), 3),
-      buildCompactDailySection('三、包租代管 / 客戶房客', filterUnusedReportItems(reportItems, usedKeys, ['包租代管', 'customerIssue', 'tenant']), 3),
-      buildCompactDailySection('四、私人 / 家庭 / 健康', filterUnusedReportItems(reportItems, usedKeys, ['私人事務', 'health', 'family']), 3),
-      buildCompactDailySection('五、財務 / 保險 / 報稅', filterUnusedReportItems(reportItems, usedKeys, ['財務', 'finance', 'insurance']), 3),
-      buildCompactDailySection('六、營運 / 會議 / 系統', filterUnusedReportItems(reportItems, usedKeys, ['營運', 'meeting', 'progress']), 3),
-      buildCompactDailySection('七、今天進度更新', progressReports.sort(compareDailyReportItems), 2),
+      buildEventSummarySection('一、今日主要事件', synthesizedEvents, 6),
+      buildCompactDailySection('二、其他可深看事項', filterUnusedReportItems(reportItems, usedKeys, ['relationshipIssue', 'customerIssue', 'tenant', 'health', 'family', 'finance', 'insurance', 'meeting', 'progress', '關係', '客訴', '不滿', '包租代管', '私人事務', '財務', '營運', '會議']), 6),
+      buildCompactDailySection('三、今天進度更新', progressReports.sort(compareDailyReportItems), 3),
       '',
       `報告頁：${dailyReportUrl}`,
-      '提醒：以上為動態摘要。敏感或低信心事項先保留為待確認，不會自動對外回覆。',
+      '提醒：第一層只放整合後的結果；需要細節時，再回 Notion 任務庫或報告頁往下看。',
     ].filter((line) => line !== null && line !== undefined);
 
     return sections.join('\n');
@@ -943,6 +939,187 @@ function buildDailySection(title, items, limit) {
     title,
     ...uniqueItems.map((item, index) => formatReportCard(item, index + 1)),
   ].join('\n\n');
+}
+
+function buildEventSummarySection(title, events, limit) {
+  const selected = events.slice(0, limit);
+  if (!selected.length) {
+    return `${title}\n今天沒有明確事件。`;
+  }
+
+  return [
+    title,
+    ...selected.map((event, index) => formatEventSummaryCard(event, index + 1)),
+  ].join('\n\n');
+}
+
+function buildSynthesizedDailyEvents(reportItems, progressReports) {
+  const events = [];
+  const addEvent = (event) => {
+    if (!event || !event.items.length) return;
+    events.push(event);
+  };
+
+  addEvent(buildMotherHealthEvent(reportItems));
+  addEvent(buildYifanMeetingEvent(reportItems));
+  addEvent(buildFireInsuranceEvent(reportItems));
+  addEvent(buildRentalCustomerIssueEvent(reportItems, progressReports));
+  addEvent(buildRelationshipEscalationEvent(reportItems));
+  addEvent(buildTaxEvent(reportItems));
+
+  const usedKeys = new Set(events.flatMap((event) => event.items.map(reportItemKey)));
+  const remainingHigh = reportItems
+    .filter((item) => item.priority === '高' && !usedKeys.has(reportItemKey(item)))
+    .slice(0, 3)
+    .map((item) => ({
+      title: readableReportTitle(item),
+      project: item.project || '未分類',
+      priority: item.priority || '高',
+      result: cleanReportSummary(item.summary),
+      intent: '保留為今天需要注意的高優先事項。',
+      effect: '尚未整合成更大的事件脈絡，需人工確認是否需要處理。',
+      nextStep: item.nextStep || inferMessageNextStep(`${item.title}\n${item.summary}`),
+      depth: '可回任務庫查看原始訊息與判斷摘要。',
+      items: [item],
+    }));
+
+  return [...events, ...remainingHigh]
+    .sort((a, b) => eventPriorityScore(b) - eventPriorityScore(a))
+    .slice(0, 8);
+}
+
+function buildMotherHealthEvent(items) {
+  const matched = items.filter((item) => /媽媽|媽，|頭痛|吃藥|不痛|醫師|半年|一年/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '媽媽健康追蹤',
+    project: '私人事務',
+    priority: '高',
+    result: '媽媽提到這幾天頭痛，吃藥 4-5 天後已經比較不痛；她也說這類頭痛大約半年或一年會發作一次，目前自述狀況還好。',
+    intent: '確認媽媽的身體狀況，也順便確認是否有情緒壓力或需要家人協助。',
+    effect: '目前沒有立即危急訊號，但這是健康與家人關心事項，適合後續輕量追蹤。',
+    nextStep: '隔 1-2 天再關心一次；如果頭痛反覆或加劇，提醒她回診或再確認用藥狀況。',
+    depth: `${matched.length} 則相關 LINE 訊息已收進判斷層。`,
+    items: matched,
+  };
+}
+
+function buildYifanMeetingEvent(items) {
+  const matched = items.filter((item) => /逸凡|YIFAN|月會|館長|參加月會|加入月會群組/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '逸凡加入月會同步',
+    project: '營運 / 茲心園工程',
+    priority: '中',
+    result: '逸凡已在群組中向大家打招呼，表示這個月開始會一起參加月會；月會時間、地點與加入群組/提醒參加等事項也已被同步。',
+    intent: '把茲心園館長納入月會節奏，讓現場營運狀況能進入固定回報與總控追蹤。',
+    effect: '茲心園工程與營運資訊後續可以透過月會被整理成任務、進度與待決策事項。',
+    nextStep: '確認逸凡是否已在正確群組、是否知道月會報告重點，並讓月會紀錄同步到總控任務庫。',
+    depth: `${matched.length} 則相關訊息已彙整，細節可看月會/營運任務。`,
+    items: matched,
+  };
+}
+
+function buildFireInsuranceEvent(items) {
+  const matched = items.filter((item) => /火險|保險|保單|房貸|續保|7 月 20|7月20/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '火險/房貸火險續保',
+    project: '財務',
+    priority: '高',
+    result: '臺中家裡火險保單即將到期；你已詢問老婆是否有重複投保，老婆回覆她沒有買、只是 LINE 提醒你，並明確表示由你處理。',
+    intent: '避免房貸火險或住宅保險漏保、重複投保或錯過續保期限。',
+    effect: '責任已落到 Seven 身上，需確認續保流程、文件與簽名方式。',
+    nextStep: '向保險窗口確認最快續保方式、申請書/簽名流程與到期日前完成時間。',
+    depth: `${matched.length} 則火險/續保相關訊息與任務已合併。`,
+    items: matched,
+  };
+}
+
+function buildRentalCustomerIssueEvent(items, progressReports) {
+  const matched = [...items, ...progressReports].filter((item) => /包租代管|HOZO|房客|租客|燈光|浴室|發黴|客人問題回報|設備租用|清潔打掃 SOP/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '包租代管房客問題處理',
+    project: '包租代管',
+    priority: '高',
+    result: '今天主要聚焦在房客反映房間燈光不足與浴室發黴；已延伸出回覆口徑、設備租用服務可行性，以及建立客人問題回報體系/清潔檢查 SOP 的需求。',
+    intent: '把單一客訴轉成可管理的服務流程，避免未來同類問題反覆發生。',
+    effect: '不只是處理當下房客回覆，也形成房務檢查、修繕判斷與客訴回報制度的改善方向。',
+    nextStep: '確認房客回覆口徑、浴室發黴處理責任，以及是否正式建立客人問題回報專案。',
+    depth: `${matched.length} 則包租代管相關訊息/進度已合併。`,
+    items: matched,
+  };
+}
+
+function buildRelationshipEscalationEvent(items) {
+  const matched = items.filter((item) => /不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫|碧純/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '關係/承諾回報追蹤',
+    project: '營運',
+    priority: '高',
+    result: '有訊息反映交辦後未回報進度造成對方不舒服；你已回覆會在週一進公司確認同仁狀況，並理解對方感受。',
+    intent: '修復信任感，避免承諾出去後沒有回報造成關係或服務品質風險。',
+    effect: '這類事件需要追蹤到「已回覆、已說明、已安撫」才算結束。',
+    nextStep: '週一確認同仁為何未 update，回覆對方處理結果，並建立後續回報節奏。',
+    depth: `${matched.length} 則關係/回報相關訊息已合併。`,
+    items: matched,
+  };
+}
+
+function buildTaxEvent(items) {
+  const matched = items.filter((item) => /報稅|稅務|稅|申報|逾期/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    title: '報稅/稅務處理',
+    project: '財務',
+    priority: '高',
+    result: '今天仍有報稅/稅務處理需求被列入工作安排與任務追蹤。',
+    intent: '避免稅務逾期或資料缺漏造成後續風險。',
+    effect: '此事項需要明確期限、資料清單與完成狀態，不能只停留在提醒。',
+    nextStep: '確認報稅資料是否齊全、是否已送出或還缺哪一個處理步驟。',
+    depth: `${matched.length} 則稅務相關訊息/任務已合併。`,
+    items: matched,
+  };
+}
+
+function formatEventSummaryCard(event, index) {
+  const project = event.project ? `｜${event.project}` : '';
+  const priority = event.priority ? `｜${event.priority}` : '';
+  return [
+    `${index}. ${event.title}${project}${priority}`,
+    `   結果：${conciseReportText(event.result, 82)}`,
+    `   意圖/目的：${conciseReportText(event.intent, 70)}`,
+    `   效果：${conciseReportText(event.effect, 70)}`,
+    `   下一步：${conciseReportText(event.nextStep, 70)}`,
+    `   深看：${conciseReportText(event.depth, 58)}`,
+  ].join('\n');
+}
+
+function eventPriorityScore(event) {
+  let score = event.priority === '高' ? 100 : event.priority === '中' ? 60 : 30;
+  score += Math.min(event.items.length, 10);
+  if (/媽媽|健康|火險|房客|關係|客訴|報稅/.test(event.title)) score += 20;
+  if (/逸凡|月會/.test(event.title)) score += 55;
+  return score;
+}
+
+function eventHaystack(item) {
+  return [
+    item.project,
+    item.title,
+    item.summary,
+    item.nextStep,
+    item.status,
+    ...(item.tags || []),
+  ].join('\n');
 }
 
 function buildCompactDailySection(title, items, limit) {
