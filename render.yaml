@@ -36,6 +36,29 @@ services:
         sync: false
 
   - type: cron
+    name: seven-jr-line-message-judgement-sync
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run line:judgements -- --limit 50
+    schedule: "10 0-14 * * *"
+    envVars:
+      - key: NOTION_TOKEN
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: NOTION_TOKEN
+      - key: SEVEN_MESSAGES_DATA_SOURCE_ID
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_MESSAGES_DATA_SOURCE_ID
+      - key: SEVEN_TASKS_DATA_SOURCE_ID
+        value: 0bdc0de5-46ee-482c-b8d7-cdf6ec958467
+      - key: SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID
+        value: fc5e4e21-6af6-4de2-9380-aa95126ee13e
+
+  - type: cron
     name: seven-jr-meeting-action-sync
     runtime: node
     plan: starter

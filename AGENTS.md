@@ -344,6 +344,7 @@ Render Cron uses UTC. Taipei time is UTC+8.
 
 | Render Cron Job | Taipei Time | UTC Cron | reportType |
 | --- | --- | --- | --- |
+| `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE message judgement sync |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
@@ -368,6 +369,14 @@ Meeting action sync runs:
 ```bash
 npm run meetings:sync -- --limit 50
 ```
+
+LINE message judgement sync runs:
+
+```bash
+npm run line:judgements -- --limit 50
+```
+
+It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies actionable LINE text conservatively, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Low-signal messages are marked judged without creating tasks.
 
 Render has already been confirmed to build these jobs through Blueprint, and the user successfully triggered one run and received the LINE message.
 

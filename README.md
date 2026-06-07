@@ -62,6 +62,7 @@ Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 
 
 | Render Cron Job | 台北時間 | UTC cron | reportType |
 | --- | --- | --- | --- |
+| `seven-jr-line-message-judgement-sync` | 08:10-22:10 每小時 | `10 0-14 * * *` | LINE 訊息判斷同步 |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 每小時 | `0 0-14 * * *` | 會議紀錄同步 |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
@@ -86,6 +87,14 @@ POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
 ```powershell
 npm run meetings:sync -- --limit 50
 ```
+
+LINE 訊息判斷同步 Cron Job 執行：
+
+```powershell
+npm run line:judgements -- --limit 50
+```
+
+它會掃描 `Seven LINE 訊息紀錄` 中 `已進入判斷層 = false` 的 LINE 文字訊息，保守判斷是否要建立候選任務或專案進度報表，處理完成後把原訊息標記為 `已進入判斷層 = true`。一般寒暄或低訊號訊息只會標記為已判斷，不會建立任務。
 
 它只掃描 `Codex 總控中心` 底下的 `會議紀錄` data source，將 `行動項目`
 轉成 `總控任務庫` 的候選任務，並在能判斷專案時寫入 `專案進度報表庫`。
@@ -235,6 +244,28 @@ npm run meetings:sync -- --limit 50
 - 新任務寫入 `總控任務庫`，預設 `來源 = 會議`、`狀態 = 待確認`、`確認狀態 = 未確認`。
 - 可判斷專案時，同步建立一筆專案層級進度報表。
 - 合約、付款、法律、人資、稅務等敏感內容維持待確認。
+
+## LINE 訊息判斷同步
+
+本機乾跑，不寫入 Notion：
+
+```powershell
+npm run line:judgements -- --dry-run --limit 20
+```
+
+正式同步：
+
+```powershell
+npm run line:judgements -- --limit 50
+```
+
+同步邏輯：
+
+- 只處理 `訊息來源 = line` 且 `已進入判斷層 = false` 的訊息。
+- 預設只掃最近 36 小時，可用 `--since-hours 72` 調整。
+- 低訊號訊息，例如簡短寒暄、貼圖、純圖片紀錄，不建立任務。
+- 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、追蹤、決策、卡點、進度訊號時，會建立候選任務或進度報表。
+- 處理後會把原訊息改為 `已進入判斷層 = true`，並盡量把 `關聯總控事件` 指到新建任務或進度報表。
 ## Codex Command Queue
 
 Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, `7 Junior`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation uses this Render environment variable when set:
