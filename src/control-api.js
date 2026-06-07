@@ -1099,9 +1099,11 @@ function inferDailyMessageProject(text) {
   if (/HOZO\s*後|HOZO後|後臺|後台|登入頁|CRM/.test(text)) return 'HOZO 後臺';
   if (/包租代管|包租|代管|房客|租客|租屋|出租|招租|好住寓好|HOZO|發黴|浴室|燈光/.test(text)) return '包租代管';
   if (/SmartFront|AI Brain|AI腦|智能前台/.test(text)) return 'SmartFront / AI Brain';
+  if (/不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫|關係修復/.test(text)) {
+    return /同仁|員工|人員|人力|公司|update/i.test(text) ? '人資' : '營運';
+  }
   if (/火險|保險|保單|房貸|續保|財務|付款|匯款|發票|報稅|稅|薪資/.test(text)) return '財務';
   if (/人資|招募|面試|員工|同仁|資遣|解僱/.test(text)) return '人資';
-  if (/不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫|關係修復/.test(text)) return '營運';
   if (/營運|月會|例會|流程|SOP|會議|公司助理系統|手機.*會議記錄/.test(text)) return '營運';
   if (/老婆|太太|媽媽|媽，|家裡|家人|小孩|私人|西周|天才家族/.test(text)) return '私人事務';
   return '未分類';
