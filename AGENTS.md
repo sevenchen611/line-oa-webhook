@@ -110,10 +110,21 @@ Current data source ID:
 
 - `e8c2f582-edbe-42ab-9d7f-ba063bbf8b99`
 
+Related option tables:
+
+- `LINE 群組選項表`: data source ID `b6cfffbf-e7b2-4da4-b21d-d055bc68af69`
+- `LINE 群組成員選項表`: data source ID `979949aa-bac3-45ac-a4cc-a38585addb89`
+
 Rules:
 
 - Use this table before guessing who should own, follow up, or receive notices for
   a task.
+- In `權責定義表`, use `第一層LINE群組` to select the group by display name and
+  `第二層對口窗口` to select the person by display name. These are Notion
+  relation dropdowns; the underlying option rows retain Group ID and User ID.
+- `LINE 群組成員選項表` can only include people who have appeared in webhook
+  records or LINE membership events. LINE OA cannot fetch a complete historical
+  group roster for members who have never appeared in captured events.
 - If a LINE conversation master has `總控專案`, project assignment still comes
   from the conversation first; this table decides the owner / supervisor /
   default tracking target for that project.
