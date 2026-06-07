@@ -330,6 +330,7 @@ Rules:
 - Important but low-confidence LINE items should become `待確認` tasks instead of being silently ignored.
 - When one LINE message contains multiple concerns, split it into multiple candidate tasks where practical.
 - Relationship or complaint escalation signals such as dissatisfaction, lack of progress updates, apology, stakeholder discomfort, or promised follow-up must be treated as important `關係/客訴事件` items, not as generic low-signal chat.
+- If a LINE conversation master has `總控專案` filled, that project assignment overrides text-based project guessing for tasks, progress reports, and daily report grouping.
 - Use `--reprocess` after changing judgement rules so already-judged recent messages can be rescanned and deduped.
 
 Suggested forced LINE tags:

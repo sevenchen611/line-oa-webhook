@@ -18,6 +18,7 @@ const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.'
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
 const PUBLIC_BASE_URL = (process.env.SEVEN_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://line-oa-webhook-nn5j.onrender.com').replace(/\/+$/, '');
+const dailyConversationProjectCache = new Map();
 const REPORT_ROUTES = new Map([
   ['/reports/morning-brief', '../reports/morning-brief-prototype.html'],
   ['/reports/morning-brief-prototype.html', '../reports/morning-brief-prototype.html'],
@@ -871,25 +872,37 @@ async function queryMessagesForDailyReport(filters) {
     },
   });
 
-  return (result.results || [])
-    .map((page) => {
-      const text = pageTextProperty(page, '文字內容') || pageTextProperty(page, '原始內容');
-      const score = scoreDailyMessageImportance(text);
-      return {
-        source: 'message',
-        title: buildMessageReportTitle(text),
-        project: inferDailyMessageProject(text),
-        priority: score >= 5 ? '高' : score >= 3 ? '中' : '低',
-        status: pageTextProperty(page, '發話者名稱'),
-        summary: text,
-        nextStep: inferMessageNextStep(text),
-        updatedAt: pageDateProperty(page, '排序時間'),
-        url: page.url,
-        tags: dailyMessageTags(text),
-        score,
-      };
-    })
-    .filter((item) => item.score > 0);
+  const items = [];
+  for (const page of result.results || []) {
+    const text = pageTextProperty(page, '文字內容') || pageTextProperty(page, '原始內容');
+    const score = scoreDailyMessageImportance(text);
+    const conversation = await getDailyMessageConversationProject(pageRelationId(page, '對話主檔'));
+    items.push({
+      source: 'message',
+      title: buildMessageReportTitle(text),
+      project: conversation.project || inferDailyMessageProject(text),
+      priority: score >= 5 ? '高' : score >= 3 ? '中' : '低',
+      status: pageTextProperty(page, '發話者名稱'),
+      summary: text,
+      nextStep: inferMessageNextStep(text),
+      updatedAt: pageDateProperty(page, '排序時間'),
+      url: page.url,
+      tags: dailyMessageTags(text),
+      score,
+    });
+  }
+
+  return items.filter((item) => item.score > 0);
+}
+
+async function getDailyMessageConversationProject(pageId) {
+  if (!pageId) return { project: '' };
+  if (dailyConversationProjectCache.has(pageId)) return dailyConversationProjectCache.get(pageId);
+
+  const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
+  const value = { project: pageSelectProperty(page, '總控專案') };
+  dailyConversationProjectCache.set(pageId, value);
+  return value;
 }
 
 async function listRecentProgressReportsForDailyReport() {
@@ -1627,6 +1640,11 @@ function pageTextProperty(page, propertyName) {
 function pageSelectProperty(page, propertyName) {
   const property = page?.properties?.[propertyName];
   return property?.type === 'select' ? property.select?.name || '' : '';
+}
+
+function pageRelationId(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'relation' ? property.relation?.[0]?.id || '' : '';
 }
 
 function pageDateProperty(page, propertyName) {

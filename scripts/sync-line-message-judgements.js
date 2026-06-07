@@ -9,6 +9,7 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
 const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || '';
+const conversationProjectCache = new Map();
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
@@ -96,7 +97,31 @@ async function queryMessagesForJudgement(filters) {
     },
   });
 
-  return (result.results || []).map(normalizeMessagePage);
+  const messages = (result.results || []).map(normalizeMessagePage);
+  return enrichMessagesWithConversationProject(messages);
+}
+
+async function enrichMessagesWithConversationProject(messages) {
+  return Promise.all(messages.map(async (message) => {
+    const conversation = await getConversationProject(message.conversationId);
+    return {
+      ...message,
+      conversationProject: conversation.project,
+      conversationDisplayName: conversation.name || message.conversationName,
+    };
+  }));
+}
+
+async function getConversationProject(pageId) {
+  if (!pageId) return { project: '', name: '' };
+  if (conversationProjectCache.has(pageId)) return conversationProjectCache.get(pageId);
+
+  const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
+  const project = selectName(page.properties?.['總控專案']);
+  const name = textProperty(page.properties?.['LINE 對話名稱']) || textProperty(page.properties?.['自定義名稱']);
+  const value = { project, name };
+  conversationProjectCache.set(pageId, value);
+  return value;
 }
 
 async function processMessage(message) {
@@ -383,6 +408,7 @@ function normalizeMessagePage(page) {
     time: dateValue(properties['排序時間']),
     text: textProperty(properties['文字內容']) || textProperty(properties['原始內容']),
     judged: checkboxValue(properties['已進入判斷層']),
+    conversationId: relationId(properties['對話主檔']),
     conversationName: relationMentionName(properties['對話主檔']),
   };
 }
@@ -405,6 +431,8 @@ function inferCategory(text) {
 }
 
 function inferProject(text, message, category) {
+  if (message.conversationProject) return message.conversationProject;
+
   const rules = [
     ['茲心園工程', /茲心園|改建|營造|工程|工地/],
     ['HOZO 後臺', /HOZO\s*後|HOZO後|後臺|後台|登入頁|CRM/],
@@ -695,6 +723,11 @@ function checkboxValue(property) {
 function relationMentionName(property) {
   if (property?.type !== 'relation') return '';
   return (property.relation || []).map((item) => item.name || item.id || '').filter(Boolean).join('、');
+}
+
+function relationId(property) {
+  if (property?.type !== 'relation') return '';
+  return property.relation?.[0]?.id || '';
 }
 
 function titleProperty(value) {
