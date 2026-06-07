@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
+
+loadDotenv();
 
 const originalCreateServer = http.createServer.bind(http);
 
@@ -41,7 +44,7 @@ async function handleControlRequest(req, res, pathname) {
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
-      reportTypes: ['morning', 'daily', 'followup-morning', 'followup-afternoon'],
+      reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
       endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/approve', 'POST /control/codex-commands/test'],
     });
   }
@@ -339,10 +342,12 @@ function reportTypeLabel(reportType) {
     daily: '每日總控報告',
     evening: '每日總控報告',
     night: '每日總控報告',
-    'followup-morning': '10:00 追蹤確認',
-    'followup-afternoon': '17:00 追蹤確認',
-    'followup-10': '10:00 追蹤確認',
-    'followup-17': '17:00 追蹤確認',
+    'followup-morning': '10:00 追蹤確認與新任務確認',
+    'followup-midday': '13:00 追蹤確認與新任務確認',
+    'followup-afternoon': '17:00 追蹤確認與新任務確認',
+    'followup-10': '10:00 追蹤確認與新任務確認',
+    'followup-13': '13:00 追蹤確認與新任務確認',
+    'followup-17': '17:00 追蹤確認與新任務確認',
   };
   return labels[String(reportType || '').trim().toLowerCase()] || `${reportType || '報告'}報告`;
 }
@@ -582,25 +587,36 @@ function buildReportMessage(reportType, customText) {
   if (['daily', 'evening', 'night', '晚報', '每日報告'].includes(reportType)) {
     return {
       type: 'text',
-      text: `晚上 8 點半每日總控報告：\n${dailyReportUrl}\n\n請確認專案進度、待辦狀態、附件解析需求與明日優先事項。`,
+      text: `晚上 8 點半每日總控總確認：\n${dailyReportUrl}\n\n請確認專案進度、待辦狀態、新任務、附件解析需求與明日優先事項。`,
     };
   }
 
   if (['followup-morning', 'followup-10', '10', '上午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `上午 10 點進度追蹤確認：\n${followupBaseUrl}\n\n請確認哪些提醒可以由 Seven Jr. 送出，或需要退回修改。`,
+      text: `上午 10 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '10')}\n\n請確認哪些提醒可以由 Seven Jr. 送出，並檢查新任務是否成立或需要退回修改。`,
+    };
+  }
+
+  if (['followup-midday', 'followup-13', '13', '中午追蹤'].includes(reportType)) {
+    return {
+      type: 'text',
+      text: `下午 1 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '13')}\n\n請確認午間前新增的待確認任務、追蹤訊息與需要退回修改的項目。`,
     };
   }
 
   if (['followup-afternoon', 'followup-17', '17', '下午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `下午 5 點進度追蹤確認：\n${followupBaseUrl}${followupBaseUrl.includes('?') ? '&' : '?'}slot=17\n\n請確認下午要追蹤的對象與訊息，批准後再由 Seven Jr. 送出。`,
+      text: `下午 5 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '17')}\n\n請確認下午要追蹤的對象與訊息，並檢查新任務是否成立或需要退回修改。`,
     };
   }
 
-  throw new Error('Unknown reportType. Use morning, daily, followup-morning, or followup-afternoon.');
+  throw new Error('Unknown reportType. Use morning, daily, followup-morning, followup-midday, or followup-afternoon.');
+}
+
+function withFollowupSlot(baseUrl, slot) {
+  return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}slot=${encodeURIComponent(slot)}`;
 }
 
 async function pushLineMessages(req, body) {
@@ -1160,4 +1176,19 @@ function corsHeaders() {
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'content-type, authorization, x-seven-control-key, x-seven-approval-key',
   };
+}
+
+function loadDotenv() {
+  if (!existsSync('.env')) {
+    return;
+  }
+
+  const envFile = readFileSync('.env', 'utf8');
+  for (const line of envFile.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
+    if (!match || process.env[match[1]]) {
+      continue;
+    }
+    process.env[match[1]] = match[2].replace(/^["']|["']$/g, '');
+  }
 }

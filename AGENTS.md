@@ -53,6 +53,14 @@ Sensitive local files such as `env.txt` must not be committed to GitHub.
 
 ## Project Scope
 
+This repository is the SevenAM project. SevenAM means "Seven Assistant Manager":
+Seven's assistant-style control center.
+
+SevenAM Notion automation is limited to the `Codex 總控中心` page and databases
+that live under it. Do not scan, summarize, or synchronize unrelated Notion pages
+or external project databases. In particular, do not use HOZO / HOGO / 好住寓好
+databases as SevenAM task targets unless the user explicitly redefines the scope.
+
 The total control center currently covers:
 
 - 茲心園工程
@@ -99,9 +107,13 @@ Cross-project task database.
 
 Rules:
 
-- LINE-created tasks first enter this database.
+- LINE-created and meeting-created tasks first enter this database.
 - New tasks are not official until confirmed, unless confidence is high and risk is low.
 - Low-confidence or sensitive tasks must stay pending confirmation.
+- Meeting action items should use `來源 = 會議`, `狀態 = 待確認`,
+  and `確認狀態 = 未確認` by default.
+- Avoid duplicates by matching the meeting page URL and normalized task name before
+  creating a new task.
 
 Recommended fields:
 
@@ -205,6 +217,60 @@ Rules:
 - The 20:30 report should list received attachments and let the user choose which ones to parse.
 - Only confirmed attachments enter the conversion/parsing workflow.
 
+### 會議紀錄
+
+Meeting notes database under `Codex 總控中心`.
+
+Current data source ID:
+
+- `fd551c68-6dac-830d-81bf-879f0a9582ba`
+
+Important fields:
+
+- 會議名稱
+- 日期
+- 摘要
+- 會議記錄
+- 選擇專案
+- 部門
+- 類別
+- 影片
+
+Rules:
+
+- Only meeting records inside `Codex 總控中心` are in SevenAM scope.
+- Do not read or synchronize HOZO / HOGO / 好住寓好 meeting databases.
+- Treat meeting records as another raw/intake layer, similar to LINE messages.
+- Extract action items from `會議記錄` and page body text. If a future meeting
+  database has `行動項目`, use it first.
+- Each extracted action item must include at least an action and a subject.
+- Create candidate tasks in `總控任務庫` with `來源 = 會議`.
+- `選擇專案` is the primary project assignment. If it is filled, meeting-derived
+  tasks and progress reports must use it instead of guessing from text.
+- Low-confidence, sensitive, financial, contractual, legal, HR, tax, or external
+  commitment items must remain pending confirmation.
+- Meeting progress statements, blockers, and next steps may update
+  `專案進度報表庫`, but only inside `Codex 總控中心`.
+
+### 專案進度報表庫
+
+Cross-project progress database under `Codex 總控中心`.
+
+Current data source ID:
+
+- `fc5e4e21-6af6-4de2-9380-aa95126ee13e`
+
+Rules:
+
+- Use this database for project-level progress summaries, not every individual task.
+- Meeting-derived updates should summarize:
+  - 本週進展
+  - 主要卡點
+  - 下一步
+  - 需要 Seven 決策
+- If the project cannot be inferred confidently, do not create a progress report;
+  keep the extracted tasks in `總控任務庫` as `未分類`.
+
 ## LINE OA Collection Rules
 
 When Seven Jr. receives LINE messages:
@@ -263,12 +329,14 @@ Render Cron uses UTC. Taipei time is UTC+8.
 
 | Render Cron Job | Taipei Time | UTC Cron | reportType |
 | --- | --- | --- | --- |
+| `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
+| `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
 | `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |
 | `seven-jr-daily-report` | 20:30 | `30 12 * * *` | `daily` |
 
-Each Cron Job runs:
+Report Cron Jobs run:
 
 ```bash
 npm run cron:report -- <reportType>
@@ -278,6 +346,12 @@ This calls:
 
 ```text
 POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
+```
+
+Meeting action sync runs:
+
+```bash
+npm run meetings:sync -- --limit 50
 ```
 
 Render has already been confirmed to build these jobs through Blueprint, and the user successfully triggered one run and received the LINE message.
@@ -315,8 +389,9 @@ File: `reports/followup-confirmation-prototype.html`
 
 Purpose:
 
-- Sent at 10:00 and 17:00.
-- Lists messages Seven Jr. may send to project groups or owners.
+- Sent at 10:00, 13:00, and 17:00.
+- Lists messages Seven Jr. may send to project groups or owners, plus new
+  candidate tasks that need confirmation.
 - User reviews before any external message is sent.
 
 Current layout rule:
@@ -335,9 +410,10 @@ After any report confirmation page submits to `POST /control/reports/approve`, R
 This applies to:
 
 - 08:00 morning brief
-- 10:00 follow-up confirmation
-- 17:00 follow-up confirmation
-- 20:30 daily control report
+- 10:00 follow-up and new task confirmation
+- 13:00 follow-up and new task confirmation
+- 17:00 follow-up and new task confirmation
+- 20:30 daily control confirmation
 
 If the LINE acknowledgement fails, the Notion write remains valid. The API response should include `acknowledgement.ok=false` for troubleshooting.
 
@@ -354,6 +430,7 @@ Supported report types:
 - `morning`
 - `daily`
 - `followup-morning`
+- `followup-midday`
 - `followup-afternoon`
 
 Authorization:

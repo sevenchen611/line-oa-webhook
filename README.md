@@ -47,16 +47,18 @@ Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 
 
 ## Render Cron Jobs
 
-`render.yaml` 會建立 4 個固定報告排程。Render Cron 使用 UTC 時間，以下已換算台北時間：
+`render.yaml` 會建立固定報告排程與會議紀錄同步排程。Render Cron 使用 UTC 時間，以下已換算台北時間：
 
 | Render Cron Job | 台北時間 | UTC cron | reportType |
 | --- | --- | --- | --- |
+| `seven-jr-meeting-action-sync` | 08:00-22:00 每小時 | `0 0-14 * * *` | 會議紀錄同步 |
 | `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
+| `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
 | `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |
 | `seven-jr-daily-report` | 20:30 | `30 12 * * *` | `daily` |
 
-每個 Cron Job 執行：
+報告 Cron Job 執行：
 
 ```powershell
 npm run cron:report -- <reportType>
@@ -67,6 +69,16 @@ npm run cron:report -- <reportType>
 ```text
 POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
 ```
+
+會議紀錄同步 Cron Job 執行：
+
+```powershell
+npm run meetings:sync -- --limit 50
+```
+
+它只掃描 `Codex 總控中心` 底下的 `會議紀錄` data source，將 `行動項目`
+轉成 `總控任務庫` 的候選任務，並在能判斷專案時寫入 `專案進度報表庫`。
+HOZO / HOGO / 好住寓好資料庫不屬於 SevenAM 同步範圍。
 
 ### Cron tracing and failure alerts
 
@@ -136,6 +148,7 @@ POST /control/reports/send
 { "reportType": "morning" }
 { "reportType": "daily" }
 { "reportType": "followup-morning" }
+{ "reportType": "followup-midday" }
 { "reportType": "followup-afternoon" }
 ```
 
@@ -147,7 +160,7 @@ POST /control/reports/send
 POST /control/reports/approve
 ```
 
-早報、10:00 追蹤、17:00 追蹤、20:30 每日總控報告的確認頁都會送到這個端點。Render 會先把確認結果寫入 Notion；寫入成功後，Seven Jr. 會再推一則 LINE 確認訊息給預設報告對象，讓使用者明確知道系統已收到決策。
+早報、10:00 追蹤確認與新任務確認、13:00 追蹤確認與新任務確認、17:00 追蹤確認與新任務確認、20:30 每日總控總確認的確認頁都會送到這個端點。Render 會先把確認結果寫入 Notion；寫入成功後，Seven Jr. 會再推一則 LINE 確認訊息給預設報告對象，讓使用者明確知道系統已收到決策。
 
 標準行為：
 
@@ -172,6 +185,33 @@ npm start
 ```
 
 `npm start` 會同時啟動 Webhook 與控制 API。
+
+## 會議紀錄同步
+
+本機乾跑，不寫入 Notion：
+
+```powershell
+npm run meetings:sync -- --dry-run --limit 10
+```
+
+正式同步：
+
+```powershell
+npm run meetings:sync -- --limit 50
+```
+
+同步邏輯：
+
+- 只處理 `Codex 總控中心` 內的 `會議紀錄`。
+- `會議紀錄`、`總控任務庫`、`專案進度報表庫` 都必須分享給
+  `NOTION_TOKEN` 對應的 Notion integration。
+- 會議有 `選擇專案` 時，任務與進度報表會優先使用該欄位分配專案。
+- 目前會議記錄資料庫沒有狀態欄位，預設依 `日期` 掃描最近會議。
+- 從 `行動項目` 與頁面內文擷取明確待辦。
+- 用「任務名稱 + 會議頁 URL」去重。
+- 新任務寫入 `總控任務庫`，預設 `來源 = 會議`、`狀態 = 待確認`、`確認狀態 = 未確認`。
+- 可判斷專案時，同步建立一筆專案層級進度報表。
+- 合約、付款、法律、人資、稅務等敏感內容維持待確認。
 ## Codex Command Queue
 
 Render can create a Codex command queue item when Seven Jr. receives a LINE text message containing `Eleven Junior`, `Eleven Jr.`, `Elven Jr.`, `Seven Junior`, `7 Junior`, or `11 Jr.`. The raw LINE message is still stored normally. Queue creation uses this Render environment variable when set:

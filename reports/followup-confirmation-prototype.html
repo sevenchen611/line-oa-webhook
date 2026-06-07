@@ -10,9 +10,9 @@
 </head>
 <body>
   <div class="app">
-    <aside><div class="brand"><strong>跟催確認</strong><span>10:00 / 17:00 發送前審核</span></div><nav><a href="#queue">候選訊息</a><a href="#risks">風險與保留</a><a href="#summary">確認結果</a></nav></aside>
+    <aside><div class="brand"><strong>追蹤與任務確認</strong><span>10:00 / 13:00 / 17:00 審核</span></div><nav><a href="#queue">候選訊息</a><a href="#risks">風險與保留</a><a href="#summary">確認結果</a></nav></aside>
     <main>
-      <div class="top"><div><h1>Seven Jr. 跟催訊息發送確認</h1><div class="subtitle">這裡只列出建議發送的訊息。勾選後才會由 Seven Jr. 發到指定群組或負責人。</div></div><div class="date-card"><strong id="briefTime">上午 10:00</strong><span>發送前確認</span></div></div>
+      <div class="top"><div><h1>Seven Jr. 追蹤確認與新任務確認</h1><div class="subtitle">這裡列出建議發送的訊息與待確認任務。勾選後才會由 Seven Jr. 發到指定群組或負責人。</div></div><div class="date-card"><strong id="briefTime">上午 10:00</strong><span>確認時段</span></div></div>
       <div class="metrics"><div class="metric"><span>建議發送</span><strong>3</strong></div><div class="metric"><span>需要你改寫</span><strong>1</strong></div><div class="metric"><span>暫緩</span><strong>1</strong></div><div class="metric"><span>高風險</span><strong>0</strong></div></div>
       <section id="queue">
         <div class="head"><h2>候選跟催訊息</h2><span class="note">正式版會由 Notion 任務與 LINE 對話自動帶入</span></div>
@@ -58,19 +58,20 @@
   </div>
   <script>
     const APPROVAL_API='https://line-oa-webhook-nn5j.onrender.com/control/reports/approve';
-    const params=new URLSearchParams(location.search);const slot=params.get('slot');if(slot==='17'){document.getElementById('briefTime').innerText='下午 5:00'}
+    const params=new URLSearchParams(location.search);const slot=params.get('slot')||'10';const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[10];
     async function confirmSend(){
       const cards=[...document.querySelectorAll('.followup-card')];
       const followups=cards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('select')?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
       const selected=followups.filter(item=>item.send).map(item=>item.target).filter(Boolean);
-      const reportType=slot==='17'?'followup-afternoon':'followup-morning';
+      const reportType=slot==='17'?'followup-afternoon':slot==='13'?'followup-midday':'followup-morning';
+      const slotLabel=slot==='17'?'17:00':slot==='13'?'13:00':'10:00';
       const result=document.getElementById('summary');
       const buttons=document.querySelectorAll('.js-confirm');
       buttons.forEach(button=>{button.disabled=true;button.textContent='寫回中...'});
       result.className='result show';
       result.innerHTML='<strong>正在寫回追蹤確認...</strong>';
       try{
-        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),reportContent:followups.map(item=>`${item.target}\n${item.action}\n${item.message}`).join('\n---\n'),followups,notes:`${slot==='17'?'17:00':'10:00'} 追蹤確認寫回`})});
+        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),reportContent:followups.map(item=>`${item.target}\n${item.action}\n${item.message}`).join('\n---\n'),followups,notes:`${slotLabel} 追蹤確認與新任務確認寫回`})});
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok){throw new Error(data.error||`寫回失敗 (${response.status})`)}
         result.className='result show';
