@@ -279,7 +279,8 @@ async function approveReport(req, body) {
     decisionPageId: decisionPage.id,
     acknowledgement,
     tasksWritten: taskResults.length,
-    attachmentsWritten: attachmentResults.length,
+    attachmentsWritten: attachmentResults.filter((item) => !item.skipped).length,
+    attachmentsReviewed: attachmentResults.length,
     taskResults,
     attachmentResults,
   };
@@ -441,6 +442,17 @@ async function createAttachmentConversionApproval(item, context) {
   const sourceUrl = String(item.sourceUrl || '').trim();
   const summary = `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認：${action}`;
 
+  if (isConfirmedNoConversion(action)) {
+    return {
+      file: fileName,
+      action,
+      conversionStatus: '不需轉檔',
+      conversionType: '不轉檔',
+      skipped: true,
+      reason: 'confirmed-no-conversion',
+    };
+  }
+
   const created = await notionRequest('/v1/pages', {
     method: 'POST',
     body: {
@@ -511,10 +523,15 @@ function resolveConversionStatus(action) {
 }
 
 function resolveConversionType(action) {
+  if (isConfirmedNoConversion(action)) return '不轉檔';
   if (/OCR|圖片|影像/.test(action)) return 'OCR';
   if (/PDF|文字/.test(action)) return 'PDF 文字';
   if (/摘要|整理/.test(action)) return '檔案摘要';
   return '人工整理';
+}
+
+function isConfirmedNoConversion(action) {
+  return /確定不轉檔|不需轉檔|不用轉檔|不要轉檔/.test(String(action || ''));
 }
 
 async function sendReport(req, body) {

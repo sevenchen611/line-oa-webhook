@@ -109,7 +109,7 @@
       </section>
 
       <section id="attachments">
-        <div class="head"><h2>附件轉檔確認</h2><span class="note">勾選後會建立到附件轉檔資料庫</span></div>
+        <div class="head"><h2>附件轉檔確認</h2><span class="note">勾選後會建立轉檔佇列；確定不轉檔會只寫回判斷</span></div>
         <table>
           <thead>
             <tr><th>轉檔</th><th>附件</th><th>來源</th><th>專案</th><th>目前狀態</th><th>確認動作</th></tr>
@@ -124,6 +124,7 @@
               <td>
                 <select class="file-action">
                   <option>暫不轉檔</option>
+                  <option>確定不轉檔</option>
                   <option>OCR 圖片文字</option>
                   <option>PDF 文字解析</option>
                   <option>檔案摘要整理</option>
@@ -205,15 +206,19 @@
       result.className = 'result show';
       result.innerHTML = '<strong>正在寫回 Notion...</strong><br>請稍候，這次確認會記錄到決策庫，並更新任務與附件轉檔佇列。';
 
-      const selectedFiles = Array.from(document.querySelectorAll('.ocr-check:checked')).map((input) => {
-        const row = input.closest('tr');
+      const selectedFiles = Array.from(document.querySelectorAll('#attachments tbody tr')).map((row) => {
+        const input = row.querySelector('.ocr-check');
+        const action = row.querySelector('.file-action').value;
         const link = row.querySelector('.source-link');
+        if (!input.checked && action !== '確定不轉檔') {
+          return null;
+        }
         return {
           file: input.dataset.file,
-          action: row.querySelector('.file-action').value,
+          action,
           sourceUrl: link ? link.href : '',
         };
-      });
+      }).filter(Boolean);
 
       const taskUpdates = Array.from(document.querySelectorAll('.task-status')).map((select) => ({
         task: select.dataset.task,
@@ -251,7 +256,7 @@
         const taskText = taskUpdates.map((item) => `${escapeHtml(item.task)} -> ${escapeHtml(item.status)}`).join('<br>');
 
         result.className = 'result show';
-        result.innerHTML = `<strong>已寫回 Notion。</strong><br><br><strong>附件確認：</strong><br>${fileText}<br><br><strong>任務狀態：</strong><br>${taskText}<br><br><span>已建立決策紀錄，任務共 ${data.tasksWritten || 0} 筆，附件轉檔共 ${data.attachmentsWritten || 0} 筆。</span>`;
+        result.innerHTML = `<strong>已寫回 Notion。</strong><br><br><strong>附件確認：</strong><br>${fileText}<br><br><strong>任務狀態：</strong><br>${taskText}<br><br><span>已建立決策紀錄，任務共 ${data.tasksWritten || 0} 筆，附件轉檔佇列共 ${data.attachmentsWritten || 0} 筆，附件判斷共 ${data.attachmentsReviewed || data.attachmentsWritten || 0} 筆。</span>`;
       } catch (error) {
         result.className = 'result show error';
         result.innerHTML = `<strong>寫回失敗。</strong><br>${escapeHtml(error.message || '未知錯誤')}<br><br><span>請先保留這頁選擇，稍後再重試。</span>`;
