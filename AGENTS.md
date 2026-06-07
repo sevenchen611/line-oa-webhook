@@ -329,6 +329,7 @@ Rules:
 - Assistant Manager mode is intentionally broad: health, family, insurance, fire insurance, mortgage insurance, tax, tenant issues, customer complaints, delegated responsibility, uncertainty, decisions, meetings, and progress signals should be captured when there is any reasonable chance Seven should notice them.
 - Important but low-confidence LINE items should become `待確認` tasks instead of being silently ignored.
 - When one LINE message contains multiple concerns, split it into multiple candidate tasks where practical.
+- Relationship or complaint escalation signals such as dissatisfaction, lack of progress updates, apology, stakeholder discomfort, or promised follow-up must be treated as important `關係/客訴事件` items, not as generic low-signal chat.
 - Use `--reprocess` after changing judgement rules so already-judged recent messages can be rescanned and deduped.
 
 Suggested forced LINE tags:
@@ -377,15 +378,15 @@ npm run meetings:sync -- --limit 50
 LINE message judgement sync runs:
 
 ```bash
-npm run line:judgements -- --limit 50
+npm run line:judgements -- --include-outgoing-groups --limit 50
 ```
 
-It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies LINE text in Assistant Manager mode, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Low-signal messages are marked judged without creating tasks.
+It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies LINE text in Assistant Manager mode, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Scheduled judgement includes normal `line` source messages and Seven Jr. outgoing `ai-engine` messages sent to groups/rooms through the control API; personal report notifications to Seven are excluded. Low-signal messages are marked judged without creating tasks.
 
 Hourly judgement has two lanes:
 
 - Meeting lane: `npm run meetings:sync -- --limit 50`
-- LINE lane: `npm run line:judgements -- --limit 50`
+- LINE lane: `npm run line:judgements -- --include-outgoing-groups --limit 50`
 
 Local full hourly run:
 

@@ -91,7 +91,7 @@ npm run meetings:sync -- --limit 50
 LINE 訊息判斷同步 Cron Job 執行：
 
 ```powershell
-npm run line:judgements -- --limit 50
+npm run line:judgements -- --include-outgoing-groups --limit 50
 ```
 
 每小時判斷採雙軌：
@@ -278,11 +278,11 @@ npm run line:judgements -- --reprocess --since-hours 24 --limit 100
 
 同步邏輯：
 
-- 只處理 `訊息來源 = line` 且 `已進入判斷層 = false` 的訊息。
+- 預設排程處理 `訊息來源 = line`，以及 Seven Jr. 透過正式管道送到群組/聊天室的 `ai-engine` 訊息；發給 Seven 個人的系統報告不進入任務判斷。
 - 加上 `--reprocess` 時，會重新掃描已判斷過的近期訊息，並用任務名稱去重避免重複建立。
 - 預設只掃最近 36 小時，可用 `--since-hours 72` 調整。
 - 低訊號訊息，例如簡短寒暄、貼圖、純圖片紀錄，不建立任務。
-- 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、交辦、健康、家庭、財務、保險、房客/客戶問題、追蹤、決策、卡點、會議或進度訊號時，會建立候選任務或進度報表。
+- 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、交辦、健康、家庭、財務、保險、房客/客戶問題、關係/客訴事件、追蹤、決策、卡點、會議或進度訊號時，會建立候選任務或進度報表。
 - 處理後會把原訊息改為 `已進入判斷層 = true`，並盡量把 `關聯總控事件` 指到新建任務或進度報表。
 
 ## Report Preview

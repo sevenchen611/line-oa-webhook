@@ -781,19 +781,27 @@ async function buildDynamicDailyReportText(dailyReportUrl) {
       listRecentProgressReportsForDailyReport(),
     ]);
 
+    const reportItems = dedupeReportItems([...tasks, ...messages])
+      .filter((item) => item.project !== '未分類' || item.priority === '高')
+      .sort(compareDailyReportItems);
+    const leadingItems = reportItems.filter((item) => item.priority === '高').slice(0, 5);
+    const usedKeys = new Set(leadingItems.map(reportItemKey));
+
     const sections = [
-      `20:30 每日總控報告（動態整理）`,
+      `20:30 每日總控報告`,
       `日期：${reportDate}`,
+      `重點：高優先 ${reportItems.filter((item) => item.priority === '高').length} 件，待確認 ${tasks.filter((item) => item.confirmation === '未確認' || item.status === '待確認').length} 件。`,
       '',
-      buildDailySection('高優先 / 需要你留意', mergeHighPriorityItems(tasks, messages), 8),
-      buildDailySection('包租代管 / 客戶與房客', filterReportItems(tasks, messages, ['包租代管', 'customerIssue', 'tenant']), 6),
-      buildDailySection('私人 / 家庭 / 健康', filterReportItems(tasks, messages, ['私人事務', 'health', 'family']), 6),
-      buildDailySection('財務 / 保險 / 報稅', filterReportItems(tasks, messages, ['財務', 'finance', 'insurance']), 6),
-      buildDailySection('營運 / 會議 / 系統', filterReportItems(tasks, messages, ['營運', 'meeting', 'progress']), 6),
-      buildDailySection('今天新增或更新的進度', progressReports, 5),
+      buildDailySection('一、需要你先看', leadingItems, 5),
+      buildCompactDailySection('二、關係 / 客訴 / 承諾追蹤', filterUnusedReportItems(reportItems, usedKeys, ['relationshipIssue', '關係', '客訴', '不滿', '沒有回報', '回報進度', '抱歉', '道歉']), 3),
+      buildCompactDailySection('三、包租代管 / 客戶房客', filterUnusedReportItems(reportItems, usedKeys, ['包租代管', 'customerIssue', 'tenant']), 3),
+      buildCompactDailySection('四、私人 / 家庭 / 健康', filterUnusedReportItems(reportItems, usedKeys, ['私人事務', 'health', 'family']), 3),
+      buildCompactDailySection('五、財務 / 保險 / 報稅', filterUnusedReportItems(reportItems, usedKeys, ['財務', 'finance', 'insurance']), 3),
+      buildCompactDailySection('六、營運 / 會議 / 系統', filterUnusedReportItems(reportItems, usedKeys, ['營運', 'meeting', 'progress']), 3),
+      buildCompactDailySection('七、今天進度更新', progressReports.sort(compareDailyReportItems), 2),
       '',
       `報告頁：${dailyReportUrl}`,
-      '提醒：以上是從今天 LINE 原始訊息、判斷層任務與會議/進度資料動態整理；低信心或敏感事項會先保留待確認。',
+      '提醒：以上為動態摘要。敏感或低信心事項先保留為待確認，不會自動對外回覆。',
     ].filter((line) => line !== null && line !== undefined);
 
     return sections.join('\n');
@@ -823,6 +831,7 @@ async function listRecentTasksForDailyReport() {
       confirmation: pageSelectProperty(page, '確認狀態'),
       sourceType: pageSelectProperty(page, '來源'),
       summary: pageTextProperty(page, 'Codex 判斷摘要') || pageTextProperty(page, '下一步') || pageTextProperty(page, '來源原文'),
+      nextStep: pageTextProperty(page, '下一步'),
       updatedAt: pageDateProperty(page, '最後更新') || page.last_edited_time || '',
       url: page.url,
     }))
@@ -834,16 +843,30 @@ async function listImportantMessagesForDailyReport() {
   if (!MESSAGES_DATA_SOURCE_ID) return [];
 
   const since = taipeiStartOfDayIso(new Date());
+  const [lineResult, outgoingGroupResult] = await Promise.all([
+    queryMessagesForDailyReport([
+      { property: '排序時間', date: { on_or_after: since } },
+      { property: '訊息來源', select: { equals: 'line' } },
+    ]),
+    queryMessagesForDailyReport([
+      { property: '排序時間', date: { on_or_after: since } },
+      { property: '訊息來源', select: { equals: 'ai-engine' } },
+      { property: '群組標記', checkbox: { equals: true } },
+    ]),
+  ]);
+
+  return [...lineResult, ...outgoingGroupResult]
+    .sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0))
+    .filter((item) => item.score > 0)
+    .slice(0, 30);
+}
+
+async function queryMessagesForDailyReport(filters) {
   const result = await notionRequest(`/v1/data_sources/${MESSAGES_DATA_SOURCE_ID}/query`, {
     method: 'POST',
     body: {
       page_size: 80,
-      filter: {
-        and: [
-          { property: '排序時間', date: { on_or_after: since } },
-          { property: '訊息來源', select: { equals: 'line' } },
-        ],
-      },
+      filter: { and: filters },
       sorts: [{ property: '排序時間', direction: 'ascending' }],
     },
   });
@@ -859,14 +882,14 @@ async function listImportantMessagesForDailyReport() {
         priority: score >= 5 ? '高' : score >= 3 ? '中' : '低',
         status: pageTextProperty(page, '發話者名稱'),
         summary: text,
+        nextStep: inferMessageNextStep(text),
         updatedAt: pageDateProperty(page, '排序時間'),
         url: page.url,
         tags: dailyMessageTags(text),
         score,
       };
     })
-    .filter((item) => item.score > 0)
-    .slice(0, 30);
+    .filter((item) => item.score > 0);
 }
 
 async function listRecentProgressReportsForDailyReport() {
@@ -889,6 +912,7 @@ async function listRecentProgressReportsForDailyReport() {
       priority: pageSelectProperty(page, '目前狀態') === '需注意' ? '高' : '中',
       status: pageSelectProperty(page, '目前狀態'),
       summary: pageTextProperty(page, '本週進展') || pageTextProperty(page, '下一步'),
+      nextStep: pageTextProperty(page, '下一步'),
       updatedAt: pageDateProperty(page, '報表週期') || page.last_edited_time,
       url: page.url,
     }))
@@ -899,21 +923,30 @@ async function listRecentProgressReportsForDailyReport() {
 function buildDailySection(title, items, limit) {
   const uniqueItems = dedupeReportItems(items).slice(0, limit);
   if (!uniqueItems.length) {
-    return `${title}\n- 今天沒有抓到明確項目。`;
+    return `${title}\n今天沒有明確項目。`;
   }
 
   return [
     title,
-    ...uniqueItems.map((item) => `- ${formatReportItem(item)}`),
+    ...uniqueItems.map((item, index) => formatReportCard(item, index + 1)),
+  ].join('\n\n');
+}
+
+function buildCompactDailySection(title, items, limit) {
+  const uniqueItems = dedupeReportItems(items).slice(0, limit);
+  if (!uniqueItems.length) {
+    return `${title}\n今天沒有明確項目。`;
+  }
+
+  return [
+    title,
+    ...uniqueItems.map((item, index) => `${index + 1}. ${readableReportTitle(item)}${item.project && item.project !== '未分類' ? `｜${item.project}` : ''}`),
   ].join('\n');
 }
 
-function mergeHighPriorityItems(tasks, messages) {
-  return [...tasks, ...messages].filter((item) => item.priority === '高' || item.score >= 5);
-}
-
-function filterReportItems(tasks, messages, keywords) {
-  return [...tasks, ...messages].filter((item) => {
+function filterUnusedReportItems(items, usedKeys, keywords) {
+  const matched = items.filter((item) => {
+    if (usedKeys.has(reportItemKey(item))) return false;
     const haystack = [
       item.project,
       item.title,
@@ -924,25 +957,87 @@ function filterReportItems(tasks, messages, keywords) {
     ].join('\n');
     return keywords.some((keyword) => haystack.includes(keyword));
   });
+
+  matched.forEach((item) => usedKeys.add(reportItemKey(item)));
+  return matched;
 }
 
 function dedupeReportItems(items) {
   const seen = new Set();
   return items.filter((item) => {
-    const key = normalizeReportKey(item.title || item.summary);
+    const key = reportItemKey(item);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-function formatReportItem(item) {
-  const project = item.project ? `[${item.project}] ` : '';
-  const priority = item.priority ? `(${item.priority}) ` : '';
-  const title = String(item.title || item.summary || '').replace(/\s+/g, ' ').slice(0, 58);
-  const detail = cleanReportSummary(item.summary).replace(/\s+/g, ' ').slice(0, 90);
-  if (!detail || detail === title) return `${priority}${project}${title}`;
-  return `${priority}${project}${title}：${detail}`;
+function reportItemKey(item) {
+  const cleaned = normalizeReportKey(`${item.project || ''}:${readableReportTitle(item)}:${cleanReportSummary(item.summary).slice(0, 50)}`);
+  return cleaned || normalizeReportKey(item.url || item.title || item.summary);
+}
+
+function compareDailyReportItems(a, b) {
+  const aScore = reportItemImportanceScore(a);
+  const bScore = reportItemImportanceScore(b);
+  if (aScore !== bScore) return bScore - aScore;
+  const priorityRank = { 高: 3, 中: 2, 低: 1 };
+  const aRank = priorityRank[a.priority] || 0;
+  const bRank = priorityRank[b.priority] || 0;
+  if (aRank !== bRank) return bRank - aRank;
+  return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+}
+
+function reportItemImportanceScore(item) {
+  const haystack = `${item.project}\n${item.title}\n${item.summary}\n${(item.tags || []).join('\n')}`;
+  let score = item.priority === '高' ? 10 : item.priority === '中' ? 5 : 1;
+  if (/頭痛|身體不舒服|生病|醫院|吃藥|health/.test(haystack)) score += 9;
+  if (/火險|保險|保單|房貸|續保|報稅|稅|finance|insurance/.test(haystack)) score += 8;
+  if (/房客|租客|發黴|漏水|故障|燈光|浴室|customerIssue|tenant/.test(haystack)) score += 7;
+  if (/不滿|客訴|投訴|抱怨|沒有回報|回報進度|relationshipIssue/.test(haystack)) score += 6;
+  if (/你處理|交給你|提醒你|請你/.test(haystack)) score += 5;
+  if (/會議|月會|meeting/.test(haystack)) score += 3;
+  return score + (Number(item.score) || 0);
+}
+
+function formatReportCard(item, index) {
+  const project = item.project && item.project !== '未分類' ? `｜${item.project}` : '';
+  const priority = item.priority ? `｜${item.priority}` : '';
+  const title = readableReportTitle(item);
+  const detail = conciseReportText(cleanReportSummary(item.summary), 54);
+  const nextStep = conciseReportText(item.nextStep || extractNextStep(item.summary) || inferMessageNextStep(`${item.title}\n${item.summary}`), 44);
+
+  return [
+    `${index}. ${title}${project}${priority}`,
+    detail ? `   重點：${detail}` : '',
+    nextStep ? `   下一步：${nextStep}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function readableReportTitle(item) {
+  const project = String(item.project || '');
+  let title = String(item.title || item.summary || '').replace(/\s+/g, ' ').trim();
+  title = title.replace(new RegExp(`^${escapeRegExp(project)}[：:]`), '');
+  title = title.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '');
+  title = title.replace(/[0-9a-f]{32}/gi, '');
+  title = title.replace(/^判斷\s+/, '');
+  title = title.replace(/^確認保險\/火險續保處理\s*[-－]\s*/, '火險/保險續保：');
+  title = title.replace(/^關心與追蹤健康狀況\s*[-－]\s*/, '健康關心：');
+  title = title.replace(/^處理房客\/客戶問題\s*[-－]\s*/, '房客/客戶問題：');
+  title = title.replace(/^確認財務\/稅務事項\s*[-－]\s*/, '財務/稅務：');
+  title = title.replace(/^確認交由 Seven 處理事項\s*[-－]\s*/, '交由 Seven 處理：');
+  title = title.replace(/^確認決策\s*[-－]\s*/, '決策確認：');
+  title = title.replace(/\s+/g, ' ').trim();
+  return conciseReportText(title || cleanReportSummary(item.summary), 34);
+}
+
+function conciseReportText(value, maxLength) {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/LINE 訊息：https?:\/\/\S+/g, '')
+    .replace(/同步識別碼：\S+/g, '')
+    .trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
 function cleanReportSummary(value) {
@@ -954,10 +1049,28 @@ function cleanReportSummary(value) {
   return text;
 }
 
+function extractNextStep(value) {
+  const text = String(value || '');
+  return text.match(/建議處理：([^\n]+)/)?.[1]?.trim() || '';
+}
+
+function inferMessageNextStep(text) {
+  const value = String(text || '');
+  if (/頭痛|身體不舒服|生病|疼痛|疼|醫院|吃藥/.test(value)) return '關心身體狀況，必要時提醒就醫或追蹤是否已改善。';
+  if (/不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫/.test(value)) return '確認要回覆、道歉、安撫或追蹤承諾進度。';
+  if (/火險|保險|保單|房貸|續保/.test(value)) return '確認到期日、是否續保、文件與簽名流程。';
+  if (/報稅|稅|發票|付款|匯款/.test(value)) return '確認期限、資料缺口與下一個處理動作。';
+  if (/房客|租客|發黴|漏水|故障|燈光|浴室/.test(value)) return '確認回覆口徑、修繕責任與是否列入 SOP。';
+  if (/會議|會議記錄|月會|例會/.test(value)) return '確認是否有會議行動項目需要寫入任務庫。';
+  if (/你處理|你要|交給你|提醒你/.test(value)) return '確認是否由 Seven 負責，以及期限與完成標準。';
+  return '確認是否保留為待辦或只作紀錄。';
+}
+
 function scoreDailyMessageImportance(text) {
   const value = String(text || '');
   const rules = [
     [5, /頭痛|身體不舒服|生病|醫院|吃藥|疼痛|疼|受傷/],
+    [6, /不滿|客訴|投訴|抱怨|失望|感覺.*不舒服|沒有回報|沒回報|回報進度|抱歉|道歉|誤會|安撫|關係修復/],
     [5, /火險|保險|保單|房貸|續保|報稅|稅|發票|付款|匯款/],
     [5, /房客|租客|發黴|漏水|故障|燈光|浴室|修繕|投訴|反應|客人.*(問題|反應|投訴|抱怨)/],
     [5, /你處理|你要|交給你|麻煩你|提醒你|請你|幫我/],
@@ -972,6 +1085,7 @@ function scoreDailyMessageImportance(text) {
 function dailyMessageTags(text) {
   const tags = [];
   if (/頭痛|身體不舒服|生病|疼痛|疼|醫院|吃藥/.test(text)) tags.push('health', 'family');
+  if (/不滿|客訴|投訴|抱怨|失望|感覺.*不舒服|沒有回報|沒回報|回報進度|抱歉|道歉|誤會|安撫|關係修復/.test(text)) tags.push('relationshipIssue', 'customerIssue');
   if (/火險|保險|保單|房貸|續保/.test(text)) tags.push('insurance', 'finance');
   if (/報稅|稅|發票|付款|匯款/.test(text)) tags.push('finance');
   if (/房客|租客|發黴|漏水|故障|燈光|浴室|客人.*(問題|反應|投訴|抱怨)/.test(text)) tags.push('customerIssue', 'tenant');
@@ -987,6 +1101,7 @@ function inferDailyMessageProject(text) {
   if (/SmartFront|AI Brain|AI腦|智能前台/.test(text)) return 'SmartFront / AI Brain';
   if (/火險|保險|保單|房貸|續保|財務|付款|匯款|發票|報稅|稅|薪資/.test(text)) return '財務';
   if (/人資|招募|面試|員工|同仁|資遣|解僱/.test(text)) return '人資';
+  if (/不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫|關係修復/.test(text)) return '營運';
   if (/營運|月會|例會|流程|SOP|會議|公司助理系統|手機.*會議記錄/.test(text)) return '營運';
   if (/老婆|太太|媽媽|媽，|家裡|家人|小孩|私人|西周|天才家族/.test(text)) return '私人事務';
   return '未分類';
@@ -995,6 +1110,7 @@ function inferDailyMessageProject(text) {
 function buildMessageReportTitle(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   if (/頭痛|身體不舒服|生病|疼痛|疼/.test(value)) return `健康關心：${value.slice(0, 34)}`;
+  if (/不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫/.test(value)) return `關係/客訴追蹤：${value.slice(0, 34)}`;
   if (/火險|保險|保單|房貸|續保/.test(value)) return `保險/火險：${value.slice(0, 34)}`;
   if (/房客|租客|發黴|漏水|燈光|浴室/.test(value)) return `房客問題：${value.slice(0, 34)}`;
   if (/報稅|稅/.test(value)) return `報稅/稅務：${value.slice(0, 34)}`;
@@ -1040,6 +1156,10 @@ function isTodayTaipei(value, today = taipeiDateOnly(new Date())) {
 
 function normalizeReportKey(value) {
   return String(value || '').replace(/\s+/g, '').toLowerCase().slice(0, 80);
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function pushLineMessages(req, body) {

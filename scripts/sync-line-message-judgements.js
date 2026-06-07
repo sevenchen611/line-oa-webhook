@@ -13,6 +13,7 @@ const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOUR
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
 const includeOutgoing = Boolean(args['include-outgoing']);
+const includeOutgoingGroups = Boolean(args['include-outgoing-groups']);
 const reprocess = Boolean(args.reprocess || args['include-judged']);
 const sinceHours = clampNumber(Number(args['since-hours'] || process.env.SEVEN_LINE_JUDGEMENT_SINCE_HOURS || 36), 1, 24 * 14);
 const limit = clampNumber(Number(args.limit || 50), 1, 100);
@@ -35,6 +36,7 @@ try {
     ok: true,
     dryRun,
     includeOutgoing,
+    includeOutgoingGroups,
     reprocess,
     sinceHours,
     scannedMessages: messages.length,
@@ -54,18 +56,37 @@ try {
 
 async function listMessagesForJudgement() {
   const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
-  const filters = [
+  const baseFilters = [
     { property: '排序時間', date: { on_or_after: since } },
   ];
 
   if (!reprocess) {
-    filters.unshift({ property: '已進入判斷層', checkbox: { equals: false } });
+    baseFilters.unshift({ property: '已進入判斷層', checkbox: { equals: false } });
   }
 
-  if (!includeOutgoing) {
-    filters.push({ property: '訊息來源', select: { equals: 'line' } });
+  if (includeOutgoingGroups) {
+    const [lineMessages, outgoingGroupMessages] = await Promise.all([
+      queryMessagesForJudgement([...baseFilters, { property: '訊息來源', select: { equals: 'line' } }]),
+      queryMessagesForJudgement([
+        ...baseFilters,
+        { property: '訊息來源', select: { equals: 'ai-engine' } },
+        { property: '群組標記', checkbox: { equals: true } },
+      ]),
+    ]);
+
+    return [...lineMessages, ...outgoingGroupMessages]
+      .sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0))
+      .slice(0, limit);
   }
 
+  const filters = includeOutgoing
+    ? baseFilters
+    : [...baseFilters, { property: '訊息來源', select: { equals: 'line' } }];
+
+  return queryMessagesForJudgement(filters);
+}
+
+async function queryMessagesForJudgement(filters) {
   const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
     method: 'POST',
     body: {
@@ -177,6 +198,7 @@ function emptyAnalysis(reason) {
 function scoreImportance(text, message) {
   const rules = [
     ['health', 5, /頭痛|身體不舒服|生病|發燒|醫院|診所|看醫生|吃藥|疼痛|疼|受傷|失眠/],
+    ['relationship-escalation', 6, /不滿|客訴|投訴|抱怨|失望|感覺.*不舒服|沒有回報|沒回報|回報進度|抱歉|道歉|誤會|安撫|關係修復/],
     ['insurance-finance', 5, /火險|保險|保單|房貸|續保|到期|報稅|稅|發票|付款|匯款|費用|金額|銀行/],
     ['assigned-to-seven', 5, /你處理|你要|你來|交給你|麻煩你|提醒你|你確認|你安排|請你|幫我/],
     ['customer-or-tenant-issue', 5, /房客|租客|發黴|漏水|故障|燈光|浴室|投訴|反應|抱怨|修繕|客人.*(問題|反應|投訴|抱怨)/],
@@ -368,6 +390,7 @@ function normalizeMessagePage(page) {
 function inferCategory(text) {
   if (/#完成|#done|已處理|已完成|完成了|處理完/.test(text) && !/希望完成/.test(text)) return 'done';
   if (/頭痛|身體不舒服|生病|發燒|醫院|診所|看醫生|吃藥|疼痛|疼|受傷|失眠/.test(text)) return 'health';
+  if (/不滿|客訴|投訴|抱怨|失望|感覺.*不舒服|沒有回報|沒回報|回報進度|抱歉|道歉|誤會|安撫|關係修復/.test(text)) return 'relationshipIssue';
   if (/火險|保險|保單|房貸|續保/.test(text)) return 'insurance';
   if (/報稅|稅|發票|付款|匯款|費用|金額|銀行/.test(text)) return 'finance';
   if (/房客|租客|發黴|漏水|故障|燈光|浴室|修繕|投訴|反應|抱怨|客人.*(問題|反應|投訴|抱怨)/.test(text)) return 'customerIssue';
@@ -392,6 +415,7 @@ function inferProject(text, message, category) {
     ['財務', /十幾年.*沒買過|line提醒你|LINE提醒你/],
     ['人資', /人資|招募|面試|員工|同仁|資遣|解僱/],
     ['營運', /營運|月會|例會|流程|SOP|會議|公司助理系統|手機.*會議記錄/],
+    ['營運', /不滿|客訴|投訴|抱怨|失望|沒有回報|沒回報|回報進度|抱歉|道歉|安撫|關係修復/],
     ['私人事務', /老婆|太太|媽媽|媽，|家裡|家人|小孩|私人|西周|天才家族/],
   ];
 
@@ -408,7 +432,7 @@ function inferProject(text, message, category) {
 }
 
 function inferPriority(text, category, score) {
-  if (['health', 'insurance', 'finance', 'customerIssue', 'blocked'].includes(category)) return '高';
+  if (['health', 'insurance', 'finance', 'customerIssue', 'relationshipIssue', 'blocked'].includes(category)) return '高';
   if (score >= 8) return '高';
   if (['decision', 'delegation', 'followup', 'meeting'].includes(category)) return '中';
   return '低';
@@ -418,6 +442,7 @@ function inferDueDate(text) {
   const now = new Date();
   if (/今天|今日/.test(text)) return now;
   if (/明天|明日/.test(text)) return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (/週一|星期一|禮拜一/.test(text)) return nextWeekday(now, 1);
   if (/下週|下禮拜/.test(text)) return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const monthDay = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*(日|號)/);
   if (monthDay) {
@@ -430,6 +455,7 @@ function inferDueDate(text) {
 function inferOwner(text) {
   const mention = text.match(/@([^\s，,。]+)/);
   if (mention) return mention[1];
+  if (/我.*(確認|處理|聯絡|回覆)|禮拜一.*我/.test(text)) return 'Seven 陳聖文';
   const named = text.match(/(Seven|Bonnie|逸凡|宜穎|嘉娜|Maggie|昱晴|聖文)/i);
   return named ? named[1] : '';
 }
@@ -439,6 +465,7 @@ function inferNextStep(text, category) {
   if (category === 'insurance') return '確認保單/火險/房貸火險是否需要續保、文件、期限與承辦窗口，避免漏保或逾期。';
   if (category === 'finance') return '列為財務/稅務高優先事項，確認責任人、期限、金額或申報資料是否完整。';
   if (category === 'customerIssue') return '整理房客/客戶問題、回覆口徑、修繕責任與下一步，待 Seven 確認。';
+  if (category === 'relationshipIssue') return '列為重大關係/客訴事件，確認不滿原因、內部責任人、週一回覆節點與安撫口徑。';
   if (category === 'delegation') return '對方已把事情交給 Seven 或提醒 Seven，需確認是否建立正式待辦與期限。';
   if (category === 'decision') return '保留為待確認決策，請 Seven 確認是否採納與是否需要對外回覆。';
   if (category === 'meeting') return '確認是否有新的會議結論、行動項目或需要同步到總控任務庫的事項。';
@@ -450,12 +477,12 @@ function inferNextStep(text, category) {
 
 function shouldCreateProgress(project, category, text) {
   if (project === '未分類') return false;
-  if (['customerIssue', 'meeting', 'progress', 'blocked', 'decision'].includes(category)) return true;
-  return /進度|狀態|看法|想法|策略|方向|本週|今天.*安排/.test(text);
+  if (['customerIssue', 'relationshipIssue', 'meeting', 'progress', 'blocked', 'decision'].includes(category)) return true;
+  return /進度|狀態|看法|想法|策略|方向|本週|今天.*安排|回報進度|沒有回報|沒回報/.test(text);
 }
 
 function needsSevenDecision(concern) {
-  return ['insurance', 'finance', 'customerIssue', 'decision', 'delegation', 'blocked'].includes(concern.category);
+  return ['insurance', 'finance', 'customerIssue', 'relationshipIssue', 'decision', 'delegation', 'blocked'].includes(concern.category);
 }
 
 function isLowSignal(text) {
@@ -491,6 +518,7 @@ function buildTaskName(concern, message) {
   if (concern.category === 'insurance') return `${concern.project}：確認保險/火險續保處理 - ${shortSubject(concern.summary)}`;
   if (concern.category === 'finance') return `${concern.project}：確認財務/稅務事項 - ${shortSubject(concern.summary)}`;
   if (concern.category === 'customerIssue') return `${concern.project}：處理房客/客戶問題 - ${shortSubject(concern.summary)}`;
+  if (concern.category === 'relationshipIssue') return `${concern.project}：處理關係/客訴事件 - ${shortSubject(concern.summary)}`;
   if (concern.category === 'delegation') return `${concern.project}：確認交由 Seven 處理事項 - ${shortSubject(concern.summary)}`;
   if (concern.category === 'meeting') return `${concern.project}：同步會議/討論行動項目 - ${shortSubject(concern.summary)}`;
   if (concern.category === 'decision') return `${concern.project}：確認決策 - ${shortSubject(concern.summary)}`;
@@ -518,6 +546,7 @@ function categoryLabel(category) {
     insurance: '保險/火險',
     finance: '財務/稅務',
     customerIssue: '房客/客戶問題',
+    relationshipIssue: '關係/客訴事件',
     delegation: '交辦給 Seven',
     blocked: '卡點',
     decision: '決策',
@@ -529,6 +558,15 @@ function categoryLabel(category) {
     note: '重要觀察',
   };
   return labels[category] || category;
+}
+
+function nextWeekday(fromDate, weekday) {
+  const date = new Date(fromDate);
+  const current = date.getDay();
+  let offset = (weekday - current + 7) % 7;
+  if (offset === 0) offset = 7;
+  date.setDate(date.getDate() + offset);
+  return date;
 }
 
 function buildProgressName(concern, message) {

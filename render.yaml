@@ -40,7 +40,7 @@ services:
     runtime: node
     plan: starter
     buildCommand: npm install
-    startCommand: npm run line:judgements -- --limit 50
+    startCommand: npm run line:judgements -- --include-outgoing-groups --limit 50
     schedule: "10 0-14 * * *"
     envVars:
       - key: NOTION_TOKEN
