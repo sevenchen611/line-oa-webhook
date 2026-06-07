@@ -6,6 +6,7 @@ const originalCreateServer = http.createServer.bind(http);
 const TASKS_DATA_SOURCE_ID = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOURCE_ID || '0792a903-d274-4a6a-9115-8c66473d1234';
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
+const CODEX_COMMANDS_DATA_SOURCE_ID = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
@@ -39,8 +40,9 @@ async function handleControlRequest(req, res, pathname) {
       outgoingMessageLoggingEnabled: Boolean(process.env.NOTION_TOKEN && CONVERSATIONS_DATA_SOURCE_ID && MESSAGES_DATA_SOURCE_ID),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
+      codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-afternoon'],
-      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/approve'],
+      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/approve', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -71,11 +73,113 @@ async function handleControlRequest(req, res, pathname) {
       return sendJson(res, 200, result);
     }
 
+    if (pathname === '/control/codex-commands/test') {
+      const result = await createCodexCommandTest(body);
+      return sendJson(res, 200, result);
+    }
+
     return sendJson(res, 404, { error: 'Not found' });
   } catch (error) {
     console.error(error);
     return sendJson(res, 500, { error: error.message || 'Internal server error' });
   }
+}
+
+async function createCodexCommandTest(body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+  if (!CODEX_COMMANDS_DATA_SOURCE_ID) {
+    throw new Error('SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID is not set.');
+  }
+
+  const now = new Date();
+  const originalText = String(body.text || body.originalText || 'Seven Junior 測試 Command Queue：請回覆我你已成功收到這個測試命令。').trim();
+  const trigger = findCodexCommandTrigger(originalText);
+  const commandText = extractCodexCommand(originalText);
+  const sourceType = String(body.sourceType || body.targetType || 'user').trim();
+  const sourceId = String(body.sourceId || body.targetId || process.env.SEVEN_REPORT_TARGET_ID || 'U09dc6553016c78d89c515522be9b74f6').trim();
+  const lineMessageId = String(body.lineMessageId || `control-test-${now.getTime()}`).trim();
+  const receivedAt = body.receivedAt ? new Date(body.receivedAt) : now;
+
+  const page = await notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: CODEX_COMMANDS_DATA_SOURCE_ID },
+      properties: compactProperties({
+        Name: titleProperty(commandText || originalText),
+        Status: selectProperty('Pending'),
+        Trigger: richTextProperty(trigger?.label || 'Manual Test'),
+        Command: richTextProperty(commandText),
+        'Original Text': richTextProperty(originalText),
+        'Source Type': selectProperty(sourceType),
+        'Source ID': richTextProperty(sourceId),
+        'User ID': richTextProperty(sourceType === 'user' ? sourceId : String(body.userId || '')),
+        'Conversation Name': richTextProperty(String(body.conversationName || 'Seven Jr. control test')),
+        'Actor Name': richTextProperty(String(body.actorName || 'Seven 陳聖文')),
+        'Conversation Key': richTextProperty(`${sourceType}:${sourceId}`),
+        'LINE Message ID': richTextProperty(lineMessageId),
+        'LINE Event ID': richTextProperty(String(body.lineEventId || `control-test-event-${now.getTime()}`)),
+        'Message Page URL': body.messagePageUrl ? urlProperty(String(body.messagePageUrl)) : undefined,
+        'Conversation Page URL': body.conversationPageUrl ? urlProperty(String(body.conversationPageUrl)) : undefined,
+        'Received At': dateProperty(receivedAt),
+        'Risk Level': selectProperty(resolveCommandRiskLevel(commandText || originalText)),
+        'Raw Event': richTextProperty(JSON.stringify({
+          source: 'control-api-test',
+          originalText,
+          sourceType,
+          sourceId,
+          lineMessageId,
+          createdAt: now.toISOString(),
+        })),
+      }),
+      children: [
+        paragraphProperty(`Trigger: ${trigger?.label || 'Manual Test'}`),
+        paragraphProperty(`Command: ${commandText || '(no command text after trigger)'}`),
+        paragraphProperty(`Source: ${sourceType} ${sourceId}`.trim()),
+      ],
+    },
+  });
+
+  return {
+    ok: true,
+    pageId: page.id,
+    url: page.url,
+    status: 'Pending',
+    trigger: trigger?.label || 'Manual Test',
+    command: commandText,
+    sourceType,
+    sourceId,
+    lineMessageId,
+  };
+}
+
+function findCodexCommandTrigger(text) {
+  const value = String(text || '');
+  const triggers = [
+    { label: 'Eleven Junior', pattern: /eleven\s+junior/i },
+    { label: 'Eleven Jr.', pattern: /eleven\s+jr\.?/i },
+    { label: 'Elven Jr.', pattern: /elven\s+jr\.?/i },
+    { label: 'Seven Junior', pattern: /seven\s+junior/i },
+    { label: '7 Junior', pattern: /\b7\s*junior\b/i },
+    { label: '11 Jr.', pattern: /\b11\s*jr\.?\b/i },
+  ];
+  return triggers.find((trigger) => trigger.pattern.test(value)) || null;
+}
+
+function extractCodexCommand(text) {
+  const value = String(text || '').trim();
+  const trigger = findCodexCommandTrigger(value);
+  if (!trigger) {
+    return value;
+  }
+  return value.replace(trigger.pattern, '').replace(/^[\s:：,，。-]+/, '').trim();
+}
+
+function resolveCommandRiskLevel(text) {
+  const value = String(text || '').toLowerCase();
+  const highRiskTerms = ['contract', 'legal', 'tax', 'salary', 'payment', 'invoice', 'fire ', 'terminate', '合約', '法律', '稅', '薪資', '付款', '匯款', '發票', '解僱', '資遣', '報價'];
+  return highRiskTerms.some((term) => value.includes(term)) ? 'High' : 'Normal';
 }
 
 function isAuthorized(req) {
