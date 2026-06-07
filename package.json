@@ -10,6 +10,7 @@
     "meetings:sync": "node scripts/sync-meeting-actions.js",
     "codex:commands": "node scripts/codex-command-queue.js",
     "line:push": "node scripts/line-push.js",
-    "setup:codex-commands": "node scripts/setup-codex-command-queue.js"
+    "setup:codex-commands": "node scripts/setup-codex-command-queue.js",
+    "setup:daily-snapshots": "node scripts/setup-daily-report-snapshots.js"
   }
 }

@@ -271,6 +271,21 @@ Rules:
 - If the project cannot be inferred confidently, do not create a progress report;
   keep the extracted tasks in `總控任務庫` as `未分類`.
 
+### 每日總控報告快照庫
+
+Daily 20:30 report snapshot database under `Codex 總控中心`.
+
+Current data source ID:
+
+- `8f7f95a5-7428-4490-9327-7943499a0e22`
+
+Rules:
+
+- When the 20:30 daily control report is sent successfully, Render should create one snapshot page.
+- Snapshot pages store the report date, send time, report URL, LINE message text, cron job name, run id, target summary, and confirmation status.
+- When the user submits the daily report confirmation page, Render should mark the latest daily snapshot as `已確認` and write the related decision page URL.
+- The snapshot database is for historical report archive. Confirmation details still live in `風險與決策庫`.
+
 ## LINE OA Collection Rules
 
 When Seven Jr. receives LINE messages:

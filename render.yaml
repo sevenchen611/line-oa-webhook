@@ -30,6 +30,8 @@ services:
         value: 0bdc0de5-46ee-482c-b8d7-cdf6ec958467
       - key: SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID
         value: fc5e4e21-6af6-4de2-9380-aa95126ee13e
+      - key: SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID
+        value: 8f7f95a5-7428-4490-9327-7943499a0e22
       - key: SEVEN_CONTROL_API_KEY
         sync: false
 

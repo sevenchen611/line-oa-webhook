@@ -52,6 +52,7 @@ Web Service 必要設定：
 - `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
 - `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
 - `FOLLOWUP_CONFIRMATION_URL`: 10 點 / 13 點 / 17 點追蹤確認頁連結，可省略，省略時使用 Render 服務內建報告頁。
+- `SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID`: 20:30 每日總控總確認快照庫，預設為 `8f7f95a5-7428-4490-9327-7943499a0e22`。
 
 Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
 
@@ -178,6 +179,18 @@ POST /control/reports/approve
 - 若 LINE 確認推送失敗，不回滾已寫入的 Notion 決策，但 API 回傳會包含 `acknowledgement.ok=false`。
 - 可用 `sendAcknowledgement:false` 關閉單次確認回覆。
 - 可用 `ackTargets` / `ackTargetId` / `ackTargetType` 指定確認訊息推送目標；未指定時使用預設報告對象。
+
+### 每日總控報告快照
+
+20:30 每日總控總確認發送成功後，Render 會在 `每日總控報告快照庫` 建立一筆快照，保存報告日期、發送時間、報告連結、LINE 訊息內容、Cron job、run id、發送目標與確認狀態。
+
+使用者在報告頁按「確認並寫回」後，系統會把最新一筆日報快照標記為 `已確認`，並寫入 `確認紀錄連結`，指向風險與決策庫中的確認頁。
+
+建立或檢查快照庫：
+
+```powershell
+npm run setup:daily-snapshots
+```
 
 ## LINE 指令回覆
 
