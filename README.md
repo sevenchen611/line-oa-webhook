@@ -2,6 +2,15 @@
 
 Seven Jr. 的 LINE OA Webhook 服務，用來接收 LINE 群組/個人對話、寫入 Notion，並提供安全的主動推送入口與 Render Cron 定時報告。
 
+## New Unit Onboarding
+
+如果要把 SevenAM 分享給其他部門、公司或單位使用，請先讓對方填寫導入表單：
+
+- Markdown 交接表：[docs/sevenam-onboarding-form.md](docs/sevenam-onboarding-form.md)
+- HTML 填寫頁：[forms/sevenam-onboarding-form.html](forms/sevenam-onboarding-form.html)
+
+HTML 表單只在瀏覽器本機整理資料，可產生 Render 環境變數草稿；請勿把敏感金鑰提交到 GitHub。
+
 ## Webhook
 
 LINE Developers Console 的 Webhook URL：
@@ -39,9 +48,10 @@ Web Service 必要設定：
 - `SEVEN_REPORT_TARGET_ID`: 早報/晚報備用推送對象，可以是 userId、groupId 或 roomId。若不設定，系統會自動從 Seven LINE 對話主檔尋找最近的一對一個人對話，優先找名稱含 Seven 的對話。
 - `SEVEN_REPORT_TARGET_TYPE`: `user`、`group` 或 `room`，主要作為紀錄辨識用。
 - `SEVEN_REPORT_TARGET_NAME_KEYWORD`: 自動尋找個人對話時優先比對的關鍵字，預設為 `Seven`。
-- `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 GitHub 預設版。
-- `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 GitHub 預設版。
-- `FOLLOWUP_CONFIRMATION_URL`: 10 點 / 17 點跟催確認頁連結，可省略，省略時使用 GitHub 預設版。
+- `SEVEN_PUBLIC_BASE_URL`: 對外公開的 Render 服務網址，預設為 `https://line-oa-webhook-nn5j.onrender.com`。
+- `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
+- `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
+- `FOLLOWUP_CONFIRMATION_URL`: 10 點 / 13 點 / 17 點追蹤確認頁連結，可省略，省略時使用 Render 服務內建報告頁。
 
 Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
 

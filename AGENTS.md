@@ -358,6 +358,18 @@ Render has already been confirmed to build these jobs through Blueprint, and the
 
 ## Report Pages
 
+Production report links should be served by the Render web service, not by GitHub HTML preview.
+
+Default public routes:
+
+- `GET /reports/morning-brief`
+- `GET /reports/daily-control-report`
+- `GET /reports/followup-confirmation?slot=10`
+- `GET /reports/followup-confirmation?slot=13`
+- `GET /reports/followup-confirmation?slot=17`
+
+`htmlpreview.github.io` is acceptable only as a temporary manual preview. It should not be used for scheduled LINE report messages because extra query parameters such as `slot=17` may be interpreted as part of the GitHub source URL instead of the report page.
+
 ### Morning Brief
 
 File: `reports/morning-brief-prototype.html`

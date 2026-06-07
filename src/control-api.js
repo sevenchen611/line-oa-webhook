@@ -15,10 +15,23 @@ const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
+const PUBLIC_BASE_URL = (process.env.SEVEN_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://line-oa-webhook-nn5j.onrender.com').replace(/\/+$/, '');
+const REPORT_ROUTES = new Map([
+  ['/reports/morning-brief', '../reports/morning-brief-prototype.html'],
+  ['/reports/morning-brief-prototype.html', '../reports/morning-brief-prototype.html'],
+  ['/reports/daily-control-report', '../reports/daily-control-report-prototype.html'],
+  ['/reports/daily-control-report-prototype.html', '../reports/daily-control-report-prototype.html'],
+  ['/reports/followup-confirmation', '../reports/followup-confirmation-prototype.html'],
+  ['/reports/followup-confirmation-prototype.html', '../reports/followup-confirmation-prototype.html'],
+]);
 
 http.createServer = function createServerWithControlApi(listener) {
   return originalCreateServer(async (req, res) => {
     const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+
+    if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
+      return serveReportPage(res, pathname);
+    }
 
     if (pathname.startsWith('/control/')) {
       return handleControlRequest(req, res, pathname);
@@ -573,9 +586,9 @@ function buildReportMessage(reportType, customText) {
     return { type: 'text', text: clampLineText(customText) };
   }
 
-  const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
-  const dailyReportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
-  const followupBaseUrl = process.env.FOLLOWUP_CONFIRMATION_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/followup-confirmation-prototype.html';
+  const morningBriefUrl = process.env.MORNING_BRIEF_URL || `${PUBLIC_BASE_URL}/reports/morning-brief`;
+  const dailyReportUrl = process.env.DAILY_REPORT_URL || `${PUBLIC_BASE_URL}/reports/daily-control-report`;
+  const followupBaseUrl = process.env.FOLLOWUP_CONFIRMATION_URL || `${PUBLIC_BASE_URL}/reports/followup-confirmation`;
 
   if (['morning', 'morning-brief', '早報'].includes(reportType)) {
     return {
@@ -616,6 +629,10 @@ function buildReportMessage(reportType, customText) {
 }
 
 function withFollowupSlot(baseUrl, slot) {
+  if (baseUrl.includes('htmlpreview.github.io/?')) {
+    return `${baseUrl}#slot=${encodeURIComponent(slot)}`;
+  }
+
   return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}slot=${encodeURIComponent(slot)}`;
 }
 
@@ -1160,6 +1177,21 @@ function formatTaipeiDateTime(value) {
 function sendNoContent(res) {
   res.writeHead(204, corsHeaders());
   res.end();
+}
+
+function serveReportPage(res, pathname) {
+  const reportFile = REPORT_ROUTES.get(pathname);
+  if (!reportFile) {
+    return sendJson(res, 404, { error: 'Report not found' });
+  }
+
+  const html = readFileSync(new URL(reportFile, import.meta.url), 'utf8');
+  res.writeHead(200, {
+    ...corsHeaders(),
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(html);
 }
 
 function sendJson(res, statusCode, payload) {

@@ -58,7 +58,7 @@
   </div>
   <script>
     const APPROVAL_API='https://line-oa-webhook-nn5j.onrender.com/control/reports/approve';
-    const params=new URLSearchParams(location.search);const slot=params.get('slot')||'10';const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[10];
+    const params=new URLSearchParams(location.search);const hashParams=new URLSearchParams(location.hash.replace(/^#/,''));const slot=params.get('slot')||hashParams.get('slot')||'10';const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[10];
     async function confirmSend(){
       const cards=[...document.querySelectorAll('.followup-card')];
       const followups=cards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('select')?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
