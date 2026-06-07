@@ -53,6 +53,7 @@ Web Service 必要設定：
 - `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
 - `FOLLOWUP_CONFIRMATION_URL`: 10 點 / 13 點 / 17 點追蹤確認頁連結，可省略，省略時使用 Render 服務內建報告頁。
 - `SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID`: 20:30 每日總控總確認快照庫，預設為 `8f7f95a5-7428-4490-9327-7943499a0e22`。
+- `SEVEN_RESPONSIBILITY_DATA_SOURCE_ID`: 權責定義表，預設為 `e8c2f582-edbe-42ab-9d7f-ba063bbf8b99`。
 
 Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
 

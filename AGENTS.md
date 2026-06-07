@@ -101,6 +101,45 @@ Direct child pages:
 
 Defines all available projects. New projects should be added here instead of hard-coded in application logic.
 
+### 權責定義表
+
+Defines department heads, project owners, default assignees, notification targets,
+and LINE target mappings for SevenAM.
+
+Current data source ID:
+
+- `e8c2f582-edbe-42ab-9d7f-ba063bbf8b99`
+
+Rules:
+
+- Use this table before guessing who should own, follow up, or receive notices for
+  a task.
+- If a LINE conversation master has `總控專案`, project assignment still comes
+  from the conversation first; this table decides the owner / supervisor /
+  default tracking target for that project.
+- If a department or project row is `待填寫` or missing owner fields, keep the
+  task pending Seven confirmation instead of assigning it to a guessed person.
+- Sensitive projects such as finance, HR, legal/tax, external commitments, or
+  customer complaints should default to Seven confirmation unless the table says
+  otherwise.
+
+Important fields:
+
+- 名稱
+- 類型
+- 對應總控專案
+- 狀態
+- 主管或主負責人
+- 代理人
+- 預設任務負責人
+- 預設追蹤對象
+- LINE對象名稱
+- LINE對象類型
+- LINE對象ID
+- 通知規則
+- 敏感等級
+- 外部承諾需Seven核可
+
 ### 總控任務庫
 
 Cross-project task database.
