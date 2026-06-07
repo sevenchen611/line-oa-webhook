@@ -57,6 +57,14 @@ Web Service 必要設定：
 - `SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID`: LINE 群組選項表，預設為 `b6cfffbf-e7b2-4da4-b21d-d055bc68af69`。
 - `SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID`: LINE 群組成員選項表，預設為 `979949aa-bac3-45ac-a4cc-a38585addb89`。
 
+權責定義表的主要填寫邏輯：
+
+- `專案或任務名稱`: 這列要定義的專案、部門、LINE 群組對口或任務。
+- `對話群組（Group ID）`: 先選相關 LINE 對話群組，選項顯示群組名稱，底層保留 Group ID。
+- `主要負責人（User ID）`: 再選該群組中的主辦人，選項顯示「群組 / 人名」，底層保留 User ID。
+- `代理人對話群組（Group ID）` / `代理人（User ID）`: 代理人使用同樣的兩段式選法。
+- `LINE對象名稱（結果）` / `LINE對象類型（結果）` / `LINE對象ID（結果）`: 系統送訊息與紀錄用的結果欄位，主要人工選擇仍以上述群組與人員關聯欄位為準。
+
 Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 `SEVEN_CONTROL_API_KEY`，不用把密鑰寫進 GitHub。
 
 ## Render Cron Jobs

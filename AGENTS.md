@@ -119,9 +119,17 @@ Rules:
 
 - Use this table before guessing who should own, follow up, or receive notices for
   a task.
-- In `權責定義表`, use `第一層LINE群組` to select the group by display name and
-  `第二層對口窗口` to select the person by display name. These are Notion
-  relation dropdowns; the underlying option rows retain Group ID and User ID.
+- In `權責定義表`, the title field is `專案或任務名稱`. Use it for the project,
+  department, LINE group mapping, or task whose responsibility is being defined.
+- Use `對話群組（Group ID）` to select the relevant LINE group by display name,
+  then use `主要負責人（User ID）` to select the responsible person from the
+  LINE group member option table. These are Notion relation dropdowns; the
+  underlying option rows retain Group ID and User ID.
+- Use `代理人對話群組（Group ID）` and `代理人（User ID）` the same way when a backup
+  contact is needed.
+- `LINE對象名稱（結果）`, `LINE對象類型（結果）`, and `LINE對象ID（結果）` are
+  system-facing result fields for sending or logging. They should not replace
+  the group/person selection flow above.
 - `LINE 群組成員選項表` can only include people who have appeared in webhook
   records or LINE membership events. LINE OA cannot fetch a complete historical
   group roster for members who have never appeared in captured events.
@@ -136,17 +144,23 @@ Rules:
 
 Important fields:
 
-- 名稱
+- 專案或任務名稱
 - 類型
+- 用途
 - 對應總控專案
 - 狀態
-- 主管或主負責人
-- 代理人
+- 對話群組（Group ID）
+- 主要負責人（User ID）
+- 代理人對話群組（Group ID）
+- 代理人（User ID）
+- 主管或主負責人（文字備註）
+- 代理人（文字備註）
 - 預設任務負責人
 - 預設追蹤對象
-- LINE對象名稱
-- LINE對象類型
-- LINE對象ID
+- LINE對象名稱（結果）
+- LINE對象類型（結果）
+- LINE對象ID（結果）
+- 選擇說明
 - 通知規則
 - 敏感等級
 - 外部承諾需Seven核可
