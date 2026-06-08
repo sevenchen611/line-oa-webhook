@@ -54,13 +54,14 @@ async function syncMeeting(page) {
   const extractedItems = extractActionItems(sourceText);
   const createdTasks = [];
   const skippedTasks = [];
+  const skipDecision = shouldSkipMeetingSync(meeting, sourceText);
 
-  if (isExcludedScope(`${meeting.name}\n${meeting.summary}\n${sourceText}`)) {
+  if (skipDecision.skip) {
     return {
       meeting: publicMeetingSummary(meeting),
       createdTasks,
-      skippedTasks: [{ reason: 'excluded-scope' }],
-      progressReport: { action: 'skipped', reason: 'excluded-scope' },
+      skippedTasks: [{ reason: skipDecision.reason }],
+      progressReport: { action: 'skipped', reason: skipDecision.reason },
     };
   }
 
@@ -392,6 +393,29 @@ function inferProject(text) {
 
 function isExcludedScope(text) {
   return /hozo|hogo|好住|寓好/i.test(String(text || ''));
+}
+
+function shouldSkipMeetingSync(meeting, sourceText) {
+  const value = [
+    meeting.type,
+    meeting.name,
+    meeting.summary,
+    sourceText,
+  ].filter(Boolean).join('\n');
+
+  if (isExcludedScope(value)) {
+    return { skip: true, reason: 'excluded-scope' };
+  }
+
+  if (isNonActionMeeting(value)) {
+    return { skip: true, reason: 'non-action-meeting' };
+  }
+
+  return { skip: false, reason: '' };
+}
+
+function isNonActionMeeting(text) {
+  return /讀書會|學術討論|不產生任務|不轉任務|不建立任務|純討論|知識分享|課程筆記|研討/i.test(String(text || ''));
 }
 
 function inferTaskStatus(text) {

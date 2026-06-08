@@ -324,6 +324,10 @@ Rules:
 - Create candidate tasks in `總控任務庫` with `來源 = 會議`.
 - `選擇專案` is the primary project assignment. If it is filled, meeting-derived
   tasks and progress reports must use it instead of guessing from text.
+- Reading club, academic discussion, knowledge sharing, course notes, and pure
+  discussion meetings are not operational meetings. If `類別` includes `讀書會`,
+  `學術討論`, or `不產生任務`, do not create tasks or progress reports from that
+  meeting.
 - Low-confidence, sensitive, financial, contractual, legal, HR, tax, or external
   commitment items must remain pending confirmation.
 - Meeting progress statements, blockers, and next steps may update
