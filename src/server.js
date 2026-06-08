@@ -18,6 +18,7 @@ const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.gi
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const sevenDataSourceParentBlockId = normalizeId(process.env.SEVEN_DATA_SOURCE_PARENT_BLOCK_ID || '');
 const verifiedSevenDataSources = new Map();
+const recentTaskListsByConversation = new Map();
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -46,6 +47,8 @@ const server = http.createServer(async (req, res) => {
       reportCommandEnabled: true,
       morningBriefCommandEnabled: true,
       taskQueryReplyEnabled: Boolean(notionToken && tasksDataSourceId),
+      immediateCommandEnabled: true,
+      immediateCommandPrefixes: ['Seven Junior', '7Junior', '7 Junior'],
       reportUrl,
       morningBriefUrl,
       conversationPageBlocksEnabled: true,
@@ -93,6 +96,7 @@ async function handleEvent(event, rawBody) {
 
 async function buildCommandReply(event) {
   const text = event.type === 'message' && event.message?.type === 'text' ? String(event.message.text || '').trim() : '';
+  const immediateCommand = parseImmediateCommand(text);
 
   if (morningBriefCommands.has(text)) {
     return {
@@ -108,11 +112,31 @@ async function buildCommandReply(event) {
     };
   }
 
-  if (isTaskListCommandText(text)) {
+  if (immediateCommand && isOpenTaskDetailCommandText(immediateCommand.commandText)) {
+    return buildOpenTaskDetailReply(event, immediateCommand.commandText);
+  }
+
+  if (isTaskListCommandText(immediateCommand?.commandText || text)) {
     return buildTaskListReply(event, text);
   }
 
+  if (immediateCommand) {
+    return buildImmediateCommandAcknowledgement(immediateCommand.commandText);
+  }
+
   return null;
+}
+
+function parseImmediateCommand(text) {
+  const value = String(text || '').trim();
+  const match = value.match(/^(seven\s+junior|7\s*junior)\b[\s,，:：。-]*/i);
+  if (!match) {
+    return null;
+  }
+  return {
+    trigger: match[1],
+    commandText: value.slice(match[0].length).trim(),
+  };
 }
 
 function isTaskListCommandText(text) {
@@ -142,6 +166,7 @@ async function buildTaskListReply(event, text) {
       };
     }
 
+    rememberRecentTaskList(event, tasks);
     const scope = actorName ? `「${actorName}」` : '目前';
     const lines = [`Seven Jr. 幫你查到 ${scope}的未完成待辦：`];
     tasks.slice(0, 8).forEach((task, index) => {
@@ -158,6 +183,104 @@ async function buildTaskListReply(event, text) {
     console.warn(`Unable to build task list reply: ${error.message}`);
     return { type: 'text', text: 'Seven Jr. 有收到你的待辦查詢，但目前讀取總控任務庫失敗，我會保留原始訊息供後續追蹤。' };
   }
+}
+
+function isOpenTaskDetailCommandText(text) {
+  const value = String(text || '').trim();
+  return /(打開|開啟|展開|給我看|看一下|查看|詳細|詳情)/.test(value) && /(第\s*[0-9一二三四五六七八九十]+\s*個|[0-9一二三四五六七八九十]+\s*號)/.test(value) && /(任務|待辦|工作)?/.test(value);
+}
+
+async function buildOpenTaskDetailReply(event, text) {
+  const index = parseTaskOrdinal(text);
+  if (!index) {
+    return { type: 'text', text: '我收到你要打開任務，但還沒判斷出是哪一個。你可以說：「Seven Junior，打開第 2 個任務」。' };
+  }
+
+  const list = getRecentTaskList(event);
+  if (!list?.tasks?.length) {
+    return { type: 'text', text: '我現在沒有上一份待辦清單可以對照。請先說：「Seven Junior，目前有哪些待辦？」我列出來後，你再說要打開第幾個。' };
+  }
+
+  const task = list.tasks[index - 1];
+  if (!task) {
+    return { type: 'text', text: `上一份待辦清單沒有第 ${index} 個任務。你可以重新查一次待辦清單，我再幫你打開。` };
+  }
+
+  const detail = task.id ? await findTaskDetailById(task.id) : task;
+  const lines = [
+    `第 ${index} 個任務：${detail.name || task.name}`,
+    detail.status ? `狀態：${detail.status}` : '',
+    detail.owner ? `負責人：${detail.owner}` : '',
+    detail.dueDate ? `期限：${formatTaipeiDate(detail.dueDate)}` : '',
+    detail.project ? `專案：${detail.project}` : '',
+    detail.summary ? `摘要：${detail.summary}` : '',
+    detail.url ? `Notion：${detail.url}` : '',
+    '',
+    '你可以接著說：',
+    `Seven Junior，把第 ${index} 個任務狀態改成進行中`,
+    `Seven Junior，幫第 ${index} 個任務加備註：今天先確認窗口`,
+  ].filter((line) => line !== '');
+
+  return { type: 'text', text: clampText(lines.join('\n'), 4900) };
+}
+
+function buildImmediateCommandAcknowledgement(commandText) {
+  const riskLevel = resolveCommandRiskLevel(commandText);
+  if (riskLevel === 'High') {
+    return {
+      type: 'text',
+      text: `我已收到這個即時指令，但內容可能涉及金流、合約、法律、稅務或外部承諾，所以我先放進待確認，不會直接執行。\n\n指令：${commandText || '(空白)'}`,
+    };
+  }
+
+  return {
+    type: 'text',
+    text: `我已收到這個即時指令，並放進 SevenAM 指令佇列。\n\n目前我可以即時處理「查待辦」和「打開第幾個任務」。其他操作會先排入佇列，等 Codex 接手處理。\n\n指令：${commandText || '(空白)'}`,
+  };
+}
+
+function rememberRecentTaskList(event, tasks) {
+  const context = resolveConversationContext(event.source || {});
+  recentTaskListsByConversation.set(context.key, {
+    savedAt: Date.now(),
+    tasks: tasks.slice(0, 8),
+  });
+}
+
+function getRecentTaskList(event) {
+  const context = resolveConversationContext(event.source || {});
+  const list = recentTaskListsByConversation.get(context.key);
+  if (!list) {
+    return null;
+  }
+  if (Date.now() - list.savedAt > 30 * 60 * 1000) {
+    recentTaskListsByConversation.delete(context.key);
+    return null;
+  }
+  return list;
+}
+
+function parseTaskOrdinal(text) {
+  const value = String(text || '');
+  const match = value.match(/第\s*([0-9一二三四五六七八九十]+)\s*個/) || value.match(/([0-9一二三四五六七八九十]+)\s*號/);
+  if (!match) {
+    return null;
+  }
+  const raw = match[1];
+  if (/^\d+$/.test(raw)) {
+    return Number(raw);
+  }
+  const digits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  if (raw === '十') {
+    return 10;
+  }
+  if (raw.startsWith('十')) {
+    return 10 + (digits[raw.slice(1)] || 0);
+  }
+  if (raw.endsWith('十')) {
+    return (digits[raw[0]] || 1) * 10;
+  }
+  return digits[raw] || null;
 }
 
 async function resolveTaskQueryActorName(event) {
@@ -205,8 +328,24 @@ async function queryOpenTasks() {
       owner: pageText(page, '負責人') || pageText(page, 'Owner'),
       status: pageStatus(page, '狀態') || pageSelect(page, '狀態'),
       dueDate: pageDate(page, '期限') || pageDate(page, 'Due Date'),
+      summary: pageText(page, 'Codex 判斷摘要') || pageText(page, '下一步') || pageText(page, '來源原文'),
+      url: page.url || '',
     }))
     .filter((task) => !['已完成', '封存', '完成'].includes(task.status));
+}
+
+async function findTaskDetailById(pageId) {
+  const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
+  return {
+    id: page.id,
+    name: pageText(page, '任務名稱') || pageText(page, 'Name') || pageText(page, '名稱') || '(未命名任務)',
+    project: pageRelationTitleFallback(page, '總控專案') || pageText(page, '專案'),
+    owner: pageText(page, '負責人') || pageText(page, 'Owner'),
+    status: pageStatus(page, '狀態') || pageSelect(page, '狀態'),
+    dueDate: pageDate(page, '期限') || pageDate(page, 'Due Date'),
+    summary: pageText(page, 'Codex 判斷摘要') || pageText(page, '下一步') || pageText(page, '來源原文'),
+    url: page.url || '',
+  };
 }
 
 async function replyLineMessage(replyToken, message) {

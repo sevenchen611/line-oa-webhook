@@ -15,6 +15,7 @@ Do not copy production values from another project. Each project must use its ow
 | `AM-IMP-2026.0608.05` | Improvement manifest and upgrade records | Installed | 2026-06-08 | Planning docs | This manifest exists. |
 | `AM-IMP-2026.0608.06` | Event-conclusion daily report and follow-up task synthesis | Installed | 2026-06-08 | `8954062`, `f77bd36`, `3201ef7`, `cd47497`; Notion task writeback | Local syntax checks passed; preview/send tested; event-level follow-up tasks created in 7AM total task database. |
 | `AM-IMP-2026.0608.08` | Hierarchical responsibility owner narrowing workflow | Installed | 2026-06-08 | `5575e42`; Notion schema update; `docs/upgrades/UPGRADE-2026-06-08-AM-IMP-2026.0608.08.md` | Local syntax check passed; dry run and write run updated 10 responsibility rows from 52 group options and 23 member options. Production Render cron deploy pending verification. |
+| `AM-IMP-2026.0608.09` | Immediate LINE command conversation mode | Installed | 2026-06-08 | `docs/upgrades/UPGRADE-2026-06-08-AM-IMP-2026.0608.09.md` | `node --check` passed; local health showed `immediateCommandEnabled=true`; production deployment and live LINE detail command test pending. |
 
 ## Project-Specific Values
 

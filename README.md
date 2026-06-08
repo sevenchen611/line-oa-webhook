@@ -62,6 +62,14 @@ Web Service 必要設定：
 - `SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID`: LINE 群組選項表，預設為 `b6cfffbf-e7b2-4da4-b21d-d055bc68af69`。
 - `SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID`: LINE 群組成員選項表，預設為 `979949aa-bac3-45ac-a4cc-a38585addb89`。
 
+LINE 即時指令：
+
+- `Seven Junior`、`seven Junior`、`7Junior`、`7 Junior` 開頭的 LINE 文字會被視為即時指令。
+- 已支援即時查詢待辦，例如：`Seven Junior，目前有哪些待辦？`
+- 查完待辦後，30 分鐘內可接續打開清單項目，例如：`Seven Junior，打開第 2 個任務`。
+- 尚未支援的即時指令會立刻回覆已收到，並保留在 Codex command queue 等 Codex 後續處理。
+- 涉及金流、合約、法律、稅務、HR 或外部承諾的內容不會直接執行，會先進待確認。
+
 權責定義表的主要填寫邏輯：
 
 - `權責項目名稱`: 這列要定義的專案、部門、LINE 群組對口或特殊權責項目。
