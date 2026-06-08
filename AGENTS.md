@@ -11,6 +11,122 @@ The system must answer two questions:
 1. What is the current status of each project?
 2. What should happen next, and who needs to be reminded?
 
+## Core AM Work: Conversation To Tasks
+
+SevenAM's most important job is to help Seven turn conversations into reliable
+tasks and keep those tasks moving.
+
+The system should treat LINE conversations, meeting records, daily reports, and
+system-generated suggestions as intake sources for total-control work. The
+default posture is not to wait for perfect wording. If a message or meeting
+record reasonably indicates something that someone should do, track, confirm,
+follow up, decide, or close, SevenAM should capture it as a task candidate or an
+update to an existing task.
+
+### 1. Core Task: Extract Action Items
+
+SevenAM must continuously look for reasonable tasks in LINE conversations.
+
+Rules:
+
+- Extract tasks from LINE conversations when the conversation implies an action,
+  follow-up, decision, unresolved issue, delivery promise, blocker, owner
+  responsibility, or completion check.
+- Each task should connect back to a project goal. A task without a project goal
+  is incomplete context, not a fully understood control item.
+- If a LINE conversation reveals a new project goal, first record or propose the
+  project goal, then organize the related tasks underneath that goal.
+- If a task is useful but the project goal is unclear, keep it as a candidate
+  task and mark what needs clarification instead of ignoring it.
+- When one conversation contains multiple tasks or multiple goals, split them
+  into separate task records where practical.
+- The task record should preserve source context: original LINE message,
+  conversation, project guess, reason for extraction, and any inferred owner,
+  due date, priority, or risk.
+
+Project-goal linkage:
+
+- A project goal explains why the task matters and what larger outcome it serves.
+- A new project goal may appear as a stated objective, milestone, deadline,
+  requested result, recurring concern, or repeated cluster of related tasks.
+- When a new project goal is found, SevenAM should identify the goal, summarize
+  the related background, and list the first tasks needed to move it forward.
+- Existing project assignment from the LINE conversation master should override
+  text guessing. If the conversation master has no project, use the content and
+  responsibility table to infer cautiously.
+
+### 2. Meeting Records As Task And Knowledge Sources
+
+Meeting records are a first-class intake source, not a secondary note archive.
+
+Task definition:
+
+- In meeting records, every checkbox item is a task.
+- The content immediately after the checkbox is the task content.
+- Checkbox-derived meeting tasks do not need extra confirmation that they are
+  "real tasks" because the meeting record already marked them as action items.
+- This applies to Notion to-do blocks and Markdown-style checkbox lines such as
+  `[ ] item`, `[x] item`, `□ item`, `☐ item`, `☑ item`, and `✅ item`.
+- Checkbox tasks should enter `總控任務庫` with `來源 = 會議`. When the task
+  schema has confirmation status, use `確認狀態 = 已確認`.
+- Avoid duplicates by matching the meeting reference plus normalized task text.
+
+Reference-document role:
+
+- Meeting discussion, decisions, progress notes, blockers, and conclusions are
+  important knowledge sources for task execution.
+- Do not only extract the checkbox text and discard the rest of the meeting.
+  Preserve or link the surrounding discussion so the executor can understand why
+  the task exists, what was decided, what has already changed, and what risk or
+  dependency was mentioned.
+- Meeting decisions can explain project-goal changes, task priority changes,
+  ownership changes, due-date changes, or completion criteria.
+- Meeting records may also update project progress reports even when they do not
+  create a new task.
+
+### 3. Task Status Tracking And Updates
+
+SevenAM must use later conversations and meeting records to detect whether a
+task has been handled, blocked, changed, or completed.
+
+Rules:
+
+- Track task status from LINE conversations, meeting records, daily reports,
+  follow-up confirmations, and system-generated suggestions.
+- If a later source indicates a task has moved forward, changed owner, changed
+  due date, become blocked, been partially handled, or been completed, update the
+  task record.
+- Status changes must be grounded in source clues. Do not silently mark a task
+  complete based only on optimism or lack of recent discussion.
+- Record the status-change evidence inside the task body or source/evidence
+  field: where the clue came from, what it said, what status changed, and when it
+  was detected.
+- Keep the raw source message or meeting reference linked so Seven can audit why
+  the status changed.
+
+Valid evidence sources include:
+
+- System suggestions that identify a likely status change or follow-up result.
+- Daily report contents, including morning brief, follow-up reports, and the
+  20:30 daily control report.
+- A later LINE conversation where someone says the item was handled, answered,
+  scheduled, sent, paid, reviewed, blocked, cancelled, or completed.
+- A meeting record that records a decision, completion, blocker, reassignment,
+  or next step for the same task.
+
+Status update behavior:
+
+- If evidence shows completion, move the task toward `已完成` or
+  `待確認完成` depending on risk and confidence.
+- If evidence shows waiting on someone, use `等待回覆` and record who or what is
+  being waited on.
+- If evidence shows work started but not finished, use `進行中` and add the
+  current next step.
+- If evidence is plausible but uncertain, keep the task pending confirmation and
+  write the evidence summary for Seven review.
+- Sensitive, financial, contractual, legal, HR, tax, or external commitment
+  items still require Seven confirmation before final closure or external action.
+
 ## Main Actors
 
 - User: final decision maker, especially for sensitive, low-confidence, financial, contractual, legal, HR, tax, or external commitment matters.
@@ -185,10 +301,15 @@ Cross-project task database.
 Rules:
 
 - LINE-created and meeting-created tasks first enter this database.
-- New tasks are not official until confirmed, unless confidence is high and risk is low.
+- New LINE-derived tasks are not official until confirmed, unless confidence is
+  high and risk is low.
+- Meeting-record checkbox tasks are explicit tasks and may enter as confirmed
+  because the checkbox itself is the meeting action marker.
 - Low-confidence or sensitive tasks must stay pending confirmation.
-- Meeting action items should use `來源 = 會議`, `狀態 = 待確認`,
+- Non-checkbox meeting action items should use `來源 = 會議`, `狀態 = 待確認`,
   and `確認狀態 = 未確認` by default.
+- Checkbox meeting action items should use `來源 = 會議`; when supported by the
+  task schema, set `確認狀態 = 已確認`.
 - Avoid duplicates by matching the meeting page URL and normalized task name before
   creating a new task.
 
@@ -320,8 +441,14 @@ Rules:
 - Treat meeting records as another raw/intake layer, similar to LINE messages.
 - Extract action items from `會議記錄` and page body text. If a future meeting
   database has `行動項目`, use it first.
+- Any checkbox item in the meeting record is a task. Use the text after the
+  checkbox as the task content and do not require extra confirmation that it is
+  a real task.
 - Each extracted action item must include at least an action and a subject.
 - Create candidate tasks in `總控任務庫` with `來源 = 會議`.
+- For checkbox-derived tasks, set confirmation status to `已確認` when the task
+  database supports it. For non-checkbox meeting items, keep the existing
+  confidence and risk checks.
 - `選擇專案` is the primary project assignment. If it is filled, meeting-derived
   tasks and progress reports must use it instead of guessing from text.
 - Reading club, academic discussion, knowledge sharing, course notes, and pure
@@ -332,6 +459,9 @@ Rules:
   commitment items must remain pending confirmation.
 - Meeting progress statements, blockers, and next steps may update
   `專案進度報表庫`, but only inside `Codex 總控中心`.
+- Meeting discussions and decisions should be preserved or linked as execution
+  background for related tasks because they explain progress history, decisions,
+  blockers, dependencies, and completion criteria.
 
 ### 專案進度報表庫
 
@@ -404,6 +534,9 @@ Codex may create candidate tasks from LINE conversations.
 Rules:
 
 - A task should include at least an action and a subject.
+- Every task should be connected to a project goal where possible. If the
+  conversation reveals a new project goal, summarize that goal and organize the
+  related tasks under it.
 - If project, owner, or due date is missing, the task can still be created but must be marked incomplete/insufficient.
 - Sensitive or high-risk tasks are not auto-confirmed.
 - High-risk topics include money, contracts, HR discipline, legal, tax, and external commitments.
@@ -412,6 +545,9 @@ Rules:
 - When one LINE message contains multiple concerns, split it into multiple candidate tasks where practical.
 - Relationship or complaint escalation signals such as dissatisfaction, lack of progress updates, apology, stakeholder discomfort, or promised follow-up must be treated as important `關係/客訴事件` items, not as generic low-signal chat.
 - If a LINE conversation master has `總控專案` filled, that project assignment overrides text-based project guessing for tasks, progress reports, and daily report grouping.
+- Later LINE messages, meeting notes, daily reports, or system suggestions may
+  update an existing task's status. Record the source clue and the detected
+  status change in the task body or evidence field.
 - Use `--reprocess` after changing judgement rules so already-judged recent messages can be rescanned and deduped.
 
 Suggested forced LINE tags:
@@ -464,7 +600,15 @@ LINE message judgement sync runs:
 npm run line:judgements -- --include-outgoing-groups --limit 50
 ```
 
-It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, classifies LINE text in Assistant Manager mode, creates candidate tasks and project progress reports when appropriate, then marks the original message as judged. Scheduled judgement includes normal `line` source messages and Seven Jr. outgoing `ai-engine` messages sent to groups/rooms through the control API; personal report notifications to Seven are excluded. Low-signal messages are marked judged without creating tasks.
+It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, but its purpose is task reconciliation, not direct message-to-task conversion. For every new LINE message, the hourly job must first read the same LINE conversation context, then check the active `總控任務庫` for related tasks. If the message extends, answers, completes, blocks, changes, or clarifies an existing task, update that task and record the evidence. Only when no existing task can reasonably absorb the message should the job decide whether it is a genuinely new event and create one event-level task.
+
+The 08:00-22:00 hourly LINE judgement contract is defined in:
+
+```text
+config/hourly-line-task-reconciliation.json
+```
+
+Scheduled judgement includes normal `line` source messages and Seven Jr. outgoing `ai-engine` messages sent to groups/rooms through the control API; personal report notifications to Seven are excluded. Background, acknowledgement, duplicate, test, pure knowledge-sharing, or non-actionable record messages should be marked judged without creating tasks.
 
 Responsibility candidate sync runs:
 

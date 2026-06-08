@@ -1,0 +1,28 @@
+{
+  "source": "D:\\Codex_project\\AM_Core\\config\\report-intervention-actions.json",
+  "canonicalActions": [
+    "CREATE_TASK",
+    "DISMISS_NOT_TASK",
+    "CHANGE_PROJECT",
+    "SET_PROJECT_GOAL",
+    "SET_TASK_GOAL",
+    "REQUEST_OWNER_GOAL_STATEMENT"
+  ],
+  "displayLabels": {
+    "CREATE_TASK": "建立任務",
+    "DISMISS_NOT_TASK": "不是任務",
+    "CHANGE_PROJECT": "改專案",
+    "SET_PROJECT_GOAL": "指定專案目標",
+    "SET_TASK_GOAL": "指定任務目標",
+    "REQUEST_OWNER_GOAL_STATEMENT": "要求負責人口述目標"
+  },
+  "decisionStatuses": [
+    "PENDING_CONTROLLER",
+    "TASK_CREATED",
+    "NOT_A_TASK",
+    "PROJECT_REASSIGNED",
+    "PROJECT_GOAL_ASSIGNED",
+    "TASK_GOAL_ASSIGNED",
+    "WAITING_OWNER_GOAL_STATEMENT"
+  ]
+}

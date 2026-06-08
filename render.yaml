@@ -40,6 +40,12 @@ services:
         value: b6cfffbf-e7b2-4da4-b21d-d055bc68af69
       - key: SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID
         value: 979949aa-bac3-45ac-a4cc-a38585addb89
+      - key: SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID
+        sync: false
+      - key: SEVEN_JUDGMENT_REVIEW_TARGET_NAME_KEYWORD
+        value: "Seven 陳聖文"
       - key: SEVEN_CONTROL_API_KEY
         sync: false
       - key: SEVEN_REPORT_TARGET_IDS
@@ -128,6 +134,20 @@ services:
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: SEVEN_CRON_ALERTS_ENABLED
         value: "true"
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_RETRY_DELAYS_MS
+        value: "10000,30000,60000"
+      - key: AM_CRON_REQUEST_TIMEOUT_MS
+        value: "45000"
+      - key: AM_CRON_HEALTH_PING_ENABLED
+        value: "true"
+      - key: AM_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -149,6 +169,20 @@ services:
       - key: CONTROL_LINE_PUSH_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_RETRY_DELAYS_MS
+        value: "10000,30000,60000"
+      - key: AM_CRON_REQUEST_TIMEOUT_MS
+        value: "45000"
+      - key: AM_CRON_HEALTH_PING_ENABLED
+        value: "true"
+      - key: AM_CRON_ALERTS_ENABLED
         value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
@@ -172,6 +206,20 @@ services:
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: SEVEN_CRON_ALERTS_ENABLED
         value: "true"
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_RETRY_DELAYS_MS
+        value: "10000,30000,60000"
+      - key: AM_CRON_REQUEST_TIMEOUT_MS
+        value: "45000"
+      - key: AM_CRON_HEALTH_PING_ENABLED
+        value: "true"
+      - key: AM_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -194,6 +242,20 @@ services:
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: SEVEN_CRON_ALERTS_ENABLED
         value: "true"
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_RETRY_DELAYS_MS
+        value: "10000,30000,60000"
+      - key: AM_CRON_REQUEST_TIMEOUT_MS
+        value: "45000"
+      - key: AM_CRON_HEALTH_PING_ENABLED
+        value: "true"
+      - key: AM_CRON_ALERTS_ENABLED
+        value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:
           name: line-oa-webhook
@@ -215,6 +277,20 @@ services:
       - key: CONTROL_LINE_PUSH_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: SEVEN_CRON_ALERTS_ENABLED
+        value: "true"
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_RETRY_DELAYS_MS
+        value: "10000,30000,60000"
+      - key: AM_CRON_REQUEST_TIMEOUT_MS
+        value: "45000"
+      - key: AM_CRON_HEALTH_PING_ENABLED
+        value: "true"
+      - key: AM_CRON_ALERTS_ENABLED
         value: "true"
       - key: SEVEN_CONTROL_API_KEY
         fromService:

@@ -794,7 +794,7 @@ async function buildReportMessage(reportType, customText) {
   if (['morning', 'morning-brief', '早報'].includes(reportType)) {
     return {
       type: 'text',
-      text: `早上 8 點早晨總控報告：\n${morningBriefUrl}\n\n請確認今日行程、優先工作、未完成事項與需要決策的項目。`,
+      text: `早上 8 點晨報：\n${morningBriefUrl}\n\n請先做目標追認：今天新增或尚未確認的任務/專案，都要先問負責人「完成目標是什麼、怎樣叫完成、由誰驗收」。口述內容要寫進「目標口述原文」並上傳給 Codex 確認；確認前不列入真實進度。`,
     };
   }
 
@@ -806,28 +806,28 @@ async function buildReportMessage(reportType, customText) {
 
     return {
       type: 'text',
-      text: `晚上 8 點半每日總控總確認：\n${dailyReportUrl}\n\n請確認專案進度、待辦狀態、新任務、附件解析需求與明日優先事項。`,
+      text: `晚上 8 點半每日總控總確認：\n${dailyReportUrl}\n\n請先收斂今天的目標追認：哪些任務/專案已取得口述、哪些已上傳給 Codex、哪些已確認可追蹤。只有「Codex 目標確認」為已確認可追蹤或追蹤中的案件，才安排下一步與完成百分比。`,
     };
   }
 
   if (['followup-morning', 'followup-10', '10', '上午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `上午 10 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '10')}\n\n請確認哪些提醒可以由 Seven Jr. 送出，並檢查新任務是否成立或需要退回修改。`,
+      text: `上午 10 點目標追認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '10')}\n\n請檢查上午新增任務/專案；凡是沒有「完成目標定義」的，先用 LINE 或 Email 問負責人口述目標。口述上傳給 Codex 確認後，下一個時段再決定後續追蹤。`,
     };
   }
 
   if (['followup-midday', 'followup-13', '13', '中午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `下午 1 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '13')}\n\n請確認午間前新增的待確認任務、追蹤訊息與需要退回修改的項目。`,
+      text: `下午 1 點目標追認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '13')}\n\n請確認午間前新增項目的目標是否已被負責人口述；若尚未口述，先追問。若已口述，請上傳給 Codex 確認，確認後才排下一步。`,
     };
   }
 
   if (['followup-afternoon', 'followup-17', '17', '下午追蹤'].includes(reportType)) {
     return {
       type: 'text',
-      text: `下午 5 點追蹤確認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '17')}\n\n請確認下午要追蹤的對象與訊息，並檢查新任務是否成立或需要退回修改。`,
+      text: `下午 5 點目標追認與新任務確認：\n${withFollowupSlot(followupBaseUrl, '17')}\n\n請確認下午要發出的 LINE/Email 追問；如果窗口不知道目標，請她指定真正負責人。Codex 確認完成目標後，下一個時段才告訴負責人後續要做什麼。`,
     };
   }
 
@@ -890,13 +890,17 @@ async function listRecentTasksForDailyReport() {
       priority: pageSelectProperty(page, '優先級'),
       status: pageSelectProperty(page, '狀態'),
       confirmation: pageSelectProperty(page, '確認狀態'),
+      goalStatus: pageSelectProperty(page, 'Codex 目標確認'),
       sourceType: pageSelectProperty(page, '來源'),
-      summary: pageTextProperty(page, 'Codex 判斷摘要') || pageTextProperty(page, '下一步') || pageTextProperty(page, '來源原文'),
-      nextStep: pageTextProperty(page, '下一步'),
+      summary: pageTextProperty(page, 'Codex 判斷摘要') || pageTextProperty(page, '完成目標定義') || pageTextProperty(page, '下一步') || pageTextProperty(page, '來源原文'),
+      nextStep: pageTextProperty(page, '下一步給負責人') || pageTextProperty(page, '下一步'),
       updatedAt: pageDateProperty(page, '最後更新') || page.last_edited_time || '',
       url: page.url,
     }))
-    .filter((item) => isTodayTaipei(item.updatedAt, today) || ['待確認', '未確認', '進行中', '等待回覆'].includes(item.status) || item.confirmation === '未確認')
+    .filter((item) => isTodayTaipei(item.updatedAt, today)
+      || ['待確認', '未確認', '進行中', '等待回覆'].includes(item.status)
+      || item.confirmation === '未確認'
+      || ['待負責人口述', '待上傳給 Codex', 'Codex 待確認', '需補充'].includes(item.goalStatus))
     .slice(0, 30);
 }
 
@@ -1030,6 +1034,7 @@ function buildSynthesizedDailyEvents(reportItems, progressReports) {
   addEvent(buildRentalCustomerIssueEvent(reportItems, progressReports));
   addEvent(buildRelationshipEscalationEvent(reportItems));
   addEvent(buildTaxEvent(reportItems));
+  addEvent(buildGoalRecognitionEvent(reportItems));
 
   const usedKeys = new Set(events.flatMap((event) => event.items.map(reportItemKey)));
   const remainingHigh = reportItems
@@ -1161,6 +1166,24 @@ function buildTaxEvent(items) {
   };
 }
 
+function buildGoalRecognitionEvent(items) {
+  const matched = items.filter((item) => /完成目標|目標口述|Codex 目標確認|待負責人口述|待上傳給 Codex|追認|驗收|怎樣叫完成|完成百分比/.test(eventHaystack(item)));
+  if (!matched.length) return null;
+
+  return {
+    subject: '目標追認缺口',
+    target: '所有新增任務與專案負責人',
+    project: '跨專案',
+    priority: '高',
+    impact: '沒有完成目標定義，就不能合理判斷完成百分比，也無法知道下一步是否正確。',
+    conclusion: '目前最重要的管理動作是取得負責人口述，並讓 Codex 確認能否追蹤。',
+    nextAction: '每個報告時段檢查新增項目：缺目標先問，已口述就上傳給 Codex，確認後才追蹤。',
+    solution: '使用「Codex 目標確認、目標口述原文、對外詢問草稿、下一步給負責人」四個欄位收斂。',
+    depth: `${matched.length} 則目標追認相關訊號已合併。`,
+    items: matched,
+  };
+}
+
 function formatEventSummaryCard(event, index) {
   const project = event.project ? `｜${event.project}` : '';
   const priority = event.priority ? `｜${event.priority}` : '';
@@ -1192,6 +1215,7 @@ function eventHaystack(item) {
     item.summary,
     item.nextStep,
     item.status,
+    item.goalStatus,
     ...(item.tags || []),
   ].join('\n');
 }

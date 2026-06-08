@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "id": "hourly-line-task-reconciliation",
+  "name": "Hourly LINE task reconciliation",
+  "purpose": "Every hourly LINE check decides whether new messages update existing tasks or create genuinely new event tasks.",
+  "localSchedule": {
+    "timezone": "Asia/Taipei",
+    "windowStart": "08:00",
+    "windowEnd": "22:00",
+    "frequency": "hourly",
+    "inclusiveWindow": true
+  },
+  "inputs": [
+    "new LINE messages since previous run",
+    "same LINE conversation history",
+    "active SevenAM total-control tasks",
+    "SevenAM conversation master metadata",
+    "recent meeting records and report decisions when available"
+  ],
+  "coreQuestion": "Is this new message an extension/status update/evidence for an existing task, or is it a new event that needs a new task?",
+  "decisionFlow": [
+    {
+      "step": 1,
+      "name": "Load new messages",
+      "rule": "Read new LINE messages in the hourly window before judging tasks."
+    },
+    {
+      "step": 2,
+      "name": "Recover conversation context",
+      "rule": "For each new message, read earlier messages from the same LINE group, room, or user so the message is judged inside its event thread."
+    },
+    {
+      "step": 3,
+      "name": "Search active tasks",
+      "rule": "Search the total-control task database for active tasks related by project, group, people, subject, delivery, dates, source page, or prior evidence."
+    },
+    {
+      "step": 4,
+      "name": "Prefer updating existing tasks",
+      "rule": "If the new message reasonably extends, answers, blocks, completes, changes, or clarifies an existing task, update that task instead of creating a new one."
+    },
+    {
+      "step": 5,
+      "name": "Create new task only for new events",
+      "rule": "If no existing task can absorb the message and the message contains a real action, owner, delivery, decision, risk, or follow-up need, create a new event-level task."
+    },
+    {
+      "step": 6,
+      "name": "Suppress background",
+      "rule": "If the message is background, acknowledgement, duplicate, test text, pure knowledge sharing, or a record with no action, mark it as judged without creating a task."
+    }
+  ],
+  "existingTaskUpdateSignals": [
+    "requested data was provided",
+    "someone answered a prior question",
+    "a meeting time or attendance was confirmed",
+    "a file or attachment was delivered",
+    "someone says they will handle it",
+    "someone reports completion",
+    "someone reports a blocker",
+    "someone changes the owner, date, scope, or next step",
+    "a related group provides indirect completion evidence"
+  ],
+  "newEventSignals": [
+    "new subject not connected to active tasks",
+    "new delivery request",
+    "new external commitment",
+    "new financial, HR, legal, tax, or customer-risk issue",
+    "new project goal",
+    "new unresolved decision",
+    "new follow-up whose owner or expected result is distinct from existing tasks"
+  ],
+  "outputs": [
+    {
+      "name": "update_existing_task",
+      "description": "Update status, next step, owner, due date, evidence, or task title on an existing task."
+    },
+    {
+      "name": "create_new_event_task",
+      "description": "Create one event-level task, not one task per message."
+    },
+    {
+      "name": "mark_judged_no_task",
+      "description": "Mark the message judged when it is background, duplicate, test text, acknowledgement, or non-actionable record."
+    },
+    {
+      "name": "request_confirmation",
+      "description": "Ask the project owner when the message is important but cannot be safely mapped or closed."
+    }
+  ],
+  "taskDatabasePolicy": {
+    "primaryUnit": "event-level task",
+    "avoid": [
+      "one task per message",
+      "duplicating existing task fragments",
+      "keeping completed one-time operations as active tasks",
+      "creating tasks from pure background or system-introduction messages"
+    ],
+    "requiredEvidenceOnUpdate": [
+      "source conversation or message",
+      "what changed",
+      "why the existing task was updated",
+      "when the change was detected"
+    ]
+  }
+}
+

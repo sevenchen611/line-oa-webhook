@@ -52,6 +52,7 @@ async function syncMeeting(page) {
   const bodyText = await readPageText(page.id);
   const sourceText = [meeting.actionItems, meeting.meetingRecord, bodyText].filter(Boolean).join('\n');
   const extractedItems = extractActionItems(sourceText);
+  const actionItemTexts = extractedItems.map((item) => item.text);
   const createdTasks = [];
   const skippedTasks = [];
   const skipDecision = shouldSkipMeetingSync(meeting, sourceText);
@@ -65,8 +66,11 @@ async function syncMeeting(page) {
     };
   }
 
-  for (const itemText of extractedItems) {
-    const candidate = buildTaskCandidate(itemText, meeting);
+  for (const extractedItem of extractedItems) {
+    const itemText = extractedItem.text;
+    const candidate = buildTaskCandidate(itemText, meeting, {
+      checkboxDerived: extractedItem.checkboxDerived,
+    });
     const existing = await findExistingTask(candidate.name, meeting.url);
 
     if (existing) {
@@ -83,11 +87,11 @@ async function syncMeeting(page) {
     createdTasks.push({ task: candidate.name, pageId: created.id, url: created.url });
   }
 
-  const progressReport = await maybeCreateProgressReport(meeting, bodyText, extractedItems);
+  const progressReport = await maybeCreateProgressReport(meeting, bodyText, actionItemTexts);
 
   return {
     meeting: publicMeetingSummary(meeting),
-    extractedActionItems: extractedItems,
+    extractedActionItems: actionItemTexts,
     createdTasks,
     skippedTasks,
     progressReport,
@@ -188,18 +192,23 @@ function extractActionItems(text) {
   const items = [];
 
   for (const rawLine of normalized.split('\n')) {
+    const checkboxDerived = isCheckboxActionLine(rawLine);
     const item = normalizeActionLine(rawLine);
     if (!item || seen.has(item)) {
       continue;
     }
-    if (!looksLikeActionItem(item)) {
+    if (!checkboxDerived && !looksLikeActionItem(item)) {
       continue;
     }
     seen.add(item);
-    items.push(item);
+    items.push({ text: item, checkboxDerived });
   }
 
   return items.slice(0, 30);
+}
+
+function isCheckboxActionLine(value) {
+  return /^\s*(?:\[[ xX]\]|□|☐|☑|✅)\s+\S/u.test(String(value || ''));
 }
 
 function normalizeActionLine(value) {
@@ -238,7 +247,7 @@ function looksLikeActionItem(value) {
   return actionPattern.test(text) || actionTerms.some((term) => text.length <= 24 && text.toLowerCase().includes(term.toLowerCase()));
 }
 
-function buildTaskCandidate(itemText, meeting) {
+function buildTaskCandidate(itemText, meeting, options = {}) {
   const analysisText = `${meeting.name}\n${meeting.summary}\n${itemText}`;
   const project = meeting.selectedProject || inferProject(analysisText);
   const riskLevel = inferRiskLevel(analysisText);
@@ -249,7 +258,9 @@ function buildTaskCandidate(itemText, meeting) {
   const summary = [
     `會議：${meeting.name}`,
     `同步識別碼：${syncId}`,
-    `判斷：由會議行動項目轉入候選任務。`,
+    options.checkboxDerived
+      ? '判斷：由會議 checkbox 行動項目轉入已確認任務。'
+      : '判斷：由會議行動項目轉入候選任務。',
     riskLevel === 'High' ? '注意：內容可能涉及敏感或高風險事項，需 Seven 確認後再推進。' : '',
   ].filter(Boolean).join('\n');
 
@@ -258,14 +269,14 @@ function buildTaskCandidate(itemText, meeting) {
     properties: compactProperties({
       任務名稱: titleProperty(itemText),
       狀態: selectProperty(status),
-      確認狀態: selectProperty('未確認'),
+      確認狀態: selectProperty(options.checkboxDerived ? '已確認' : '未確認'),
       來源: selectProperty('會議'),
       信心等級: selectProperty(confidence),
       優先級: selectProperty(inferPriority(itemText, riskLevel)),
       專案: selectProperty(project),
       負責人: richTextProperty(inferOwner(itemText)),
       下一步: richTextProperty(itemText),
-      來源原文: richTextProperty(`會議：${meeting.name}\n行動項目：${itemText}\n同步識別碼：${syncId}`),
+      來源原文: richTextProperty(`會議：${meeting.name}\n行動項目：${itemText}\n來源標記：${options.checkboxDerived ? 'meeting-checkbox' : 'meeting-action'}\n同步識別碼：${syncId}`),
       'Codex 判斷摘要': richTextProperty(summary),
       '關聯 Notion 頁面': urlProperty(meeting.url),
       截止日: dueDate ? dateProperty(dueDate) : undefined,
@@ -544,7 +555,11 @@ function blockText(block) {
     return '';
   }
   if (Array.isArray(value.rich_text)) {
-    return richTextPlain(value.rich_text);
+    const text = richTextPlain(value.rich_text);
+    if (block.type === 'to_do') {
+      return `${value.checked ? '[x]' : '[ ]'} ${text}`.trim();
+    }
+    return text;
   }
   return '';
 }

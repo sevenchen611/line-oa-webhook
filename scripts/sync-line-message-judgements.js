@@ -542,30 +542,46 @@ function inferBlockerText(text) {
 }
 
 function buildTaskName(concern, message) {
-  if (concern.category === 'health') return `${concern.project}：關心與追蹤健康狀況 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'insurance') return `${concern.project}：確認保險/火險續保處理 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'finance') return `${concern.project}：確認財務/稅務事項 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'customerIssue') return `${concern.project}：處理房客/客戶問題 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'relationshipIssue') return `${concern.project}：處理關係/客訴事件 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'delegation') return `${concern.project}：確認交由 Seven 處理事項 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'meeting') return `${concern.project}：同步會議/討論行動項目 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'decision') return `${concern.project}：確認決策 - ${shortSubject(concern.summary)}`;
-  if (concern.category === 'followup') return `${concern.project}：追蹤 ${shortSubject(concern.summary)}`;
-  if (concern.category === 'blocked') return `${concern.project}：處理卡點 ${shortSubject(concern.summary)}`;
-  if (concern.category === 'done') return `${concern.project}：確認完成 ${shortSubject(concern.summary)}`;
+  const subject = shortSubject(concern.summary);
+  if (concern.category === 'health') return `${concern.project}：關心與追蹤健康狀況 - ${subject}`;
+  if (concern.category === 'insurance') return `${concern.project}：確認保險/火險續保處理 - ${subject}`;
+  if (concern.category === 'finance') return `${concern.project}：確認財務/稅務事項 - ${subject}`;
+  if (concern.category === 'customerIssue') return `${concern.project}：處理房客/客戶問題 - ${subject}`;
+  if (concern.category === 'relationshipIssue') return `${concern.project}：處理關係/客訴事件 - ${subject}`;
+  if (concern.category === 'delegation') return `${concern.project}：確認交由 Seven 處理事項 - ${subject}`;
+  if (concern.category === 'meeting') return `${concern.project}：同步會議/討論行動項目 - ${subject}`;
+  if (concern.category === 'decision') return `${concern.project}：確認決策 - ${subject}`;
+  if (concern.category === 'followup') return `${concern.project}：追蹤 ${subject}`;
+  if (concern.category === 'blocked') return `${concern.project}：處理卡點 ${subject}`;
+  if (concern.category === 'done') return `${concern.project}：確認完成 ${subject}`;
 
-  const source = message.conversationName ? `${message.conversationName} ` : '';
-  return `${concern.project}：判斷 ${source}${shortSubject(concern.summary)}`;
+  const source = cleanHumanLabel(message.conversationDisplayName || message.conversationName);
+  const sourcePrefix = source ? `${source}：` : '';
+  return `${concern.project}：${sourcePrefix}${subject}`;
 }
 
 function shortSubject(text) {
   return text
     .replace(/#\S+/g, '')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+    .replace(/\b[0-9a-f]{32}\b/gi, '')
+    .replace(/\b[CUR][0-9a-f]{32}\b/gi, '')
+    .replace(/\bline:[^\s，。,.：:]+/gi, '')
+    .replace(/同步識別碼：\S+/g, '')
     .replace(/\s+/g, ' ')
     .replace(/^.*?(請|麻煩|幫我|我要|需要|希望|是否|要不要|是不是)/, '$1')
     .trim()
     .slice(0, 34)
     .replace(/[，。,.：:]+$/g, '') || 'LINE 訊息待判斷';
+}
+
+function cleanHumanLabel(value) {
+  return String(value || '')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+    .replace(/\b[0-9a-f]{32}\b/gi, '')
+    .replace(/\b[CUR][0-9a-f]{32}\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function categoryLabel(category) {
