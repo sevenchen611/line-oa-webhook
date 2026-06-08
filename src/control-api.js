@@ -17,8 +17,10 @@ const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
+const SEVEN_DATA_SOURCE_PARENT_BLOCK_ID = normalizeId(process.env.SEVEN_DATA_SOURCE_PARENT_BLOCK_ID || '');
 const PUBLIC_BASE_URL = (process.env.SEVEN_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://line-oa-webhook-nn5j.onrender.com').replace(/\/+$/, '');
 const dailyConversationProjectCache = new Map();
+const verifiedSevenDataSources = new Map();
 const REPORT_ROUTES = new Map([
   ['/reports/morning-brief', '../reports/morning-brief-prototype.html'],
   ['/reports/morning-brief-prototype.html', '../reports/morning-brief-prototype.html'],
@@ -58,6 +60,8 @@ async function handleControlRequest(req, res, pathname) {
       approvalAcknowledgementEnabled: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       outgoingMessageLoggingEnabled: Boolean(process.env.NOTION_TOKEN && CONVERSATIONS_DATA_SOURCE_ID && MESSAGES_DATA_SOURCE_ID),
       defaultReportTargetConfigured: Boolean(process.env.SEVEN_REPORT_TARGET_ID),
+      multiRecipientReportEnabled: true,
+      reportCcConfigured: Boolean(process.env.SEVEN_REPORT_CC_TARGET_IDS || process.env.SEVEN_REPORT_CC_NAME_KEYWORDS),
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
@@ -593,16 +597,26 @@ async function previewReport(body) {
 async function resolveReportTargets(body) {
   const targets = normalizeTargets(body.targets, body.targetId, body.targetType);
   if (targets.length) {
-    return targets;
+    return uniqueTargets(targets);
   }
 
-  const defaultTargetId = process.env.SEVEN_REPORT_TARGET_ID;
-  if (defaultTargetId) {
-    return [{ id: defaultTargetId, type: process.env.SEVEN_REPORT_TARGET_TYPE || 'user' }];
-  }
+  const resolvedTargets = [];
+  resolvedTargets.push(...targetsFromIds(process.env.SEVEN_REPORT_TARGET_IDS || process.env.SEVEN_REPORT_TARGET_ID, process.env.SEVEN_REPORT_TARGET_TYPE || 'user', 'env-primary'));
+  resolvedTargets.push(...targetsFromIds(process.env.SEVEN_REPORT_CC_TARGET_IDS, process.env.SEVEN_REPORT_CC_TARGET_TYPE || 'user', 'env-cc'));
 
-  const notionTarget = await findDefaultReportTargetFromNotion();
-  return notionTarget ? [notionTarget] : [];
+  const mainKeywords = process.env.SEVEN_REPORT_TARGET_NAME_KEYWORD || (resolvedTargets.length ? '' : 'Seven');
+  resolvedTargets.push(...await findReportTargetsFromNotion(mainKeywords, { fallbackLatestPersonal: !resolvedTargets.length, source: 'notion-primary' }));
+  resolvedTargets.push(...await findReportTargetsFromNotion(process.env.SEVEN_REPORT_CC_NAME_KEYWORDS || '', { fallbackLatestPersonal: false, source: 'notion-cc' }));
+
+  return uniqueTargets(resolvedTargets);
+}
+
+function targetsFromIds(value, targetType, source) {
+  return String(value || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => ({ id, type: targetType || inferTargetType(id), source }));
 }
 
 async function maybeCreateDailyReportSnapshot({ reportType, report, targets, cronMeta, sentAt }) {
@@ -692,10 +706,15 @@ async function maybeMarkDailyReportSnapshotConfirmed({ reportType, decisionPage,
 }
 
 async function findDefaultReportTargetFromNotion() {
+  const targets = await findReportTargetsFromNotion(process.env.SEVEN_REPORT_TARGET_NAME_KEYWORD || 'Seven', { fallbackLatestPersonal: true, source: 'notion-auto' });
+  return targets[0] || null;
+}
+
+async function findReportTargetsFromNotion(keywordValue, options = {}) {
   const notionToken = process.env.NOTION_TOKEN;
   const dataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
   if (!notionToken || !dataSourceId) {
-    return null;
+    return [];
   }
 
   const result = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
@@ -708,13 +727,59 @@ async function findDefaultReportTargetFromNotion() {
   });
 
   const pages = result.results || [];
-  const keyword = String(process.env.SEVEN_REPORT_TARGET_NAME_KEYWORD || 'Seven').toLowerCase();
-  const preferred = pages.find((page) => pageTextProperty(page, 'LINE 對話名稱').toLowerCase().includes(keyword)
-    || pageTextProperty(page, '自定義名稱').toLowerCase().includes(keyword));
-  const selected = preferred || pages[0];
-  const userId = selected ? pageTextProperty(selected, 'User ID') : '';
+  const keywords = String(keywordValue || '')
+    .split(',')
+    .map((keyword) => keyword.trim().toLowerCase())
+    .filter(Boolean);
 
-  return userId ? { id: userId, type: 'user', source: 'notion-auto' } : null;
+  let selectedPages = [];
+  if (keywords.length) {
+    selectedPages = pages.filter((page) => {
+      const names = [
+        pageTextProperty(page, 'LINE 對話名稱'),
+        pageTextProperty(page, '自定義名稱'),
+        pageTextProperty(page, '備註'),
+      ].join(' ').toLowerCase();
+      return keywords.some((keyword) => names.includes(keyword));
+    });
+  }
+
+  if (!selectedPages.length && options.fallbackLatestPersonal) {
+    selectedPages = pages.slice(0, 1);
+  }
+
+  return selectedPages
+    .map((page) => {
+      const userId = pageTextProperty(page, 'User ID');
+      return userId
+        ? {
+            id: userId,
+            type: 'user',
+            name: pageTextProperty(page, '自定義名稱') || pageTextProperty(page, 'LINE 對話名稱'),
+            source: options.source || 'notion-auto',
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function uniqueTargets(targets) {
+  const seen = new Set();
+  const unique = [];
+  for (const target of targets) {
+    const id = String(target?.id || '').trim();
+    if (!id) {
+      continue;
+    }
+    const type = target.type || inferTargetType(id);
+    const key = `${type}:${id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push({ ...target, id, type });
+  }
+  return unique;
 }
 
 async function buildReportMessage(reportType, customText) {
@@ -1367,6 +1432,10 @@ function normalizeReportKey(value) {
   return String(value || '').replace(/\s+/g, '').toLowerCase().slice(0, 80);
 }
 
+function normalizeId(value) {
+  return String(value || '').trim().replace(/-/g, '').toLowerCase();
+}
+
 function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1780,6 +1849,8 @@ function buildOutgoingMessageId(target, message, sentAt, index) {
 }
 
 async function notionRequest(pathname, { method, body }) {
+  await assertSevenNotionTarget(pathname, body);
+
   const maxAttempts = 3;
   let lastError = null;
 
@@ -1808,6 +1879,81 @@ async function notionRequest(pathname, { method, body }) {
   }
 
   throw lastError;
+}
+
+async function assertSevenNotionTarget(pathname, body) {
+  const dataSourceIds = new Set();
+  const pathMatch = String(pathname || '').match(/\/v1\/data_sources\/([^/?]+)/);
+  if (pathMatch) {
+    dataSourceIds.add(pathMatch[1]);
+  }
+
+  const parent = body?.parent;
+  if (parent?.type === 'data_source_id' && parent.data_source_id) {
+    dataSourceIds.add(parent.data_source_id);
+  }
+
+  for (const dataSourceId of dataSourceIds) {
+    await assertSevenDataSource(dataSourceId);
+  }
+}
+
+async function assertSevenDataSource(dataSourceId) {
+  const normalizedId = normalizeId(dataSourceId);
+  if (!normalizedId) {
+    throw new Error('Notion data source id is missing.');
+  }
+
+  const cached = verifiedSevenDataSources.get(normalizedId);
+  if (cached) {
+    return cached;
+  }
+
+  const dataSource = await notionFetchJson(`/v1/data_sources/${normalizedId}`);
+  const titleText = notionTitleText(dataSource.title);
+  const parentBlockId = normalizeId(dataSource.parent?.block_id || dataSource.parent?.page_id || dataSource.parent?.database_id || '');
+
+  if (dataSource.archived || dataSource.in_trash) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" is archived or trashed.`);
+  }
+
+  if (!isAllowedSevenDataSourceTitle(titleText)) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" does not look like a SevenAM data source.`);
+  }
+
+  if (SEVEN_DATA_SOURCE_PARENT_BLOCK_ID && parentBlockId && parentBlockId !== SEVEN_DATA_SOURCE_PARENT_BLOCK_ID) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" is outside the configured SevenAM parent scope.`);
+  }
+
+  verifiedSevenDataSources.set(normalizedId, true);
+  return true;
+}
+
+async function notionFetchJson(pathname) {
+  const response = await fetch(`https://api.notion.com${pathname}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+      'Notion-Version': process.env.NOTION_VERSION || '2025-09-03',
+    },
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Notion API failed: ${response.status} ${responseText}`);
+  }
+  return responseText ? JSON.parse(responseText) : {};
+}
+
+function notionTitleText(items) {
+  return (items || []).map((item) => item.plain_text || item.text?.content || '').join('').trim();
+}
+
+function isAllowedSevenDataSourceTitle(titleText) {
+  const value = String(titleText || '').trim();
+  if (!value) {
+    return true;
+  }
+  return /(Seven|SevenAM|7AM|Codex|總控|任務|專案|會議|每日|LINE|Automation|風險|決策|責任|權責)/i.test(value);
 }
 
 function sleep(ms) {

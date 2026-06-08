@@ -10,11 +10,14 @@ const notionToken = process.env.NOTION_TOKEN;
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
+const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const codexCommandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const reportUrl = process.env.DAILY_REPORT_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/daily-control-report-prototype.html';
 const morningBriefUrl = process.env.MORNING_BRIEF_URL || 'https://htmlpreview.github.io/?https://github.com/sevenchen611/line-oa-webhook/blob/main/reports/morning-brief-prototype.html';
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
+const sevenDataSourceParentBlockId = normalizeId(process.env.SEVEN_DATA_SOURCE_PARENT_BLOCK_ID || '');
+const verifiedSevenDataSources = new Map();
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
@@ -42,6 +45,7 @@ const server = http.createServer(async (req, res) => {
       autoReplyEnabled: false,
       reportCommandEnabled: true,
       morningBriefCommandEnabled: true,
+      taskQueryReplyEnabled: Boolean(notionToken && tasksDataSourceId),
       reportUrl,
       morningBriefUrl,
       conversationPageBlocksEnabled: true,
@@ -74,12 +78,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function handleEvent(event, rawBody) {
-  const commandReply = buildCommandReply(event);
-
   if (notionConfigured) {
     await storeLineEventInNotion(event, rawBody);
   }
 
+  const commandReply = await buildCommandReply(event);
   if (commandReply && event.replyToken) {
     await replyLineMessage(event.replyToken, commandReply);
     if (notionConfigured) {
@@ -88,7 +91,7 @@ async function handleEvent(event, rawBody) {
   }
 }
 
-function buildCommandReply(event) {
+async function buildCommandReply(event) {
   const text = event.type === 'message' && event.message?.type === 'text' ? String(event.message.text || '').trim() : '';
 
   if (morningBriefCommands.has(text)) {
@@ -105,7 +108,105 @@ function buildCommandReply(event) {
     };
   }
 
+  if (isTaskListCommandText(text)) {
+    return buildTaskListReply(event, text);
+  }
+
   return null;
+}
+
+function isTaskListCommandText(text) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return false;
+  }
+  const hasTaskTerm = /(待辦|任務|工作|todo|task)/i.test(value);
+  const hasQueryTerm = /(有哪些|清單|列表|列出|查詢|看一下|是什麼|目前|現在|pending|list|show)/i.test(value);
+  return hasTaskTerm && hasQueryTerm;
+}
+
+async function buildTaskListReply(event, text) {
+  if (!notionToken || !tasksDataSourceId) {
+    return { type: 'text', text: 'Seven Jr. 目前還沒有連上總控任務庫，所以暫時無法查詢待辦。' };
+  }
+
+  try {
+    const actorName = normalizeTaskAssigneeName(text) || await resolveTaskQueryActorName(event);
+    const tasks = await findOpenTasksForActor(actorName);
+    if (!tasks.length) {
+      return {
+        type: 'text',
+        text: actorName
+          ? `目前沒有找到「${actorName}」名下的未完成待辦。`
+          : '目前沒有找到未完成待辦。',
+      };
+    }
+
+    const scope = actorName ? `「${actorName}」` : '目前';
+    const lines = [`Seven Jr. 幫你查到 ${scope}的未完成待辦：`];
+    tasks.slice(0, 8).forEach((task, index) => {
+      const meta = [task.project, task.owner, task.dueDate ? `期限 ${formatTaipeiDate(task.dueDate)}` : '', task.status]
+        .filter(Boolean)
+        .join(' / ');
+      lines.push(`${index + 1}. ${task.name}${meta ? `\n   ${meta}` : ''}`);
+    });
+    if (tasks.length > 8) {
+      lines.push(`另外還有 ${tasks.length - 8} 項，請到 SevenAM 總控任務庫查看完整清單。`);
+    }
+    return { type: 'text', text: clampText(lines.join('\n'), 4900) };
+  } catch (error) {
+    console.warn(`Unable to build task list reply: ${error.message}`);
+    return { type: 'text', text: 'Seven Jr. 有收到你的待辦查詢，但目前讀取總控任務庫失敗，我會保留原始訊息供後續追蹤。' };
+  }
+}
+
+async function resolveTaskQueryActorName(event) {
+  const source = event.source || {};
+  const context = resolveConversationContext(source);
+  const display = await resolveDisplayNames(source, context);
+  return display.actorName || display.conversationName || '';
+}
+
+function normalizeTaskAssigneeName(text) {
+  const value = String(text || '').trim();
+  const match = value.match(/(?:誰|哪個人|負責人|owner|assignee)[:：\s]+(.+)$/i)
+    || value.match(/(?:查詢|列出|看一下)\s*(.+?)\s*(?:的)?(?:待辦|任務|工作)/i);
+  return match ? match[1].trim().replace(/[，。,.;；]$/, '') : '';
+}
+
+async function findOpenTasksForActor(actorName) {
+  const tasks = await queryOpenTasks();
+  const normalizedActor = normalizeLooseText(actorName);
+  if (!normalizedActor) {
+    return tasks;
+  }
+
+  const matched = tasks.filter((task) => {
+    const owner = normalizeLooseText(task.owner);
+    const name = normalizeLooseText(task.name);
+    return owner.includes(normalizedActor) || normalizedActor.includes(owner) || name.includes(normalizedActor);
+  });
+  return matched.length ? matched : tasks;
+}
+
+async function queryOpenTasks() {
+  const result = await notionRequest(`/v1/data_sources/${tasksDataSourceId}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 25,
+    },
+  });
+
+  return (result.results || [])
+    .map((page) => ({
+      id: page.id,
+      name: pageText(page, '任務名稱') || pageText(page, 'Name') || pageText(page, '名稱') || '(未命名任務)',
+      project: pageRelationTitleFallback(page, '總控專案') || pageText(page, '專案'),
+      owner: pageText(page, '負責人') || pageText(page, 'Owner'),
+      status: pageStatus(page, '狀態') || pageSelect(page, '狀態'),
+      dueDate: pageDate(page, '期限') || pageDate(page, 'Due Date'),
+    }))
+    .filter((task) => !['已完成', '封存', '完成'].includes(task.status));
 }
 
 async function replyLineMessage(replyToken, message) {
@@ -686,6 +787,8 @@ async function notionRequest(pathname, { method, body }) {
   if (!notionToken) {
     throw new Error('NOTION_TOKEN is not set.');
   }
+  await assertSevenNotionTarget(pathname, body);
+
   const response = await fetch(`https://api.notion.com${pathname}`, {
     method,
     headers: { Authorization: `Bearer ${notionToken}`, 'Content-Type': 'application/json', 'Notion-Version': notionVersion },
@@ -696,6 +799,78 @@ async function notionRequest(pathname, { method, body }) {
     throw new Error(`Notion API failed: ${response.status} ${responseText}`);
   }
   return responseText ? JSON.parse(responseText) : {};
+}
+
+async function assertSevenNotionTarget(pathname, body) {
+  const dataSourceIds = new Set();
+  const pathMatch = String(pathname || '').match(/\/v1\/data_sources\/([^/?]+)/);
+  if (pathMatch) {
+    dataSourceIds.add(pathMatch[1]);
+  }
+
+  const parent = body?.parent;
+  if (parent?.type === 'data_source_id' && parent.data_source_id) {
+    dataSourceIds.add(parent.data_source_id);
+  }
+
+  for (const dataSourceId of dataSourceIds) {
+    await assertSevenDataSource(dataSourceId);
+  }
+}
+
+async function assertSevenDataSource(dataSourceId) {
+  const normalizedId = normalizeId(dataSourceId);
+  if (!normalizedId) {
+    throw new Error('Notion data source id is missing.');
+  }
+
+  const cached = verifiedSevenDataSources.get(normalizedId);
+  if (cached) {
+    return cached;
+  }
+
+  const dataSource = await notionFetchJson(`/v1/data_sources/${normalizedId}`);
+  const titleText = notionTitleText(dataSource.title);
+  const parentBlockId = normalizeId(dataSource.parent?.block_id || dataSource.parent?.page_id || dataSource.parent?.database_id || '');
+
+  if (dataSource.archived || dataSource.in_trash) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" is archived or trashed.`);
+  }
+
+  if (!isAllowedSevenDataSourceTitle(titleText)) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" does not look like a SevenAM data source.`);
+  }
+
+  if (sevenDataSourceParentBlockId && parentBlockId && parentBlockId !== sevenDataSourceParentBlockId) {
+    throw new Error(`Blocked Notion access: data source "${titleText || normalizedId}" is outside the configured SevenAM parent scope.`);
+  }
+
+  verifiedSevenDataSources.set(normalizedId, true);
+  return true;
+}
+
+async function notionFetchJson(pathname) {
+  const response = await fetch(`https://api.notion.com${pathname}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${notionToken}`, 'Notion-Version': notionVersion },
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Notion API failed: ${response.status} ${responseText}`);
+  }
+  return responseText ? JSON.parse(responseText) : {};
+}
+
+function notionTitleText(items) {
+  return (items || []).map((item) => item.plain_text || item.text?.content || '').join('').trim();
+}
+
+function isAllowedSevenDataSourceTitle(titleText) {
+  const value = String(titleText || '').trim();
+  if (!value) {
+    return true;
+  }
+  return /(Seven|SevenAM|7AM|Codex|總控|任務|專案|會議|每日|LINE|Automation|風險|決策|責任|權責)/i.test(value);
 }
 
 function buildNonTextMessagePreview(message) {
@@ -835,6 +1010,59 @@ function linkParagraph(content, url) {
 
 function paragraph(content) {
   return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampText(content, 1900) } }] } };
+}
+
+function pageText(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  if (!property) {
+    return '';
+  }
+  if (property.type === 'title') {
+    return richTextItemsPlain(property.title);
+  }
+  if (property.type === 'rich_text') {
+    return richTextItemsPlain(property.rich_text);
+  }
+  if (property.type === 'people') {
+    return (property.people || []).map((person) => person.name || person.person?.email || '').filter(Boolean).join('、');
+  }
+  return '';
+}
+
+function pageSelect(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'select' ? property.select?.name || '' : '';
+}
+
+function pageStatus(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'status' ? property.status?.name || '' : '';
+}
+
+function pageDate(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'date' ? property.date?.start || '' : '';
+}
+
+function pageRelationTitleFallback(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'relation' && property.relation?.length ? '' : '';
+}
+
+function richTextItemsPlain(items) {
+  return (items || []).map((item) => item.plain_text || item.text?.content || '').join('').trim();
+}
+
+function normalizeLooseText(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function normalizeId(value) {
+  return String(value || '').trim().replace(/-/g, '').toLowerCase();
+}
+
+function formatTaipeiDate(value) {
+  return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date(value));
 }
 
 function clampText(value, maxLength) {

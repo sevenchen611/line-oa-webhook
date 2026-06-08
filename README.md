@@ -46,8 +46,13 @@ Web Service 必要設定：
 可選設定：
 
 - `SEVEN_REPORT_TARGET_ID`: 早報/晚報備用推送對象，可以是 userId、groupId 或 roomId。若不設定，系統會自動從 Seven LINE 對話主檔尋找最近的一對一個人對話，優先找名稱含 Seven 的對話。
+- `SEVEN_REPORT_TARGET_IDS`: 多個早報/晚報主收件人，用逗號分隔；若設定此值，會和 CC 與 Notion 自動找到的對象合併去重。
 - `SEVEN_REPORT_TARGET_TYPE`: `user`、`group` 或 `room`，主要作為紀錄辨識用。
 - `SEVEN_REPORT_TARGET_NAME_KEYWORD`: 自動尋找個人對話時優先比對的關鍵字，預設為 `Seven`。
+- `SEVEN_REPORT_CC_TARGET_IDS`: 早報/晚報副本收件人，用逗號分隔。此欄位只使用 SevenAM 自己的 LINE userId、groupId 或 roomId。
+- `SEVEN_REPORT_CC_NAME_KEYWORDS`: 從 Seven LINE 對話主檔自動尋找副本收件人的關鍵字，可用逗號分隔。
+- `SEVEN_DATA_SOURCE_PARENT_BLOCK_ID`: 可選的 Notion 資料隔離父層檢查。設定後，系統只允許指定父層底下的 SevenAM data source；若 SevenAM 資料庫分散在多個子頁，請先確認父層設定正確再啟用。
+- `SEVEN_TASKS_DATA_SOURCE_ID`: SevenAM 總控任務庫。LINE 使用者可在群組或私訊詢問目前待辦，例如「Seven Junior 目前有哪些待辦」。
 - `SEVEN_PUBLIC_BASE_URL`: 對外公開的 Render 服務網址，預設為 `https://line-oa-webhook-nn5j.onrender.com`。
 - `MORNING_BRIEF_URL`: 早報網頁連結，可省略，省略時使用 Render 服務內建報告頁。
 - `DAILY_REPORT_URL`: 晚報網頁連結，可省略，省略時使用 Render 服務內建報告頁。

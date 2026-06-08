@@ -22,6 +22,8 @@ services:
         sync: false
       - key: SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID
         sync: false
+      - key: SEVEN_DATA_SOURCE_PARENT_BLOCK_ID
+        sync: false
       - key: SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID
         sync: false
       - key: SEVEN_MEETINGS_DATA_SOURCE_ID
@@ -39,6 +41,12 @@ services:
       - key: SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID
         value: 979949aa-bac3-45ac-a4cc-a38585addb89
       - key: SEVEN_CONTROL_API_KEY
+        sync: false
+      - key: SEVEN_REPORT_TARGET_IDS
+        sync: false
+      - key: SEVEN_REPORT_CC_TARGET_IDS
+        sync: false
+      - key: SEVEN_REPORT_CC_NAME_KEYWORDS
         sync: false
 
   - type: cron
