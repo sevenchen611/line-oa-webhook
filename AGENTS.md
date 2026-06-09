@@ -773,6 +773,44 @@ Current 2026-06-09 test result:
 - `包租代管 / 昱晴` has no configured LINE target yet and remains pending.
 - `私人事務` is internal-only and is not sent externally.
 
+### LINE Group Mention Notifications
+
+When AM needs to notify a specific responsible person inside a LINE group, use
+LINE `textV2` with `substitution` mention. Do not send a plain text message that
+only contains `@Name`; LINE will display that as ordinary text and may not notify
+the person.
+
+Correct outbound mention pattern:
+
+```json
+{
+  "type": "textV2",
+  "text": "{owner} 提醒：請協助確認這項任務的下一步。",
+  "substitution": {
+    "owner": {
+      "type": "mention",
+      "mentionee": {
+        "type": "user",
+        "userId": "TARGET_LINE_USER_ID"
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- The destination must be a LINE group or room. LINE mentions do not work in
+  one-on-one user chats.
+- The mentioned user must be a member of the destination group or room.
+- The target must be the real LINE user ID, not a display name.
+- If the user or group cannot be resolved uniquely, keep the item pending target
+  confirmation and do not guess.
+- Use this for approved follow-ups to group owners, project owners, task owners,
+  or responsible people.
+
+Reference doc: `docs/line-group-mention-notification.md`.
+
 ## Render Control API
 
 Control endpoints:
