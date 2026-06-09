@@ -13,6 +13,15 @@ const requestTimeoutMs = positiveIntegerEnv('AM_CRON_REQUEST_TIMEOUT_MS', `${pro
 const runId = buildRunId();
 const startedAt = new Date();
 
+class HttpStatusError extends Error {
+  constructor(message, status, responseText) {
+    super(message);
+    this.name = 'HttpStatusError';
+    this.status = status;
+    this.responseText = responseText;
+  }
+}
+
 if (!reportType) {
   throw new Error('Missing report type. Usage: node scripts/render-cron-report.js <reportType>');
 }
@@ -325,13 +334,4 @@ function formatTaipeiDateTime(value) {
     second: '2-digit',
     hour12: false,
   }).format(value instanceof Date ? value : new Date(value));
-}
-
-class HttpStatusError extends Error {
-  constructor(message, status, responseText) {
-    super(message);
-    this.name = 'HttpStatusError';
-    this.status = status;
-    this.responseText = responseText;
-  }
 }
