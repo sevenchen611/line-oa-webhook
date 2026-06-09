@@ -15,6 +15,8 @@ const DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID = process.env.SEVEN_DAILY_REPORT_SNA
 const PROGRESS_REPORTS_DATA_SOURCE_ID = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || 'fc5e4e21-6af6-4de2-9380-aa95126ee13e';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
+const LINE_GROUP_OPTIONS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID || '';
+const LINE_GROUP_MEMBERS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
@@ -34,6 +36,10 @@ const REPORT_ROUTES = new Map([
 http.createServer = function createServerWithControlApi(listener) {
   return originalCreateServer(async (req, res) => {
     const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+
+    if (req.method === 'GET' && pathname === '/reports/followup-recipient-candidates') {
+      return serveFollowupRecipientCandidates(req, res);
+    }
 
     if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
       return serveReportPage(res, pathname);
@@ -72,7 +78,7 @@ async function handleControlRequest(req, res, pathname) {
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
       userUiLoginEnabled: Boolean(process.env.SEVEN_USER_UI_USERNAME && process.env.SEVEN_USER_UI_PASSWORD),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
+      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'GET /reports/followup-recipient-candidates', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -225,6 +231,10 @@ async function updateTaskFromUserUi(req, body) {
     下一步: taskPropertyUpdate(page, '下一步', stringOrEmpty(updates.next)),
     優先級: taskPropertyUpdate(page, '優先級', stringOrEmpty(updates.priority)),
     優先順序: taskPropertyUpdate(page, '優先順序', stringOrEmpty(updates.priority)),
+    截止日: taskPropertyUpdate(page, '截止日', stringOrEmpty(updates.dueDate)),
+    期限依據: taskPropertyUpdate(page, '期限依據', stringOrEmpty(updates.deadlineBasis)),
+    下次追蹤日: taskPropertyUpdate(page, '下次追蹤日', stringOrEmpty(updates.nextFollowupDate)),
+    逾期狀態: taskPropertyUpdate(page, '逾期狀態', stringOrEmpty(updates.overdueStatus)),
     'Codex 判斷摘要': taskPropertyUpdate(page, 'Codex 判斷摘要', stringOrEmpty(updates.judgment)),
     來源原文: taskPropertyUpdate(page, '來源原文', stringOrEmpty(updates.rawSource)),
     最後更新: page.properties?.最後更新 ? dateProperty(submittedAt) : undefined,
@@ -417,6 +427,9 @@ function taskPropertyUpdate(page, propertyName, value) {
   }
   if (property.type === 'url') {
     return urlProperty(text);
+  }
+  if (property.type === 'date') {
+    return { date: { start: text } };
   }
   if (property.type === 'number') {
     const number = Number(text);
@@ -1003,6 +1016,10 @@ async function applyTaskApproval(item, context) {
     throw new Error('Task approval is missing task name.');
   }
 
+  if (isMergeTaskApproval(item)) {
+    return applyTaskMergeApproval(taskName, item, context);
+  }
+
   const status = normalizeTaskStatus(item.status);
   const existingPage = await findTaskByName(taskName);
   const summary = `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認。`;
@@ -1043,6 +1060,70 @@ async function applyTaskApproval(item, context) {
   });
 
   return { task: taskName, status, action: 'created', pageId: created.id };
+}
+
+function isMergeTaskApproval(item) {
+  const actionKey = String(item.actionKey || item.action || item.decision || '').trim();
+  return actionKey === 'MERGE_INTO_EXISTING' || Boolean(String(item.mergeInto || item.targetTask || '').trim());
+}
+
+async function applyTaskMergeApproval(taskName, item, context) {
+  const mergeInto = String(item.mergeInto || item.targetTask || item.parentTask || '').trim();
+  if (!mergeInto) {
+    throw new Error(`Merge target is missing for task: ${taskName}`);
+  }
+
+  const sourcePage = await findTaskByName(taskName);
+  const targetPage = await findTaskByName(mergeInto);
+  if (!targetPage) {
+    throw new Error(`Merge target task was not found: ${mergeInto}`);
+  }
+
+  const note = String(item.note || '').trim();
+  const targetNext = note || `此任務已吸收「${taskName}」；請依主任務追蹤下一步。`;
+  const targetSummary = [
+    `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認。`,
+    `「${taskName}」合併到既有任務「${mergeInto}」。`,
+    note ? `使用者備註：${note}` : '',
+  ].filter(Boolean).join('\n');
+
+  await notionRequest(`/v1/pages/${targetPage.id}`, {
+    method: 'PATCH',
+    body: {
+      properties: compactProperties({
+        狀態: selectProperty(normalizeTaskStatus(item.targetStatus || '進行中')),
+        確認狀態: selectProperty('已確認'),
+        優先級: item.priority ? selectProperty(String(item.priority)) : undefined,
+        下一步: richTextProperty(targetNext),
+        'Codex 判斷摘要': richTextProperty(targetSummary),
+        最後更新: dateProperty(context.submittedAt),
+      }),
+    },
+  });
+
+  if (sourcePage) {
+    await notionRequest(`/v1/pages/${sourcePage.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          狀態: selectProperty('封存'),
+          確認狀態: selectProperty('合併到既有任務'),
+          下一步: richTextProperty(`已合併到「${mergeInto}」；不再作為獨立任務追蹤。`),
+          'Codex 判斷摘要': richTextProperty(targetSummary),
+          最後更新: dateProperty(context.submittedAt),
+        }),
+      },
+    });
+  }
+
+  return {
+    task: taskName,
+    status: '合併到既有任務',
+    action: sourcePage ? 'merged' : 'merged-source-not-found',
+    mergeInto,
+    pageId: sourcePage?.id || null,
+    targetPageId: targetPage.id,
+  };
 }
 
 async function findTaskByName(taskName) {
@@ -2771,6 +2852,168 @@ function formatTaipeiDateTime(value) {
 function sendNoContent(res) {
   res.writeHead(204, corsHeaders());
   res.end();
+}
+
+async function findFollowupRecipientCandidates(searchText) {
+  if (!process.env.NOTION_TOKEN) return [];
+  const terms = recipientSearchTerms(searchText);
+  if (!terms.length) return [];
+
+  const [groups, members, conversations] = await Promise.all([
+    LINE_GROUP_OPTIONS_DATA_SOURCE_ID ? queryDataSourcePages(LINE_GROUP_OPTIONS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
+    LINE_GROUP_MEMBERS_DATA_SOURCE_ID ? queryDataSourcePages(LINE_GROUP_MEMBERS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
+    CONVERSATIONS_DATA_SOURCE_ID ? queryDataSourcePages(CONVERSATIONS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
+  ]);
+
+  const groupsByPageId = new Map(groups.map((page) => [page.id, normalizeRecipientGroupOption(page)]));
+  const candidates = [];
+
+  for (const member of members) {
+    const candidate = normalizeRecipientMemberOption(member, groupsByPageId);
+    const score = scoreRecipientCandidate(terms, [
+      candidate.memberName,
+      candidate.groupName,
+      candidate.project,
+    ].join(' '));
+    if (score <= 0 || !candidate.targetId) continue;
+    candidates.push({
+      label: `${candidate.memberName}｜${candidate.groupName || candidate.targetType}`,
+      targetMemberName: candidate.memberName,
+      targetMemberUserId: candidate.userId,
+      targetId: candidate.targetId,
+      targetType: candidate.targetType,
+      groupName: candidate.groupName,
+      source: 'line-group-member',
+      score,
+    });
+  }
+
+  for (const conversation of conversations) {
+    const candidate = normalizeRecipientConversationOption(conversation);
+    const score = scoreRecipientCandidate(terms, [
+      candidate.name,
+      candidate.customName,
+      candidate.project,
+    ].join(' '));
+    if (score <= 0 || !candidate.targetId) continue;
+    candidates.push({
+      label: `${candidate.name || candidate.customName}｜${candidate.targetType === 'user' ? '個人對話' : 'LINE 群組'}`,
+      targetMemberName: candidate.name || candidate.customName,
+      targetMemberUserId: candidate.targetType === 'user' ? candidate.targetId : '',
+      targetId: candidate.targetId,
+      targetType: candidate.targetType,
+      groupName: candidate.targetType === 'user' ? '' : (candidate.name || candidate.customName),
+      source: 'conversation-master',
+      score: score - (candidate.targetType === 'user' ? 0 : 15),
+    });
+  }
+
+  return uniqueRecipientCandidates(candidates)
+    .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, 'zh-Hant'))
+    .slice(0, 12)
+    .map(({ score, ...candidate }) => candidate);
+}
+
+async function queryDataSourcePages(dataSourceId, body = {}) {
+  const results = [];
+  let startCursor = null;
+  do {
+    const response = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
+      method: 'POST',
+      body: {
+        page_size: body.page_size || 100,
+        start_cursor: startCursor || undefined,
+        filter: body.filter,
+        sorts: body.sorts,
+      },
+    });
+    results.push(...(response.results || []));
+    startCursor = response.has_more ? response.next_cursor : null;
+  } while (startCursor);
+  return results;
+}
+
+function normalizeRecipientGroupOption(page) {
+  return {
+    pageId: page.id,
+    groupName: pageTextProperty(page, '群組顯示名稱') || pageTextProperty(page, 'LINE對話名稱') || pageTextProperty(page, '自定義名稱'),
+    targetId: pageTextProperty(page, 'GroupID'),
+    targetType: pageSelectProperty(page, '對象類型') || inferTargetType(pageTextProperty(page, 'GroupID')),
+    project: pageSelectProperty(page, '總控專案'),
+  };
+}
+
+function normalizeRecipientMemberOption(page, groupsByPageId) {
+  const groupPageIds = pageRelationIds(page, 'LINE群組');
+  const group = groupPageIds.map((id) => groupsByPageId.get(id)).find(Boolean) || {};
+  return {
+    memberName: pageTextProperty(page, '成員顯示名稱') || pageTextProperty(page, '成員選項名稱'),
+    userId: pageTextProperty(page, 'UserID'),
+    groupName: pageTextProperty(page, '群組顯示名稱') || group.groupName || '',
+    targetId: group.targetId || pageTextProperty(page, 'GroupID'),
+    targetType: group.targetType || inferTargetType(group.targetId || pageTextProperty(page, 'GroupID')),
+    project: group.project || '',
+  };
+}
+
+function normalizeRecipientConversationOption(page) {
+  const groupId = pageTextProperty(page, 'Group ID');
+  const roomId = pageTextProperty(page, 'Room ID');
+  const userId = pageTextProperty(page, 'User ID');
+  const targetId = groupId || roomId || userId;
+  return {
+    name: pageTextProperty(page, 'LINE 對話名稱'),
+    customName: pageTextProperty(page, '自定義名稱'),
+    targetId,
+    targetType: groupId ? 'group' : roomId ? 'room' : userId ? 'user' : inferTargetType(targetId),
+    project: pageSelectProperty(page, '總控專案'),
+  };
+}
+
+function recipientSearchTerms(value) {
+  return normalizeDispatchText(value)
+    .split(/[\/／,，、\s&：:()（）【】\[\]\-]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+    .filter((item) => !/^(line|codex|seven|jr|追蹤|對象|群組|成員|建議|訊息|原因|確認|使用|教學|登入頁|任務|專案|包租代管|茲心園工程|私人事務)$/i.test(item));
+}
+
+function scoreRecipientCandidate(terms, candidateText) {
+  const text = normalizeDispatchText(candidateText);
+  let score = 0;
+  for (const term of terms) {
+    if (!term) continue;
+    if (text === term) score += 120;
+    else if (text.includes(term)) score += 80;
+    else if (term.includes(text) && text.length >= 2) score += 40;
+  }
+  return score;
+}
+
+function uniqueRecipientCandidates(candidates) {
+  const seen = new Set();
+  const unique = [];
+  for (const candidate of candidates) {
+    const key = `${candidate.targetType}:${candidate.targetId}:${candidate.targetMemberUserId || candidate.targetMemberName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+  }
+  return unique;
+}
+
+async function serveFollowupRecipientCandidates(req, res) {
+  try {
+    const url = new URL(req.url || '/', 'http://localhost');
+    const target = url.searchParams.get('target') || '';
+    const reason = url.searchParams.get('reason') || '';
+    const message = url.searchParams.get('message') || '';
+    const candidates = await findFollowupRecipientCandidates(`${target} ${reason} ${message}`);
+    return sendJson(res, 200, { ok: true, candidates });
+  } catch (error) {
+    console.warn(`Unable to resolve follow-up recipient candidates: ${error.message}`);
+    return sendJson(res, 200, { ok: false, candidates: [], error: error.message });
+  }
 }
 
 function serveReportPage(res, pathname) {

@@ -50,7 +50,7 @@
             </div>
             <div class="card-body">
               <div class="field"><div class="label">LINE 對話群組</div><div class="target">台翰營造&茲心園改建</div><div class="meta"><span class="chip warn">等待回覆</span><span class="chip info">茲心園工程</span></div></div>
-              <div class="field"><div class="label">追蹤對象（群組成員）</div><select class="recipient-select"><option value="U566aa3ffc330e18fdc7a9fd0eef4d6cd" data-name="珮甄">珮甄</option><option value="U35c5c676a9acf97bdf0d68ac7a2faae7" data-name="chmin">chmin</option><option value="U09dc6553016c78d89c515522be9b74f6" data-name="Seven陳聖文">Seven陳聖文</option><option value="" data-name="整個群組">整個群組 / 尚未指定個人</option></select></div>
+              <div class="field"><div class="label">追蹤對象（群組成員）</div><select class="recipient-select"><option value="U566aa3ffc330e18fdc7a9fd0eef4d6cd" data-name="珮甄" data-target-id="C463e81b0952039013dcf4d3ee2f418ab" data-target-type="group">珮甄</option><option value="U35c5c676a9acf97bdf0d68ac7a2faae7" data-name="chmin" data-target-id="C463e81b0952039013dcf4d3ee2f418ab" data-target-type="group">chmin</option><option value="U09dc6553016c78d89c515522be9b74f6" data-name="Seven陳聖文" data-target-id="C463e81b0952039013dcf4d3ee2f418ab" data-target-type="group">Seven陳聖文</option><option value="" data-name="整個群組" data-target-id="C463e81b0952039013dcf4d3ee2f418ab" data-target-type="group">整個群組 / 尚未指定個人</option></select></div>
               <div class="field"><div class="label">原因</div><p class="reason">已有估價與圖面相關進度，但仍需要確認正式報價流程與後續回覆。</p></div>
               <div class="field"><div class="label">建議訊息</div><textarea>學姐好，我這邊協助確認一下：茲心園改建估價資料目前是否已正式進入報價流程？如果還需要補 D 棟或本棟圖面資料，我這邊可以協助整理。</textarea></div>
             </div>
@@ -94,13 +94,14 @@
   </div>
   <script>
     const APPROVAL_API='https://line-oa-webhook-nn5j.onrender.com/control/reports/approve';
+    const RECIPIENT_CANDIDATES_API='https://line-oa-webhook-nn5j.onrender.com/reports/followup-recipient-candidates';
     const pendingTasks=[
       {task:'私人事務：建立生活行政與家庭事項追蹤清單',project:'私人事務',source:'Codex 手動整理',summary:'建立生活行政與家庭事項追蹤清單；目前缺少明細，需確認是否保留。',risk:'一般'},
       {task:'私人事務：建立個人財務與帳務追蹤清單',project:'私人事務',source:'Codex 手動整理',summary:'建立個人財務與帳務追蹤清單；涉及財務，建議人工確認後再追蹤。',risk:'高風險'},
       {task:'私人事務：建立私人文件與證件整理清單',project:'私人事務',source:'Codex 手動整理',summary:'建立私人文件與證件整理清單；目前缺少明細，需確認是否保留。',risk:'一般'},
-      {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',source:'Codex 手動整理',summary:'報稅逾期處理具時效與稅務風險，需 Seven 明確確認。',risk:'高風險'},
+      {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',source:'Codex 手動整理',summary:'報稅逾期處理具時效與稅務風險，需 Seven 明確確認。',risk:'高風險',mergeInto:'私人事務：確認報稅時間點並完成補申報',defaultActionKey:'MERGE_INTO_EXISTING'},
       {task:'私人事務：盤點目前私人待辦清單',project:'私人事務',source:'Codex 手動整理',summary:'盤點私人待辦清單；屬於內部整理，不需要對外發送。',risk:'一般'},
-      {task:'個人待辦：報稅今天完成',project:'財務',source:'LINE OA',summary:'使用者明確提到今天一定要先處理報稅。',risk:'高風險'},
+      {task:'個人待辦：報稅今天完成',project:'財務',source:'LINE OA',summary:'使用者明確提到今天一定要先處理報稅。',risk:'高風險',mergeInto:'私人事務：確認報稅時間點並完成補申報',defaultActionKey:'MERGE_INTO_EXISTING'},
       {task:'茲心園工程：再發設計圖給 2-3 家營造廠估價',project:'茲心園工程',source:'LINE OA',summary:'明確交辦，比價需要更多廠商報價。',risk:'一般'},
       {task:'茲心園工程：確認學姐估價資料是否已正式進入報價流程',project:'茲心園工程',source:'LINE OA',summary:'需確認估價資料是否已正式進入報價流程。',risk:'一般'},
       {task:'包租代管：釐清登入頁不實用的具體問題',project:'包租代管',source:'LINE OA',summary:'問題存在，但缺少明確修改範圍，需先收集操作卡點。',risk:'一般'},
@@ -113,7 +114,7 @@
       {task:'確認 Bonnie 人資群組是否成功寫入 Notion',project:'未分類',owner:'',summary:'已讀到 Bonnie 相關群組訊息與圖片紀錄，確認 Notion 寫入成功。'}
     ];
     const activeTasks=[
-      {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',owner:'Seven陳聖文',summary:'請儘快安排時間完成報稅處理。'},
+      {task:'私人事務：確認報稅時間點並完成補申報',project:'私人事務',owner:'Seven陳聖文',summary:'今天必須處理報稅逾期處理與補申報；已直接提醒本人，等待回覆完成或卡點。'},
       {task:'茲心園工程：再發設計圖給 2-3 家營造廠估價',project:'茲心園工程',owner:'Seven',summary:'已找第二家廠商，仍需找第三家廠商。'},
       {task:'茲心園工程：確認學姐估價資料是否已正式進入報價流程',project:'茲心園工程',owner:'學姐 / Seven',summary:'等待廠商評估是否安排現場勘驗。'},
       {task:'包租代管：建立昱晴使用 Codex 的教學與安全規則',project:'包租代管',owner:'Seven / 昱晴',summary:'需約時間進行 Codex 使用教學與安全規則確認。'},
@@ -127,6 +128,7 @@
     renderReadOnlyTaskList('completedTaskList', completedTasks);
     renderReadOnlyTaskList('activeTaskList', activeTasks);
     renderTasks();
+    hydrateRecipientCandidates();
 
     function renderReadOnlyTaskList(elementId, items){
       const list=document.getElementById(elementId);
@@ -155,6 +157,7 @@
               <option value="未開始">確認成立：未開始</option>
               <option value="等待回覆">確認成立：等待回覆</option>
               <option value="待確認完成">已做完：待確認完成</option>
+              ${item.mergeInto?`<option value="封存" data-action-key="MERGE_INTO_EXISTING" data-merge-into="${escapeHtml(item.mergeInto)}">合併到既有任務：${escapeHtml(item.mergeInto)}</option>`:''}
               <option value="封存">不成立 / 封存</option>
             </select>
           </div>
@@ -163,6 +166,13 @@
             <div class="field"><div class="label">你的備註</div><textarea class="task-note" placeholder="可留空；例如：先不要追、改到明天、這不是任務。"></textarea></div>
           </div>
         </article>`).join('');
+      document.querySelectorAll('.task-card').forEach((card,index)=>{
+        const item=pendingTasks[index];
+        if(!item?.defaultActionKey)return;
+        const select=card.querySelector('.task-decision');
+        const option=[...select.options].find(option=>option.dataset.actionKey===item.defaultActionKey);
+        if(option)option.selected=true;
+      });
     }
 
     async function confirmSend(){
@@ -171,15 +181,16 @@
         const recipientSelect=card.querySelector('.recipient-select');
         const recipientOption=recipientSelect?.selectedOptions?.[0];
         const recipientName=recipientOption?.dataset?.name||recipientOption?.textContent?.trim()||'';
-        return {send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('.action-select')?.value||'',targetMemberName:recipientName,targetMemberUserId:recipientSelect?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''};
+        return {send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('.action-select')?.value||'',targetMemberName:recipientName,targetMemberUserId:recipientSelect?.value||'',targetId:recipientOption?.dataset?.targetId||'',targetType:recipientOption?.dataset?.targetType||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''};
       });
       const selectedFollowups=followups.filter(item=>item.send&&!/只作內部紀錄/.test(item.targetMemberName)).map(item=>item.target).filter(Boolean);
       const taskDecisions=[...document.querySelectorAll('.task-card')].map(card=>{
         const select=card.querySelector('.task-decision');
         const note=card.querySelector('.task-note')?.value.trim()||'';
-        return {task:select.dataset.task,status:select.value,note};
+        const option=select.selectedOptions[0];
+        return {task:select.dataset.task,status:select.value,actionKey:option?.dataset.actionKey||'',decision:option?.textContent.trim()||select.value,mergeInto:option?.dataset.mergeInto||'',note};
       });
-      const tasks=taskDecisions.filter(item=>item.status!=='keep').map(item=>({task:item.task,status:item.status,note:item.note}));
+      const tasks=taskDecisions.filter(item=>item.status!=='keep').map(item=>({task:item.task,status:item.status,actionKey:item.actionKey,mergeInto:item.mergeInto,note:item.note}));
       const deferred=taskDecisions.filter(item=>item.status==='keep');
       const reportType=slot==='17'?'followup-afternoon':slot==='13'?'followup-midday':'followup-morning';
       const slotLabel=slot==='17'?'17:00':slot==='13'?'13:00':'10:00';
@@ -196,7 +207,7 @@
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok){throw new Error(data.error||`寫回失敗 (${response.status})`)}
         const sentText=followups.filter(item=>item.send).length?followups.filter(item=>item.send).map(item=>`${escapeHtml(item.target)}｜${escapeHtml(item.targetMemberName||'尚未指定個人')}`).join('<br>'):'沒有勾選要對外追蹤的訊息。';
-        const taskText=tasks.length?tasks.map(item=>`${escapeHtml(item.task)}：${escapeHtml(item.status)}`).join('<br>'):'沒有任務被正式確認或封存。';
+        const taskText=tasks.length?tasks.map(item=>`${escapeHtml(item.task)}：${escapeHtml(item.actionKey==='MERGE_INTO_EXISTING'?`合併到既有任務：${item.mergeInto}`:item.status)}`).join('<br>'):'沒有任務被正式確認、合併或封存。';
         const dispatch=data.followupDispatch||{};
         const dispatchText=dispatch.results?.length?dispatch.results.map(item=>`${escapeHtml(item.target)}：${escapeHtml(dispatchStatusLabel(item.status,item.reason))}`).join('<br>'):'沒有需要外發解析的追蹤訊息。';
         result.className='result show';
@@ -218,7 +229,7 @@
 
     function buildReportContent(followups,taskDecisions){
       const followupText=followups.map(item=>`${item.target}\n${item.action}\n追蹤對象：${item.targetMemberName||'尚未指定個人'}${item.targetMemberUserId?` (${item.targetMemberUserId})`:''}\n${item.message}`).join('\n---\n');
-      const taskText=taskDecisions.map(item=>`${item.task}\n${item.status}${item.note?`\n備註：${item.note}`:''}`).join('\n---\n');
+      const taskText=taskDecisions.map(item=>`${item.task}\n${item.decision||item.status}${item.mergeInto?`\n合併目標：${item.mergeInto}`:''}${item.note?`\n備註：${item.note}`:''}`).join('\n---\n');
       return `追蹤訊息\n${followupText}\n\n待確認任務\n${taskText}`;
     }
     function resetChoices(){
@@ -228,6 +239,28 @@
       document.querySelectorAll('.task-decision').forEach(select=>{select.value='keep'});
       document.querySelectorAll('.task-note').forEach(input=>{input.value=''});
       document.getElementById('summary').className='result';
+    }
+    async function hydrateRecipientCandidates(){
+      const cards=[...document.querySelectorAll('.followup-card')];
+      await Promise.all(cards.map(async(card)=>{
+        const select=card.querySelector('.recipient-select');
+        if(!select||select.options.length>1)return;
+        const target=card.querySelector('.target')?.innerText.trim()||'';
+        const reason=card.querySelector('.reason')?.innerText.trim()||'';
+        const message=card.querySelector('textarea')?.value.trim()||'';
+        try{
+          const url=new URL(RECIPIENT_CANDIDATES_API);
+          url.searchParams.set('target',target);
+          url.searchParams.set('reason',reason);
+          url.searchParams.set('message',message);
+          const response=await fetch(url.toString());
+          const data=await response.json();
+          if(!data.ok||!data.candidates?.length)return;
+          select.innerHTML=data.candidates.map(candidate=>`<option value="${escapeHtml(candidate.targetMemberUserId||'')}" data-name="${escapeHtml(candidate.targetMemberName||candidate.label||'')}" data-target-id="${escapeHtml(candidate.targetId||'')}" data-target-type="${escapeHtml(candidate.targetType||'')}">${escapeHtml(candidate.label||candidate.targetMemberName||'候選對象')}</option>`).join('')+'<option value="" data-name="整個群組">整個群組 / 尚未指定個人</option>';
+        }catch(error){
+          console.warn('Unable to load recipient candidates',error);
+        }
+      }));
     }
     function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]))}
   </script>
