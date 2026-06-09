@@ -53,7 +53,7 @@ const server = http.createServer(async (req, res) => {
       immediateCommandEnabled: true,
       immediateCommandPrefixes: ['Seven Junior', '7Junior', '7 Junior'],
       judgmentCalibrationCommandEnabled: Boolean(notionToken && tasksDataSourceId && judgmentCalibrationCasesDataSourceId && judgmentRulesDataSourceId),
-      judgmentCalibrationCommands: ['開始做任務校準', '我們來做任務校準', '任務校準暫停', '任務校準狀態'],
+      judgmentCalibrationCommands: ['開始做任務校準', '开始做任务校准', '開始任務核對', '任務校準暫停', '任務校準狀態'],
       reportUrl,
       morningBriefUrl,
       conversationPageBlocksEnabled: true,
@@ -158,16 +158,16 @@ function isJudgmentCalibrationCommandText(text) {
 
 function resolveJudgmentCalibrationCommand(text) {
   const value = String(text || '').trim();
-  if (!/任務校準|校準任務|判斷校準/.test(value)) {
+  if (!/任務校準|校準任務|判斷校準|任务校准|校准任务|判断校准|任務核對|核對任務|任务核对|核对任务/.test(value)) {
     return null;
   }
-  if (/開始|啟動|start|繼續|resume|來做|做一下|進行|run/i.test(value)) {
+  if (/開始|开始|啟動|启动|start|繼續|继续|resume|來做|来做|做一下|進行|进行|run/i.test(value)) {
     return 'start';
   }
-  if (/暫停|停止|先停|pause|stop/i.test(value)) {
+  if (/暫停|暂停|停止|先停|pause|stop/i.test(value)) {
     return 'pause';
   }
-  if (/狀態|進度|還有多少|status|progress/i.test(value)) {
+  if (/狀態|状态|進度|进度|還有多少|还有多少|status|progress/i.test(value)) {
     return 'status';
   }
   return null;
@@ -175,7 +175,7 @@ function resolveJudgmentCalibrationCommand(text) {
 
 async function handleJudgmentCalibrationCommand(event, commandText) {
   if (!isJudgmentCalibrationConfigured()) {
-    return { type: 'text', text: 'Seven Jr. 還沒有完成任務校準資料庫設定，所以暫時不能啟動任務校準。' };
+    return { type: 'text', text: buildJudgmentCalibrationNotConfiguredText() };
   }
 
   const command = resolveJudgmentCalibrationCommand(commandText);
@@ -470,6 +470,21 @@ async function findTaskDetailById(pageId) {
 
 function isJudgmentCalibrationConfigured() {
   return Boolean(notionToken && tasksDataSourceId && judgmentCalibrationCasesDataSourceId && judgmentRulesDataSourceId);
+}
+
+function buildJudgmentCalibrationNotConfiguredText() {
+  const missing = [
+    !notionToken ? 'NOTION_TOKEN' : '',
+    !tasksDataSourceId ? 'SEVEN_TASKS_DATA_SOURCE_ID' : '',
+    !judgmentCalibrationCasesDataSourceId ? 'SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID' : '',
+    !judgmentRulesDataSourceId ? 'SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID' : '',
+  ].filter(Boolean);
+
+  return [
+    'Seven Jr. 有認出你要開始任務校準，但線上服務還沒有完成任務校準資料庫設定，所以暫時不能啟動。',
+    missing.length ? `缺少設定：${missing.join('、')}` : '',
+    '請先在 Render 的 line-oa-webhook 服務補上任務校準案例庫與判斷規則庫環境參數，重新部署後再說：「Seven Junior，開始做任務校準」。',
+  ].filter(Boolean).join('\n');
 }
 
 async function getJudgmentCalibrationSession() {
