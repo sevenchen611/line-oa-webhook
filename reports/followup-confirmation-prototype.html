@@ -24,7 +24,7 @@
       </div>
 
       <div class="metrics">
-        <div class="metric"><span>今日已完成</span><strong>4</strong></div>
+        <div class="metric"><span>今日已完成</span><strong>3</strong></div>
         <div class="metric"><span>目前進行中</span><strong>5</strong></div>
         <div class="metric"><span>候選追蹤訊息</span><strong>3</strong></div>
         <div class="metric"><span>未確認任務</span><strong>11</strong></div>
@@ -46,32 +46,35 @@
           <article class="card followup-card">
             <div class="card-top">
               <label class="send-toggle"><input type="checkbox" checked><span>納入追蹤</span></label>
-              <select><option>批准發送</option><option>修改後發送</option><option>暫緩</option><option>取消</option></select>
+              <select class="action-select"><option>批准發送</option><option>修改後發送</option><option>暫緩</option><option>取消</option></select>
             </div>
             <div class="card-body">
               <div class="field"><div class="label">對象</div><div class="target">台翰營造&茲心園改建</div><div class="meta"><span class="chip warn">等待回覆</span><span class="chip info">茲心園工程</span></div></div>
+              <div class="field"><div class="label">發話對象</div><select class="speaker-select"><option>Seven Jr. 協助追蹤</option><option>Seven 陳聖文 本人口吻</option><option>公司窗口代為確認</option><option>只作內部紀錄</option></select></div>
               <div class="field"><div class="label">原因</div><p class="reason">已有估價與圖面相關進度，但仍需要確認正式報價流程與後續回覆。</p></div>
               <div class="field"><div class="label">建議訊息</div><textarea>學姐好，我這邊協助確認一下：茲心園改建估價資料目前是否已正式進入報價流程？如果還需要補 D 棟或本棟圖面資料，我這邊可以協助整理。</textarea></div>
             </div>
           </article>
           <article class="card followup-card">
             <div class="card-top">
-              <label class="send-toggle"><input type="checkbox"><span>納入追蹤</span></label>
-              <select><option>暫緩</option><option>批准發送</option><option>修改後發送</option><option>取消</option></select>
+              <label class="send-toggle"><input type="checkbox" checked><span>納入追蹤</span></label>
+              <select class="action-select"><option>批准發送</option><option>修改後發送</option><option>暫緩</option><option>取消</option></select>
             </div>
             <div class="card-body">
               <div class="field"><div class="label">對象</div><div class="target">包租代管 / 昱晴</div><div class="meta"><span class="chip warn">待釐清</span><span class="chip info">包租代管</span></div></div>
+              <div class="field"><div class="label">發話對象</div><select class="speaker-select"><option>Seven Jr. 協助追蹤</option><option>Seven 陳聖文 本人口吻</option><option>公司窗口代為確認</option><option>只作內部紀錄</option></select></div>
               <div class="field"><div class="label">原因</div><p class="reason">登入頁不實用與 Codex 使用教學都還缺明確範圍，建議先不急著對外催。</p></div>
               <div class="field"><div class="label">建議訊息</div><textarea>昱晴，方便的話你可以先把後台想調整的地方用條列方式整理，我晚點再協助判斷哪些可以交給 Codex 修改。</textarea></div>
             </div>
           </article>
           <article class="card followup-card">
             <div class="card-top">
-              <label class="send-toggle"><input type="checkbox"><span>納入追蹤</span></label>
-              <select><option>取消</option><option>暫緩</option><option>批准發送</option><option>修改後發送</option></select>
+              <label class="send-toggle"><input type="checkbox" checked><span>納入追蹤</span></label>
+              <select class="action-select"><option>批准發送</option><option>暫緩</option><option>取消</option><option>修改後發送</option></select>
             </div>
             <div class="card-body">
               <div class="field"><div class="label">對象</div><div class="target">私人事務</div><div class="meta"><span class="chip gray">內部整理</span><span class="chip risk">不對外發送</span></div></div>
+              <div class="field"><div class="label">發話對象</div><select class="speaker-select"><option>只作內部紀錄</option><option>Seven Jr. 協助追蹤</option><option>Seven 陳聖文 本人口吻</option><option>公司窗口代為確認</option></select></div>
               <div class="field"><div class="label">原因</div><p class="reason">私人事務類任務不需要對外發 LINE，只需要在任務庫確認是否保留。</p></div>
               <div class="field"><div class="label">建議訊息</div><textarea>這類任務僅作為內部整理，不建議發送對外訊息。</textarea></div>
             </div>
@@ -107,8 +110,7 @@
     const completedTasks=[
       {task:'營運：茲心園幹部群：我們目前正常',project:'營運',owner:'逸凡YIFAN',summary:'現場已回覆目前正常運作，不需停班停課或人力調整。'},
       {task:'人資：寄送信件行政協助',project:'人資',owner:'Bonnie / Seven陳聖文',summary:'Bonnie 已回覆掛號順利寄出，任務完成。'},
-      {task:'溪頭案：保存並關聯 PDF 附件',project:'私人事務',owner:'Seven Jr.',summary:'PDF 附件已保存並連回專案/母任務。'},
-      {task:'SevenAM User UI 顯示內部代碼修正',project:'私人事務',owner:'Seven Jr.',summary:'User UI 已改為顯示對話名稱，不再顯示內部代碼。'}
+      {task:'確認 Bonnie 人資群組是否成功寫入 Notion',project:'未分類',owner:'',summary:'已讀到 Bonnie 相關群組訊息與圖片紀錄，確認 Notion 寫入成功。'}
     ];
     const activeTasks=[
       {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',owner:'Seven陳聖文',summary:'請儘快安排時間完成報稅處理。'},
@@ -165,8 +167,8 @@
 
     async function confirmSend(){
       const followupCards=[...document.querySelectorAll('.followup-card')];
-      const followups=followupCards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('select')?.value||'',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
-      const selectedFollowups=followups.filter(item=>item.send).map(item=>item.target).filter(Boolean);
+      const followups=followupCards.map(card=>({send:Boolean(card.querySelector('input[type="checkbox"]')?.checked),action:card.querySelector('.action-select')?.value||'',speaker:card.querySelector('.speaker-select')?.value||'Seven Jr. 協助追蹤',target:card.querySelector('.target')?.innerText.trim()||'',reason:card.querySelector('.reason')?.innerText.trim()||'',message:card.querySelector('textarea')?.value.trim()||''}));
+      const selectedFollowups=followups.filter(item=>item.send&&!/只作內部紀錄/.test(item.speaker)).map(item=>item.target).filter(Boolean);
       const taskDecisions=[...document.querySelectorAll('.task-card')].map(card=>{
         const select=card.querySelector('.task-decision');
         const note=card.querySelector('.task-note')?.value.trim()||'';
@@ -188,7 +190,7 @@
         const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),sendApprovedFollowups:true,reportContent:buildReportContent(followups,taskDecisions),followups,tasks,decisions:deferred.map(item=>({item:item.task,decision:'保留未確認',status:'未處理'})),notes:`${slotLabel} 追蹤確認與新任務確認寫回；未選正式狀態者保留未確認。`})});
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok){throw new Error(data.error||`寫回失敗 (${response.status})`)}
-        const sentText=selectedFollowups.length?selectedFollowups.map(escapeHtml).join('<br>'):'沒有勾選要對外追蹤的訊息。';
+        const sentText=followups.filter(item=>item.send).length?followups.filter(item=>item.send).map(item=>`${escapeHtml(item.target)}｜${escapeHtml(item.speaker)}`).join('<br>'):'沒有勾選要對外追蹤的訊息。';
         const taskText=tasks.length?tasks.map(item=>`${escapeHtml(item.task)}：${escapeHtml(item.status)}`).join('<br>'):'沒有任務被正式確認或封存。';
         const dispatch=data.followupDispatch||{};
         const dispatchText=dispatch.results?.length?dispatch.results.map(item=>`${escapeHtml(item.target)}：${escapeHtml(dispatchStatusLabel(item.status,item.reason))}`).join('<br>'):'沒有需要外發解析的追蹤訊息。';
@@ -210,13 +212,14 @@
     }
 
     function buildReportContent(followups,taskDecisions){
-      const followupText=followups.map(item=>`${item.target}\n${item.action}\n${item.message}`).join('\n---\n');
+      const followupText=followups.map(item=>`${item.target}\n${item.action}\n發話對象：${item.speaker||'Seven Jr. 協助追蹤'}\n${item.message}`).join('\n---\n');
       const taskText=taskDecisions.map(item=>`${item.task}\n${item.status}${item.note?`\n備註：${item.note}`:''}`).join('\n---\n');
       return `追蹤訊息\n${followupText}\n\n待確認任務\n${taskText}`;
     }
     function resetChoices(){
       document.querySelectorAll('.followup-card input[type="checkbox"]').forEach((input,index)=>{input.checked=index===0});
-      document.querySelectorAll('.followup-card select').forEach((select,index)=>{select.selectedIndex=index===0?0:0});
+      document.querySelectorAll('.followup-card .action-select').forEach((select,index)=>{select.selectedIndex=index===0?0:0});
+      document.querySelectorAll('.followup-card .speaker-select').forEach((select,index)=>{select.selectedIndex=index===2?0:0});
       document.querySelectorAll('.task-decision').forEach(select=>{select.value='keep'});
       document.querySelectorAll('.task-note').forEach(input=>{input.value=''});
       document.getElementById('summary').className='result';

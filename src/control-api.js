@@ -750,6 +750,7 @@ async function dispatchApprovedFollowups(followups, context) {
       results.push({
         target: item.target,
         action: item.action,
+        speaker: item.speaker,
         message: item.message,
         status: 'pending-target',
         reason: resolved.reason,
@@ -762,6 +763,7 @@ async function dispatchApprovedFollowups(followups, context) {
       results.push({
         target: item.target,
         action: item.action,
+        speaker: item.speaker,
         message: item.message,
         status: 'dry-run',
         resolvedTarget: resolved.target,
@@ -773,6 +775,7 @@ async function dispatchApprovedFollowups(followups, context) {
     results.push({
       target: item.target,
       action: item.action,
+      speaker: item.speaker,
       message: item.message,
       status: 'sent',
       resolvedTarget: resolved.target,
@@ -796,16 +799,18 @@ async function dispatchApprovedFollowups(followups, context) {
 
 function normalizeFollowupDispatchItem(item, index) {
   const action = String(item.action || item.decision || '').trim();
+  const speaker = String(item.speaker || item.sender || item.voice || 'Seven Jr. 協助追蹤').trim();
   const target = String(item.target || item.targetName || '').trim();
   const message = String(item.message || item.text || '').trim();
   const explicitTargetId = String(item.targetId || item.id || '').trim();
   const explicitTargetType = String(item.targetType || item.type || '').trim();
   const send = Boolean(item.send);
-  const approved = /批准|發送|送出|send|approved/i.test(action) && !/取消|暫緩|不發|不要/.test(action);
+  const approved = /批准|發送|送出|send|approved/i.test(action) && !/取消|暫緩|不發|不要/.test(action) && !/只作內部紀錄/.test(speaker);
 
   return {
     index,
     action,
+    speaker,
     target,
     message,
     explicitTargetId,
@@ -1101,6 +1106,7 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
     ? followups.map((item) => [
       `目標：${item.target || ''}`,
       `動作：${item.action || ''}`,
+      `發話對象：${item.speaker || 'Seven Jr. 協助追蹤'}`,
       `是否發送：${item.send ? '是' : '否'}`,
       `訊息：${item.message || ''}`,
     ].join('\n')).join('\n---\n')
@@ -1108,6 +1114,7 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
   const dispatchLines = followupDispatch?.results?.length
     ? followupDispatch.results.map((item) => [
       `目標：${item.target || ''}`,
+      `發話對象：${item.speaker || 'Seven Jr. 協助追蹤'}`,
       `狀態：${item.status || ''}`,
       item.resolvedTarget ? `解析對象：${item.resolvedTarget.name || item.resolvedTarget.id} (${item.resolvedTarget.type})` : '',
       item.reason ? `原因：${item.reason}` : '',
