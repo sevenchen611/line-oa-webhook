@@ -128,7 +128,7 @@ services:
     plan: starter
     buildCommand: npm install
     startCommand: npm run cron:report -- morning
-    schedule: "0 0 * * *"
+    schedule: "30 0 * * *"
     envVars:
       - key: CRON_JOB_NAME
         value: seven-jr-morning-brief
