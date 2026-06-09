@@ -7,6 +7,7 @@ const projectName = args.name || 'AM Project';
 const outputPath = path.resolve(args.output || path.join(projectRoot, 'docs', 'user-ui-connected-preview.html'));
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const projectPrefix = resolveProjectPrefix(projectRoot, projectName, args.prefix);
+const userUiBasePath = normalizeUserUiBasePath(args.userUiBasePath || process.env.USER_UI_BASE_PATH || '');
 
 loadEnvFile(path.join(projectRoot, '.env'));
 loadEnvFile(path.resolve(projectRoot, '..', 'env.txt'));
@@ -425,7 +426,7 @@ async function mapProjects(pages) {
     mapped.push({
       id: page.id,
       index,
-      uiUrl: `user-ui-project-${index}.html`,
+      uiUrl: userUiPageHref(`user-ui-project-${index}.html`),
       name: pageText(page, '專案名稱') || pageTitle(page),
       status: pageText(page, '狀態') || pageText(page, '目前狀態') || 'Unknown',
       owner: pageText(page, '負責人') || '',
@@ -460,7 +461,7 @@ async function mapTasks(pages) {
       judgment: firstPageText(page, ['Codex 判斷摘要', '判斷摘要', 'AM 判斷摘要', '判斷原因']) || '',
       rawSource: firstPageText(page, ['來源原文', '原始內容', '線索訊息', '來源訊息']) || '',
       content: await pageContentPreview(page.id),
-      uiUrl: `user-ui-task-${index}.html`,
+      uiUrl: userUiPageHref(`user-ui-task-${index}.html`),
       notionUrl: pageUrl(page),
       url: pageUrl(page),
     });
@@ -472,7 +473,7 @@ function mapConversations(pages) {
   return pages.map((page, index) => ({
     id: page.id,
     index,
-    uiUrl: `user-ui-line-${index}.html`,
+    uiUrl: userUiPageHref(`user-ui-line-${index}.html`),
     name: pageText(page, '自定義名稱') || pageTitle(page),
     type: pageText(page, '對象類型') || '',
     project: pageText(page, '關聯專案') || pageText(page, '總控專案') || pageText(page, '專案') || '',
@@ -622,6 +623,20 @@ function link(url, label) {
   return `<a href="${escapeHtml(url)}"${attrs}>${escapeHtml(label || url)}</a>`;
 }
 
+function normalizeUserUiBasePath(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return `/${text.replace(/^\/+|\/+$/g, '')}`;
+}
+
+function userUiPageHref(fileName, hash = '') {
+  return userUiBasePath ? `${userUiBasePath}/${fileName}${hash}` : `${fileName}${hash}`;
+}
+
+function userUiHomeHref(hash = '') {
+  return userUiBasePath ? `${userUiBasePath}${hash}` : `user-ui-connected-preview.html${hash}`;
+}
+
 function jsString(value) {
   return JSON.stringify(String(value || ''));
 }
@@ -647,7 +662,7 @@ function cards(items, renderer) {
 }
 
 function renderSideNav(basePath = '') {
-  const base = String(basePath || '');
+  const base = String(basePath || userUiHomeHref());
   return `<nav class="nav">
         <a href="${base}#overview" data-view="overview">檔案總覽</a>
         <a href="${base}#projects" data-view="projects">所有專案</a>
@@ -1180,10 +1195,10 @@ function renderProjectOnlyHtml(model, project, index) {
   <div class="shell">
     <aside>
       <div class="brand">AM User UI<br><span class="muted">${escapeHtml(model.projectName)}</span></div>
-      ${renderSideNav('user-ui-connected-preview.html')}
+      ${renderSideNav()}
     </aside>
     <main>
-      <p><a href="user-ui-connected-preview.html#projects" data-back-link>← 回到上一頁</a></p>
+      <p><a href="${escapeHtml(userUiHomeHref('#projects'))}" data-back-link>← 回到上一頁</a></p>
       <h1>${escapeHtml(project.name)}</h1>
       <p>
         <span class="badge ${statusClass(project.status)}">${escapeHtml(project.status || 'No status')}</span>
@@ -1294,10 +1309,10 @@ function renderTaskOnlyHtml(model, task) {
   <div class="shell">
     <aside>
       <div class="brand">AM User UI<br><span class="muted">${escapeHtml(model.projectName)}</span></div>
-      ${renderSideNav('user-ui-connected-preview.html')}
+      ${renderSideNav()}
     </aside>
     <main>
-      <p><a href="${project ? escapeHtml(project.uiUrl) : 'user-ui-connected-preview.html#tasks'}" data-back-link>← 回到上一頁</a></p>
+      <p><a href="${project ? escapeHtml(project.uiUrl) : escapeHtml(userUiHomeHref('#tasks'))}" data-back-link>← 回到上一頁</a></p>
       <h1>${escapeHtml(task.name)}</h1>
       <p>
         <span class="badge ${statusClass(task.status)}">${escapeHtml(task.status || 'No status')}</span>
@@ -1504,10 +1519,10 @@ function renderConversationOnlyHtml(model, conversation) {
   <div class="shell">
     <aside>
       <div class="brand">AM User UI<br><span class="muted">${escapeHtml(model.projectName)}</span></div>
-      ${renderSideNav('user-ui-connected-preview.html')}
+      ${renderSideNav()}
     </aside>
     <main>
-      <p><a href="user-ui-connected-preview.html#line" data-back-link>← 回到上一頁</a></p>
+      <p><a href="${escapeHtml(userUiHomeHref('#line'))}" data-back-link>← 回到上一頁</a></p>
       <h1>${escapeHtml(conversation.name || '(unnamed conversation)')}</h1>
       <p>
         ${(conversation.project || '未綁定專案').split(',').map((projectName) => `<span class="badge ${conversation.project ? 'ok' : 'wait'}">Project: ${escapeHtml(projectName.trim())}</span>`).join(' ')}

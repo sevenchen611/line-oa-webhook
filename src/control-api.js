@@ -2515,7 +2515,7 @@ function serveUserUiPage(req, res, pathname) {
     return;
   }
 
-  const fileName = pathname === '/user-ui' ? 'user-ui-connected-preview.html' : pathname.replace(/^\/user-ui\/?/, '');
+  const fileName = resolveUserUiFileName(pathname);
   if (!/^user-ui-(connected-preview|project-\d+|task-\d+|line-\d+|scheduled-[a-z-]+)\.html$/.test(fileName)) {
     return sendJson(res, 404, { error: 'User UI page not found' });
   }
@@ -2532,6 +2532,16 @@ function serveUserUiPage(req, res, pathname) {
     'Cache-Control': 'no-store',
   });
   res.end(html);
+}
+
+function resolveUserUiFileName(pathname) {
+  if (pathname === '/user-ui') {
+    return 'user-ui-connected-preview.html';
+  }
+  if (/^\/user-ui-[^/]+\.html$/.test(pathname)) {
+    return pathname.slice(1);
+  }
+  return pathname.replace(/^\/user-ui\//, '');
 }
 
 function sendJson(res, statusCode, payload) {
