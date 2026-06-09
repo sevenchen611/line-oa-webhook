@@ -41,9 +41,9 @@ services:
       - key: SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID
         value: 979949aa-bac3-45ac-a4cc-a38585addb89
       - key: SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID
-        sync: false
+        value: 9714e599-5677-4071-afe4-3e577e1c412e
       - key: SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID
-        sync: false
+        value: 5dc0f7d1-7776-4724-8104-6b3e131dd972
       - key: SEVEN_JUDGMENT_REVIEW_TARGET_NAME_KEYWORD
         value: "Seven 陳聖文"
       - key: SEVEN_CONTROL_API_KEY
