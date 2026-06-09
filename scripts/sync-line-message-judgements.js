@@ -16,8 +16,12 @@ const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
 const includeOutgoing = Boolean(args['include-outgoing']);
 const includeOutgoingGroups = Boolean(args['include-outgoing-groups']);
+const groupsOnly = Boolean(args['groups-only']);
+const updateExistingOnly = Boolean(args['update-existing-only']);
+const skipProgress = Boolean(args['skip-progress']);
 const reprocess = Boolean(args.reprocess || args['include-judged']);
 const sinceHours = clampNumber(Number(args['since-hours'] || process.env.SEVEN_LINE_JUDGEMENT_SINCE_HOURS || 36), 1, 24 * 14);
+const sinceIso = String(args['since-iso'] || '').trim();
 const limit = clampNumber(Number(args.limit || 50), 1, 100);
 
 if (!notionToken) fail('NOTION_TOKEN is not set.');
@@ -42,13 +46,17 @@ try {
     dryRun,
     includeOutgoing,
     includeOutgoingGroups,
+    groupsOnly,
+    updateExistingOnly,
+    skipProgress,
     reprocess,
-    sinceHours,
+    since: sinceIso || `${sinceHours}h`,
     scannedMessages: messages.length,
     conversationGroups: groupedMessages.length,
     updatedExistingTasks: results.reduce((count, item) => count + item.updatedExistingTasks.filter((task) => task.action === 'updated-existing').length, 0),
     createdNewEventTasks: results.reduce((count, item) => count + item.createdTasks.filter((task) => task.action === 'created').length, 0),
     createdTasks: results.reduce((count, item) => count + item.createdTasks.filter((task) => task.action === 'created').length, 0),
+    skippedNewEventTasks: results.reduce((count, item) => count + item.createdTasks.filter((task) => task.action === 'skipped-new-task').length, 0),
     createdProgressReports: results.reduce((count, item) => count + item.createdProgressReports.filter((report) => report.action === 'created').length, 0),
     importantMessages: results.filter((item) => item.importanceScore > 0).length,
     markedJudged: results.filter((item) => item.markedJudged).length,
@@ -65,10 +73,14 @@ try {
 }
 
 async function listMessagesForJudgement() {
-  const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
+  const since = sinceIso || new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
   const baseFilters = [
     { property: '排序時間', date: { on_or_after: since } },
   ];
+
+  if (groupsOnly) {
+    baseFilters.push({ property: '群組標記', checkbox: { equals: true } });
+  }
 
   if (!reprocess) {
     baseFilters.unshift({ property: '已進入判斷層', checkbox: { equals: false } });
@@ -80,7 +92,7 @@ async function listMessagesForJudgement() {
       queryMessagesForJudgement([
         ...baseFilters,
         { property: '訊息來源', select: { equals: 'ai-engine' } },
-        { property: '群組標記', checkbox: { equals: true } },
+        ...(groupsOnly ? [] : [{ property: '群組標記', checkbox: { equals: true } }]),
       ]),
     ]);
 
@@ -184,6 +196,8 @@ async function processMessage(message, runConversationMessages = []) {
         await updateTaskWithEvidence(relatedTask, candidate, message, sameConversationContext);
         result.updatedExistingTasks.push({ action: 'updated-existing', pageId: relatedTask.id, url: relatedTask.url, name: relatedTask.name, candidate: candidate.name });
       }
+    } else if (updateExistingOnly) {
+      result.createdTasks.push({ action: 'skipped-new-task', name: candidate.name, reason: 'update-existing-only' });
     } else if (dryRun) {
       result.createdTasks.push({ action: 'dry-run', name: candidate.name, properties: candidate.taskProperties });
       inRunCreatedTasks.set(candidateKey, {
@@ -211,7 +225,7 @@ async function processMessage(message, runConversationMessages = []) {
       });
     }
 
-    if (candidate.progressProperties) {
+    if (candidate.progressProperties && !skipProgress) {
       try {
         const existingProgress = await findExistingProgressReport(candidate.progressName);
         if (existingProgress) {
@@ -1047,7 +1061,9 @@ function scoreTaskMatch(task, candidate, message, sameConversationContext) {
 }
 
 async function updateTaskWithEvidence(task, candidate, message, sameConversationContext) {
-  if (message.url && task.sourceText.includes(message.url)) {
+  const statusUpdate = inferStatusUpdateFromCandidate(candidate, task);
+  const evidenceAlreadyRecorded = Boolean(message.url && task.sourceText.includes(message.url));
+  if (evidenceAlreadyRecorded && (!statusUpdate || task.status === statusUpdate)) {
     return;
   }
 
@@ -1056,6 +1072,7 @@ async function updateTaskWithEvidence(task, candidate, message, sameConversation
     task.judgementSummary,
     '',
     `任務更新判斷：新 LINE 訊息被判定為既有任務的延伸，不另建新任務。`,
+    statusUpdate ? `狀態更新：${task.status || '未設定'} -> ${statusUpdate}` : '',
     `更新原因：${candidate.reasons.join('、') || '同對話前後文與活躍任務比對'}`,
   ].filter(Boolean).join('\n');
 
@@ -1063,13 +1080,30 @@ async function updateTaskWithEvidence(task, candidate, message, sameConversation
     method: 'PATCH',
     body: {
       properties: compactProperties({
-        來源原文: richTextProperty(appendEvidence(task.sourceText, evidence), 1900),
+        狀態: statusUpdate ? selectProperty(statusUpdate) : undefined,
+        來源原文: richTextProperty(evidenceAlreadyRecorded ? task.sourceText : appendEvidence(task.sourceText, evidence), 1900),
         'Codex 判斷摘要': richTextProperty(appendEvidence('', judgement), 1900),
         下一步: richTextProperty(candidate.nextStep, 900),
         最後更新: dateProperty(new Date()),
       }),
     },
   });
+}
+
+function inferStatusUpdateFromCandidate(candidate, task) {
+  const current = String(task.status || '');
+  if (/封存|已完成|完成/.test(current)) return '';
+
+  if (candidate.category === 'done') return '待確認完成';
+  if (candidate.category === 'blocked') return '等待回覆';
+  if (candidate.category === 'followup') return '等待回覆';
+  if (candidate.category === 'progress') return '進行中';
+  if (candidate.category === 'decision') return '待確認';
+  if (candidate.category === 'task' && /進行|處理|安排|協助|準備|提供/.test(candidate.sourceText || '')) {
+    return current === '待確認' ? '待確認' : '進行中';
+  }
+
+  return '';
 }
 
 function buildTaskUpdateEvidence(candidate, message, sameConversationContext) {

@@ -638,6 +638,17 @@ Rule-update backfill:
 npm run line:judgements -- --reprocess --since-hours 24 --limit 100
 ```
 
+Same-day group-only task status reconciliation:
+
+```bash
+npm run line:judgements -- --reprocess --groups-only --include-outgoing-groups --update-existing-only --skip-progress --since-iso <UTC midnight for Taipei> --limit 100
+```
+
+Use this when the user asks to reread today's LINE group messages and update the
+current task list without creating new task pages or progress reports. For
+Taipei midnight, pass the previous UTC date at 16:00, for example
+`2026-06-08T16:00:00.000Z` for 2026-06-09.
+
 The 20:30 daily report is dynamic. It reads today's LINE raw messages, judgement-created tasks, and progress reports. To inspect the generated report without sending LINE:
 
 ```text
