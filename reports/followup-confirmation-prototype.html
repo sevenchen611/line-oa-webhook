@@ -12,7 +12,7 @@
   <div class="app">
     <aside>
       <div class="brand"><strong>追蹤與任務確認</strong><span>10:00 / 13:00 / 17:00 審核</span></div>
-      <nav><a href="#followups">候選訊息</a><a href="#tasks">待確認任務</a><a href="#rules">確認規則</a><a href="#summary">確認結果</a></nav>
+      <nav><a href="#today-completed">今日完成</a><a href="#active-tasks">進行中</a><a href="#followups">候選訊息</a><a href="#tasks">待確認任務</a><a href="#summary">確認結果</a></nav>
     </aside>
     <main>
       <div class="top">
@@ -24,11 +24,21 @@
       </div>
 
       <div class="metrics">
+        <div class="metric"><span>今日已完成</span><strong>4</strong></div>
+        <div class="metric"><span>目前進行中</span><strong>5</strong></div>
         <div class="metric"><span>候選追蹤訊息</span><strong>3</strong></div>
         <div class="metric"><span>未確認任務</span><strong>11</strong></div>
-        <div class="metric"><span>高風險需人工看</span><strong>2</strong></div>
-        <div class="metric"><span>預設不自動確認</span><strong>11</strong></div>
       </div>
+
+      <section id="today-completed">
+        <div class="head"><h2>今天已完成的任務</h2><span class="note">作為本時段回顧，不需要操作</span></div>
+        <div class="list" id="completedTaskList"></div>
+      </section>
+
+      <section id="active-tasks">
+        <div class="head"><h2>今天目前還在進行中的待辦任務</h2><span class="note">用來決定是否需要追問、改狀態或補下一步</span></div>
+        <div class="list" id="activeTaskList"></div>
+      </section>
 
       <section id="followups">
         <div class="head"><h2>候選追蹤訊息</h2><span class="note">勾選後才代表允許 Seven Jr. 後續發送或安排追蹤</span></div>
@@ -75,15 +85,6 @@
         <div class="list" id="taskList"></div>
       </section>
 
-      <section id="rules">
-        <div class="head"><h2>確認規則</h2><span class="note">避免把候選內容誤當正式承諾</span></div>
-        <div class="list">
-          <article class="card"><div class="card-body"><div class="task-name">保留未確認</div><p class="reason">不寫回任務狀態，下一次報告仍會列出。適合你還沒時間判斷。</p></div></article>
-          <article class="card"><div class="card-body"><div class="task-name">確認成立 / 等待回覆 / 未開始 / 待確認完成</div><p class="reason">寫回總控任務庫，確認狀態改為已確認，後續可進入追蹤或進度報告。</p></div></article>
-          <article class="card"><div class="card-body"><div class="task-name">不成立 / 封存</div><p class="reason">用在你不要、不需要追蹤、不需要繼續發的任務。它會從待確認清單退場。</p></div></article>
-        </div>
-      </section>
-
       <div class="actions"><button class="btn" onclick="resetChoices()">重設</button><button class="btn primary js-confirm" onclick="confirmSend()">確認並寫回</button></div>
       <div class="result" id="summary"></div>
     </main>
@@ -103,12 +104,39 @@
       {task:'包租代管：建立昱晴使用 Codex 的教學與安全規則',project:'包租代管',source:'LINE OA',summary:'建立 Codex 使用教學、安全規則、修改流程與回復機制。',risk:'一般'},
       {task:'HOZO 後臺：建立 Local / Staging / Production 隔離確認表',project:'HOZO 後臺',source:'LINE OA',summary:'環境隔離不清楚，需建立確認表避免改壞正式環境。',risk:'一般'}
     ];
+    const completedTasks=[
+      {task:'營運：茲心園幹部群：我們目前正常',project:'營運',owner:'逸凡YIFAN',summary:'現場已回覆目前正常運作，不需停班停課或人力調整。'},
+      {task:'人資：寄送信件行政協助',project:'人資',owner:'Bonnie / Seven陳聖文',summary:'Bonnie 已回覆掛號順利寄出，任務完成。'},
+      {task:'溪頭案：保存並關聯 PDF 附件',project:'私人事務',owner:'Seven Jr.',summary:'PDF 附件已保存並連回專案/母任務。'},
+      {task:'SevenAM User UI 顯示內部代碼修正',project:'私人事務',owner:'Seven Jr.',summary:'User UI 已改為顯示對話名稱，不再顯示內部代碼。'}
+    ];
+    const activeTasks=[
+      {task:'私人事務：報稅逾期處理與補申報確認',project:'私人事務',owner:'Seven陳聖文',summary:'請儘快安排時間完成報稅處理。'},
+      {task:'茲心園工程：再發設計圖給 2-3 家營造廠估價',project:'茲心園工程',owner:'Seven',summary:'已找第二家廠商，仍需找第三家廠商。'},
+      {task:'茲心園工程：確認學姐估價資料是否已正式進入報價流程',project:'茲心園工程',owner:'學姐 / Seven',summary:'等待廠商評估是否安排現場勘驗。'},
+      {task:'包租代管：建立昱晴使用 Codex 的教學與安全規則',project:'包租代管',owner:'Seven / 昱晴',summary:'需約時間進行 Codex 使用教學與安全規則確認。'},
+      {task:'HOZO 後臺：建立 Local / Staging / Production 隔離確認表',project:'HOZO 後臺',owner:'Seven',summary:'持續建立環境矩陣與禁止規則。'}
+    ];
     const params=new URLSearchParams(location.search);
     const hashParams=new URLSearchParams(location.hash.replace(/^#/,''));
     const slot=params.get('slot')||hashParams.get('slot')||'17';
     const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};
     document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[17];
+    renderReadOnlyTaskList('completedTaskList', completedTasks);
+    renderReadOnlyTaskList('activeTaskList', activeTasks);
     renderTasks();
+
+    function renderReadOnlyTaskList(elementId, items){
+      const list=document.getElementById(elementId);
+      list.innerHTML=items.length?items.map(item=>`
+        <article class="card">
+          <div class="card-body">
+            <div class="task-name">${escapeHtml(item.task)}</div>
+            <div class="meta"><span class="chip info">${escapeHtml(item.project)}</span>${item.owner?`<span class="chip gray">${escapeHtml(item.owner)}</span>`:''}</div>
+            <p class="reason">${escapeHtml(item.summary)}</p>
+          </div>
+        </article>`).join(''):'<article class="card"><div class="card-body"><p class="muted">目前沒有資料。</p></div></article>';
+    }
 
     function renderTasks(){
       const list=document.getElementById('taskList');
@@ -150,17 +178,22 @@
       const slotLabel=slot==='17'?'17:00':slot==='13'?'13:00':'10:00';
       const result=document.getElementById('summary');
       const buttons=document.querySelectorAll('.js-confirm');
+      if(selectedFollowups.length&&!confirm(`將正式發送 ${selectedFollowups.length} 則已勾選的追蹤訊息；找不到唯一 LINE 對象的項目會自動停在待補。是否繼續？`)){
+        return;
+      }
       buttons.forEach(button=>{button.disabled=true;button.textContent='寫回中...'});
       result.className='result show';
       result.innerHTML='<strong>正在寫回追蹤與任務確認...</strong>';
       try{
-        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),reportContent:buildReportContent(followups,taskDecisions),followups,tasks,decisions:deferred.map(item=>({item:item.task,decision:'保留未確認',status:'未處理'})),notes:`${slotLabel} 追蹤確認與新任務確認寫回；未選正式狀態者保留未確認。`})});
+        const response=await fetch(APPROVAL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportType,approvedBy:'Seven 陳聖文',submittedAt:new Date().toISOString(),sendApprovedFollowups:true,reportContent:buildReportContent(followups,taskDecisions),followups,tasks,decisions:deferred.map(item=>({item:item.task,decision:'保留未確認',status:'未處理'})),notes:`${slotLabel} 追蹤確認與新任務確認寫回；未選正式狀態者保留未確認。`})});
         const data=await response.json().catch(()=>({}));
         if(!response.ok||!data.ok){throw new Error(data.error||`寫回失敗 (${response.status})`)}
         const sentText=selectedFollowups.length?selectedFollowups.map(escapeHtml).join('<br>'):'沒有勾選要對外追蹤的訊息。';
         const taskText=tasks.length?tasks.map(item=>`${escapeHtml(item.task)}：${escapeHtml(item.status)}`).join('<br>'):'沒有任務被正式確認或封存。';
+        const dispatch=data.followupDispatch||{};
+        const dispatchText=dispatch.results?.length?dispatch.results.map(item=>`${escapeHtml(item.target)}：${escapeHtml(dispatchStatusLabel(item.status,item.reason))}`).join('<br>'):'沒有需要外發解析的追蹤訊息。';
         result.className='result show';
-        result.innerHTML=`<strong>已寫回 Notion。</strong><br><br><strong>追蹤訊息：</strong><br>${sentText}<br><br><strong>任務確認：</strong><br>${taskText}<br><br><span>保留未確認 ${deferred.length} 筆；寫回任務 ${data.tasksWritten||0} 筆。</span>`;
+        result.innerHTML=`<strong>已寫回 Notion。</strong><br><br><strong>追蹤訊息：</strong><br>${sentText}<br><br><strong>推送結果：</strong><br>${dispatchText}<br><br><strong>任務確認：</strong><br>${taskText}<br><br><span>保留未確認 ${deferred.length} 筆；寫回任務 ${data.tasksWritten||0} 筆；已發送 ${dispatch.sent||0} 則；待補對象 ${dispatch.pending||0} 則。</span>`;
       }catch(error){
         result.className='result show error';
         result.innerHTML=`<strong>寫回失敗。</strong><br>${escapeHtml(error.message||'未知錯誤')}`;
@@ -168,6 +201,12 @@
         buttons.forEach(button=>{button.disabled=false;button.textContent='確認並寫回'});
         result.scrollIntoView({behavior:'smooth',block:'nearest'});
       }
+    }
+    function dispatchStatusLabel(status,reason){
+      if(status==='sent')return'已正式發送';
+      if(status==='pending-target')return reason==='internal-only-target'?'內部事項，不外發':'待補 LINE 對象';
+      if(status==='dry-run')return'已解析，尚未發送';
+      return status||'未處理';
     }
 
     function buildReportContent(followups,taskDecisions){
