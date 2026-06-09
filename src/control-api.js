@@ -72,7 +72,7 @@ async function handleControlRequest(req, res, pathname) {
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
       userUiLoginEnabled: Boolean(process.env.SEVEN_USER_UI_USERNAME && process.env.SEVEN_USER_UI_PASSWORD),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
+      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -105,6 +105,11 @@ async function handleControlRequest(req, res, pathname) {
 
     if (pathname === '/control/reports/preview') {
       const result = await previewReport(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/followups/dispatch') {
+      const result = await dispatchFollowupsFromControl(body);
       return sendJson(res, 200, result);
     }
 
@@ -606,6 +611,12 @@ async function approveReport(req, body) {
   const reportContent = String(body.reportContent || body.editedReport || '').trim();
   const decisions = normalizeApprovalList(body.decisions);
   const followups = normalizeApprovalList(body.followups);
+  const followupDispatch = await dispatchApprovedFollowups(followups, {
+    dryRun: body.dryRunFollowups === true || body.sendApprovedFollowups !== true,
+    approvedBy,
+    reportType,
+    submittedAt,
+  });
 
   const taskResults = [];
   for (const item of tasks) {
@@ -626,6 +637,7 @@ async function approveReport(req, body) {
     reportContent,
     decisions,
     followups,
+    followupDispatch,
     notes: body.notes,
   });
   const snapshotUpdate = await maybeMarkDailyReportSnapshotConfirmed({
@@ -641,6 +653,7 @@ async function approveReport(req, body) {
     attachmentResults,
     decisions,
     followups,
+    followupDispatch,
     decisionPage,
   });
 
@@ -653,6 +666,7 @@ async function approveReport(req, body) {
     attachmentsWritten: attachmentResults.filter((item) => !item.skipped).length,
     attachmentsReviewed: attachmentResults.length,
     snapshotUpdate,
+    followupDispatch,
     taskResults,
     attachmentResults,
   };
@@ -696,7 +710,7 @@ async function resolveAcknowledgementTargets(body) {
   });
 }
 
-function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, decisionPage }) {
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage }) {
   const label = reportTypeLabel(reportType);
   const lines = [
     `Seven Jr. 已收到你送出的${label}確認。`,
@@ -709,6 +723,9 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   if (followups.length) summary.push(`追蹤 ${followups.length} 項`);
   if (taskResults.length) summary.push(`任務 ${taskResults.length} 項`);
   if (attachmentResults.length) summary.push(`附件 ${attachmentResults.length} 項`);
+  if (followupDispatch?.sent) summary.push(`已發送追蹤 ${followupDispatch.sent} 則`);
+  if (followupDispatch?.dryRunResolved) summary.push(`可發送待確認 ${followupDispatch.dryRunResolved} 則`);
+  if (followupDispatch?.pending) summary.push(`待補對象 ${followupDispatch.pending} 則`);
 
   lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
 
@@ -719,6 +736,229 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   lines.push('我會依照這次確認結果更新後續追蹤。');
 
   return { type: 'text', text: clampLineText(lines.join('\n')) };
+}
+
+async function dispatchApprovedFollowups(followups, context) {
+  const items = followups
+    .map((item, index) => normalizeFollowupDispatchItem(item, index))
+    .filter((item) => item.shouldDispatch);
+
+  const results = [];
+  for (const item of items) {
+    const resolved = await resolveFollowupDispatchTarget(item);
+    if (!resolved.ok) {
+      results.push({
+        target: item.target,
+        action: item.action,
+        message: item.message,
+        status: 'pending-target',
+        reason: resolved.reason,
+        candidates: resolved.candidates || [],
+      });
+      continue;
+    }
+
+    if (context.dryRun) {
+      results.push({
+        target: item.target,
+        action: item.action,
+        message: item.message,
+        status: 'dry-run',
+        resolvedTarget: resolved.target,
+      });
+      continue;
+    }
+
+    const pushResult = await pushToTargets([resolved.target], [{ type: 'text', text: item.message }]);
+    results.push({
+      target: item.target,
+      action: item.action,
+      message: item.message,
+      status: 'sent',
+      resolvedTarget: resolved.target,
+      pushResult,
+    });
+  }
+
+  const sent = results.filter((item) => item.status === 'sent').length;
+  const dryRun = results.filter((item) => item.status === 'dry-run').length;
+  const pending = results.filter((item) => item.status === 'pending-target').length;
+  return {
+    ok: pending === 0,
+    dryRun: context.dryRun,
+    requested: items.length,
+    sent,
+    dryRunResolved: dryRun,
+    pending,
+    results,
+  };
+}
+
+function normalizeFollowupDispatchItem(item, index) {
+  const action = String(item.action || item.decision || '').trim();
+  const target = String(item.target || item.targetName || '').trim();
+  const message = String(item.message || item.text || '').trim();
+  const explicitTargetId = String(item.targetId || item.id || '').trim();
+  const explicitTargetType = String(item.targetType || item.type || '').trim();
+  const send = Boolean(item.send);
+  const approved = /批准|發送|送出|send|approved/i.test(action) && !/取消|暫緩|不發|不要/.test(action);
+
+  return {
+    index,
+    action,
+    target,
+    message,
+    explicitTargetId,
+    explicitTargetType,
+    shouldDispatch: send && approved && Boolean(message),
+  };
+}
+
+async function resolveFollowupDispatchTarget(item) {
+  if (/私人事務|內部|不對外/.test(item.target)) {
+    return { ok: false, reason: 'internal-only-target' };
+  }
+
+  if (item.explicitTargetId) {
+    return {
+      ok: true,
+      target: {
+        id: item.explicitTargetId,
+        type: item.explicitTargetType || inferTargetType(item.explicitTargetId),
+        name: item.target,
+        source: 'followup-explicit',
+      },
+    };
+  }
+
+  const candidates = await findFollowupTargetsFromConversations(item.target);
+  if (!candidates.length) {
+    return { ok: false, reason: 'no-target-match' };
+  }
+
+  const topScore = candidates[0].score;
+  const topCandidates = candidates.filter((candidate) => candidate.score === topScore);
+  if (topCandidates.length !== 1) {
+    return {
+      ok: false,
+      reason: 'ambiguous-target-match',
+      candidates: topCandidates.map(publicFollowupCandidate),
+    };
+  }
+
+  const selected = topCandidates[0];
+  return {
+    ok: true,
+    target: {
+      id: selected.id,
+      type: selected.type,
+      name: selected.name,
+      source: 'followup-conversation-match',
+    },
+  };
+}
+
+async function findFollowupTargetsFromConversations(targetLabel) {
+  if (!process.env.NOTION_TOKEN || !CONVERSATIONS_DATA_SOURCE_ID) {
+    return [];
+  }
+
+  const pages = await listRecentConversationPagesForDispatch();
+  const label = normalizeDispatchText(targetLabel);
+  const terms = dispatchSearchTerms(targetLabel);
+  const scored = [];
+
+  for (const page of pages) {
+    const candidate = conversationDispatchCandidate(page);
+    if (!candidate.id) {
+      continue;
+    }
+
+    const haystack = normalizeDispatchText([
+      candidate.name,
+      candidate.customName,
+      candidate.project,
+      candidate.note,
+    ].join(' '));
+    const score = scoreFollowupTargetMatch({ label, terms, candidate, haystack });
+    if (score >= 40) {
+      scored.push({ ...candidate, score });
+    }
+  }
+
+  return scored.sort((a, b) => b.score - a.score || String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).slice(0, 5);
+}
+
+async function listRecentConversationPagesForDispatch() {
+  const result = await notionRequest(`/v1/data_sources/${CONVERSATIONS_DATA_SOURCE_ID}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 100,
+      sorts: [{ property: '最後訊息時間', direction: 'descending' }],
+    },
+  });
+  return result.results || [];
+}
+
+function conversationDispatchCandidate(page) {
+  const entityType = pageSelectProperty(page, '對象類型');
+  const groupId = pageTextProperty(page, 'Group ID');
+  const roomId = pageTextProperty(page, 'Room ID');
+  const userId = pageTextProperty(page, 'User ID');
+  const id = groupId || roomId || userId;
+  return {
+    id,
+    type: groupId ? 'group' : roomId ? 'room' : userId ? 'user' : inferTargetType(id),
+    entityType,
+    name: pageTextProperty(page, 'LINE 對話名稱'),
+    customName: pageTextProperty(page, '自定義名稱'),
+    project: pageSelectProperty(page, '總控專案'),
+    note: pageTextProperty(page, '備註'),
+    updatedAt: pageDateProperty(page, '最後訊息時間'),
+  };
+}
+
+function scoreFollowupTargetMatch({ label, terms, candidate, haystack }) {
+  let score = 0;
+  const name = normalizeDispatchText(candidate.name);
+  const customName = normalizeDispatchText(candidate.customName);
+
+  if (label && (name === label || customName === label)) score += 100;
+  if (label && (name.includes(label) || customName.includes(label) || label.includes(name) || label.includes(customName))) score += 60;
+
+  for (const term of terms) {
+    if (term.length >= 2 && haystack.includes(term)) score += 18;
+  }
+
+  if (candidate.project && label.includes(normalizeDispatchText(candidate.project))) score += 20;
+  if (candidate.type === 'group' || candidate.type === 'room') score += 8;
+  if (/私人|內部/.test(haystack)) score -= 40;
+
+  return score;
+}
+
+function dispatchSearchTerms(value) {
+  return normalizeDispatchText(value)
+    .split(/[\/／,，、\s&]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && !['群組', '專案', '追蹤'].includes(item));
+}
+
+function normalizeDispatchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[()（）【】\[\]]/g, '')
+    .trim();
+}
+
+function publicFollowupCandidate(candidate) {
+  return {
+    name: candidate.customName || candidate.name,
+    type: candidate.type,
+    project: candidate.project,
+    score: candidate.score,
+  };
 }
 
 function reportTypeLabel(reportType) {
@@ -846,7 +1086,7 @@ async function createAttachmentConversionApproval(item, context) {
   return { file: fileName, action, conversionStatus, conversionType, pageId: created.id };
 }
 
-async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, reportContent, decisions, followups, notes }) {
+async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, reportContent, decisions, followups, followupDispatch, notes }) {
   const title = `${reportType} 報告確認 ${formatTaipeiDateTime(submittedAt)}`;
   const taskLines = taskResults.length
     ? taskResults.map((item) => `${item.task} -> ${item.status} (${item.action})`).join('\n')
@@ -865,6 +1105,15 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
       `訊息：${item.message || ''}`,
     ].join('\n')).join('\n---\n')
     : '沒有追蹤訊息確認。';
+  const dispatchLines = followupDispatch?.results?.length
+    ? followupDispatch.results.map((item) => [
+      `目標：${item.target || ''}`,
+      `狀態：${item.status || ''}`,
+      item.resolvedTarget ? `解析對象：${item.resolvedTarget.name || item.resolvedTarget.id} (${item.resolvedTarget.type})` : '',
+      item.reason ? `原因：${item.reason}` : '',
+      item.candidates?.length ? `候選：${item.candidates.map((candidate) => `${candidate.name || ''} (${candidate.type || ''}, ${candidate.project || ''})`).join('、')}` : '',
+    ].filter(Boolean).join('\n')).join('\n---\n')
+    : '沒有執行追蹤訊息推送解析。';
   const reportText = reportContent || '沒有提供修改後報告內容。';
 
   return notionRequest('/v1/pages', {
@@ -877,7 +1126,7 @@ async function createApprovalDecisionPage({ reportType, approvedBy, submittedAt,
         專案: selectProperty('跨專案'),
         狀態: selectProperty('已決策'),
         嚴重度: selectProperty('低'),
-        說明: richTextProperty(`確認人：${approvedBy}\n報告類型：${reportType}\n\n修改後報告內容：\n${reportText}\n\n決策：\n${decisionLines}\n\n追蹤訊息：\n${followupLines}\n\n任務：\n${taskLines}\n\n附件：\n${attachmentLines}`),
+        說明: richTextProperty(`確認人：${approvedBy}\n報告類型：${reportType}\n\n修改後報告內容：\n${reportText}\n\n決策：\n${decisionLines}\n\n追蹤訊息：\n${followupLines}\n\n追蹤推送解析：\n${dispatchLines}\n\n任務：\n${taskLines}\n\n附件：\n${attachmentLines}`),
         後續行動: richTextProperty(notes ? String(notes) : '依照本次確認結果更新任務與附件轉檔佇列。'),
       }),
     },
@@ -944,6 +1193,24 @@ async function previewReport(body) {
     reportType,
     report,
     wouldSend: false,
+  };
+}
+
+async function dispatchFollowupsFromControl(body) {
+  const followups = normalizeApprovalList(body.followups);
+  const shouldActuallySend = body.sendApprovedFollowups === true || body.confirmSend === true;
+  const dryRun = body.dryRun !== false || !shouldActuallySend;
+  const result = await dispatchApprovedFollowups(followups, {
+    dryRun,
+    approvedBy: String(body.approvedBy || 'Seven 陳聖文').trim(),
+    reportType: String(body.reportType || 'manual-followup-dispatch').trim(),
+    submittedAt: body.submittedAt ? new Date(body.submittedAt) : new Date(),
+  });
+
+  return {
+    ok: true,
+    dryRun,
+    followupDispatch: result,
   };
 }
 

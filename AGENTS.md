@@ -32,6 +32,13 @@ Rules:
 - Extract tasks from LINE conversations when the conversation implies an action,
   follow-up, decision, unresolved issue, delivery promise, blocker, owner
   responsibility, or completion check.
+- Do not extract Seven Jr. operation commands as total-control tasks. Messages
+  such as "查待辦", "請給我看我的待辦任務", "列出今天的待辦",
+  "打開第 2 個任務", or similar instructions in the Seven Junior conversation
+  are command/query operations, not real-world tasks. In the Seven Junior
+  two-person control conversation, phonetic or mistyped assistant addresses such
+  as "謝孟娟" or "謝夢娟" should be treated as Seven Junior aliases, not as
+  separate people or task owners.
 - Each task should connect back to a project goal. A task without a project goal
   is incomplete context, not a fully understood control item.
 - If a LINE conversation reveals a new project goal, first record or propose the
@@ -118,6 +125,11 @@ Status update behavior:
 
 - If evidence shows completion, move the task toward `已完成` or
   `待確認完成` depending on risk and confidence.
+- If an earlier LINE thread raised a real operational check, such as whether
+  staff, site operations, classes, delivery, service, or scheduling must change,
+  and a later reply confirms "正常", "不需調整", "已處理", or equivalent,
+  keep the item as a real task/status record and mark it `已完成` or
+  `待確認完成`. Do not mark it `封存` just because the final reply is short.
 - If evidence shows waiting on someone, use `等待回覆` and record who or what is
   being waited on.
 - If evidence shows work started but not finished, use `進行中` and add the
@@ -729,6 +741,37 @@ This applies to:
 - 20:30 daily control confirmation
 
 If the LINE acknowledgement fails, the Notion write remains valid. The API response should include `acknowledgement.ok=false` for troubleshooting.
+
+### Follow-up Dispatch After Approval
+
+Approved follow-up messages use a protected two-step dispatch flow:
+
+1. The approval page records the user's selected follow-up target, action, and
+   edited message.
+2. Render resolves the target from explicit `targetId` first. If no ID is
+   provided, it searches `Seven LINE 對話主檔` by LINE conversation name,
+   custom name, project, and notes.
+3. If exactly one LINE target is resolved, the item is dispatchable.
+4. If no target or multiple possible targets are found, the item is marked
+   `pending-target`; Seven Jr. must not guess or send.
+5. Private/internal targets such as `私人事務` are always treated as internal-only
+   and are not sent externally.
+
+Safe test endpoint:
+
+```text
+POST /control/followups/dispatch
+```
+
+By default this endpoint runs as dry-run. It returns `dryRunResolved` and
+`pending` counts without sending LINE. To actually send, the request must set
+both `dryRun=false` and `sendApprovedFollowups=true` or `confirmSend=true`.
+
+Current 2026-06-09 test result:
+
+- `台翰營造&茲心園改建` resolves to the `台翰營造` LINE group.
+- `包租代管 / 昱晴` has no configured LINE target yet and remains pending.
+- `私人事務` is internal-only and is not sent externally.
 
 ## Render Control API
 
