@@ -48,6 +48,10 @@ services:
         value: "Seven 陳聖文"
       - key: SEVEN_CONTROL_API_KEY
         sync: false
+      - key: SEVEN_USER_UI_USERNAME
+        sync: false
+      - key: SEVEN_USER_UI_PASSWORD
+        sync: false
       - key: SEVEN_REPORT_TARGET_IDS
         sync: false
       - key: SEVEN_REPORT_CC_TARGET_IDS

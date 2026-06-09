@@ -8,6 +8,7 @@ const originalCreateServer = http.createServer.bind(http);
 
 const TASKS_DATA_SOURCE_ID = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const RISK_DECISIONS_DATA_SOURCE_ID = process.env.SEVEN_RISK_DECISIONS_DATA_SOURCE_ID || '0792a903-d274-4a6a-9115-8c66473d1234';
+const ATTACHMENTS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID || '';
 const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID || '727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b';
 const CODEX_COMMANDS_DATA_SOURCE_ID = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID = process.env.SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID || '8f7f95a5-7428-4490-9327-7943499a0e22';
@@ -38,6 +39,10 @@ http.createServer = function createServerWithControlApi(listener) {
       return serveReportPage(res, pathname);
     }
 
+    if (req.method === 'GET' && pathname.startsWith('/user-ui')) {
+      return serveUserUiPage(req, res, pathname);
+    }
+
     if (pathname.startsWith('/control/')) {
       return handleControlRequest(req, res, pathname);
     }
@@ -65,8 +70,9 @@ async function handleControlRequest(req, res, pathname) {
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
+      userUiLoginEnabled: Boolean(process.env.SEVEN_USER_UI_USERNAME && process.env.SEVEN_USER_UI_PASSWORD),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/codex-commands/test'],
+      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -81,7 +87,7 @@ async function handleControlRequest(req, res, pathname) {
       return sendJson(res, 200, result);
     }
 
-    if (!isAuthorized(req)) {
+    if (!isAuthorized(req) && !isUserUiAuthorized(req)) {
       return sendJson(res, 401, { error: 'Unauthorized' });
     }
 
@@ -104,6 +110,16 @@ async function handleControlRequest(req, res, pathname) {
 
     if (pathname === '/control/codex-commands/test') {
       const result = await createCodexCommandTest(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/tasks/update') {
+      const result = await updateTaskFromUserUi(req, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/attachments/update') {
+      const result = await updateAttachmentFromUserUi(req, body);
       return sendJson(res, 200, result);
     }
 
@@ -183,6 +199,311 @@ async function createCodexCommandTest(body) {
   };
 }
 
+async function updateTaskFromUserUi(req, body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+
+  const pageId = normalizeId(body.pageId || body.taskPageId || body.id);
+  if (!pageId) {
+    throw new Error('Task page id is required.');
+  }
+
+  const page = await assertTaskPage(pageId);
+  const submittedAt = new Date();
+  const updates = body.updates && typeof body.updates === 'object' ? body.updates : body;
+  const editedBy = resolveUserUiEditor(req, updates);
+  const properties = compactProperties({
+    狀態: taskPropertyUpdate(page, '狀態', normalizeOptionalTaskStatus(updates.status)),
+    確認狀態: taskPropertyUpdate(page, '確認狀態', stringOrEmpty(updates.confirmation)),
+    負責人: taskPropertyUpdate(page, '負責人', stringOrEmpty(updates.owner)),
+    下一步: taskPropertyUpdate(page, '下一步', stringOrEmpty(updates.next)),
+    優先級: taskPropertyUpdate(page, '優先級', stringOrEmpty(updates.priority)),
+    優先順序: taskPropertyUpdate(page, '優先順序', stringOrEmpty(updates.priority)),
+    'Codex 判斷摘要': taskPropertyUpdate(page, 'Codex 判斷摘要', stringOrEmpty(updates.judgment)),
+    來源原文: taskPropertyUpdate(page, '來源原文', stringOrEmpty(updates.rawSource)),
+    最後更新: page.properties?.最後更新 ? dateProperty(submittedAt) : undefined,
+  });
+
+  if (!Object.keys(properties).length && !stringOrEmpty(updates.editNote) && !stringOrEmpty(updates.pageContent)) {
+    throw new Error('No supported task fields were provided.');
+  }
+
+  if (Object.keys(properties).length) {
+    await notionRequest(`/v1/pages/${pageId}`, {
+      method: 'PATCH',
+      body: { properties },
+    });
+  }
+
+  const editNote = stringOrEmpty(updates.editNote);
+  const pageContent = stringOrEmpty(updates.pageContent);
+  const children = [];
+  if (editNote) {
+    children.push(paragraphProperty(`【User UI 編輯】${formatTaipeiDateTime(submittedAt)}｜編輯者：${editedBy}｜${editNote}`));
+  }
+  if (pageContent) {
+    children.push(paragraphProperty(`【User UI 頁面內容更新】${formatTaipeiDateTime(submittedAt)}｜編輯者：${editedBy}`));
+    children.push(paragraphProperty(pageContent));
+  }
+  if (children.length) {
+    await notionRequest(`/v1/blocks/${pageId}/children`, {
+      method: 'PATCH',
+      body: { children },
+    });
+  }
+
+  return {
+    ok: true,
+    pageId,
+    url: page.url,
+    updatedProperties: Object.keys(properties),
+    noteAppended: Boolean(editNote),
+    pageContentAppended: Boolean(pageContent),
+    editedBy,
+    updatedAt: submittedAt.toISOString(),
+  };
+}
+
+async function updateAttachmentFromUserUi(req, body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+  if (!ATTACHMENTS_DATA_SOURCE_ID) {
+    throw new Error('SEVEN_ATTACHMENTS_DATA_SOURCE_ID is not set.');
+  }
+
+  const pageId = normalizeId(body.pageId || body.attachmentPageId || body.id);
+  if (!pageId) {
+    throw new Error('Attachment page id is required.');
+  }
+
+  const page = await assertAttachmentPage(pageId);
+  const submittedAt = new Date();
+  const updates = body.updates && typeof body.updates === 'object' ? body.updates : body;
+  const action = stringOrEmpty(updates.action || body.action || 'update');
+  const editedBy = resolveUserUiEditor(req, updates);
+  const editNote = stringOrEmpty(updates.editNote || updates.note);
+
+  if (/^(archive|delete|discard|不保存|刪除|封存)$/i.test(action)) {
+    const children = [
+      paragraphProperty(`【User UI 附件不保存】${formatTaipeiDateTime(submittedAt)}｜編輯者：${editedBy}｜${editNote || '使用者從 User UI 標記此附件不需要保留。'}`),
+    ];
+    await notionRequest(`/v1/blocks/${pageId}/children`, { method: 'PATCH', body: { children } });
+    await notionRequest(`/v1/pages/${pageId}`, { method: 'PATCH', body: { archived: true } });
+    return {
+      ok: true,
+      action: 'archived',
+      pageId,
+      url: page.url,
+      editedBy,
+      updatedAt: submittedAt.toISOString(),
+    };
+  }
+
+  const properties = compactProperties({
+    關聯專案: taskPropertyUpdate(page, '關聯專案', normalizeProjectList(updates.projects || updates.project || updates['關聯專案'])),
+    轉檔狀態: taskPropertyUpdate(page, '轉檔狀態', normalizeAttachmentStatus(updates.conversionStatus || updates.status || updates['轉檔狀態'])),
+  });
+
+  let conversionPage = null;
+  if (/^(convert|conversion|startConversion|轉檔|建立轉檔請求)$/i.test(action)) {
+    conversionPage = await createAttachmentConversionRequest(page, {
+      conversionType: updates.conversionType || updates.type,
+      editedBy,
+      submittedAt,
+      note: editNote,
+    });
+    if (page.properties?.轉檔狀態) {
+      properties.轉檔狀態 = taskPropertyUpdate(page, '轉檔狀態', '待轉檔');
+    }
+    if (page.properties?.關聯轉檔頁 && conversionPage.url) {
+      properties.關聯轉檔頁 = taskPropertyUpdate(page, '關聯轉檔頁', conversionPage.url);
+    }
+  }
+
+  if (Object.keys(properties).length) {
+    await notionRequest(`/v1/pages/${pageId}`, {
+      method: 'PATCH',
+      body: { properties },
+    });
+  }
+
+  const children = [];
+  if (conversionPage) {
+    children.push(paragraphProperty(`【User UI 建立轉檔請求】${formatTaipeiDateTime(submittedAt)}｜編輯者：${editedBy}｜轉檔頁：${conversionPage.url || conversionPage.id}｜目前尚未執行 OCR/PDF 抽取 worker，已先建立待轉檔紀錄。`));
+  }
+  if (editNote) {
+    children.push(paragraphProperty(`【User UI 附件編輯】${formatTaipeiDateTime(submittedAt)}｜編輯者：${editedBy}｜${editNote}`));
+  }
+  if (children.length) {
+    await notionRequest(`/v1/blocks/${pageId}/children`, {
+      method: 'PATCH',
+      body: { children },
+    });
+  }
+
+  return {
+    ok: true,
+    action: conversionPage ? 'conversion-requested' : 'updated',
+    pageId,
+    url: page.url,
+    conversionPageId: conversionPage?.id,
+    conversionPageUrl: conversionPage?.url,
+    updatedProperties: Object.keys(properties),
+    editedBy,
+    updatedAt: submittedAt.toISOString(),
+  };
+}
+
+function resolveUserUiEditor(req, updates) {
+  const bodyEditor = stringOrEmpty(updates.editedBy || updates.editor || updates.userName);
+  if (bodyEditor) {
+    return bodyEditor;
+  }
+
+  const basicUser = parseBasicAuth(req)?.username;
+  return basicUser || 'User UI 使用者';
+}
+
+async function assertTaskPage(pageId) {
+  const page = await notionFetchJson(`/v1/pages/${pageId}`);
+  const parentId = normalizeId(page.parent?.data_source_id || page.parent?.database_id || '');
+  if (parentId !== normalizeId(TASKS_DATA_SOURCE_ID)) {
+    throw new Error('Blocked Notion access: page is not in the SevenAM task data source.');
+  }
+  return page;
+}
+
+async function assertAttachmentPage(pageId) {
+  const page = await notionFetchJson(`/v1/pages/${pageId}`);
+  const parentId = normalizeId(page.parent?.data_source_id || page.parent?.database_id || '');
+  if (parentId !== normalizeId(ATTACHMENTS_DATA_SOURCE_ID)) {
+    throw new Error('Blocked Notion access: page is not in the SevenAM attachment data source.');
+  }
+  return page;
+}
+
+function taskPropertyUpdate(page, propertyName, value) {
+  const property = page.properties?.[propertyName];
+  if (!property) {
+    return undefined;
+  }
+
+  const text = stringOrEmpty(value);
+  if (!text) {
+    return undefined;
+  }
+
+  if (property.type === 'status') {
+    return { status: { name: text } };
+  }
+  if (property.type === 'select') {
+    return selectProperty(text);
+  }
+  if (property.type === 'multi_select') {
+    return { multi_select: text.split(/[,，、]/).map((name) => ({ name: name.trim() })).filter((item) => item.name) };
+  }
+  if (property.type === 'rich_text') {
+    return richTextProperty(text);
+  }
+  if (property.type === 'title') {
+    return titleProperty(text);
+  }
+  if (property.type === 'url') {
+    return urlProperty(text);
+  }
+  if (property.type === 'number') {
+    const number = Number(text);
+    return Number.isFinite(number) ? { number } : undefined;
+  }
+  if (property.type === 'checkbox') {
+    return checkboxProperty(/^(true|yes|1|是|已|完成)$/i.test(text));
+  }
+
+  return undefined;
+}
+
+async function createAttachmentConversionRequest(page, context) {
+  if (!ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID) {
+    throw new Error('SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID is not set.');
+  }
+
+  const fileName = pageTextProperty(page, '檔案名稱') || pageTextProperty(page, '附件項目') || '未命名附件';
+  const attachmentType = pageSelectProperty(page, '附件類型') || pageTextProperty(page, 'Content-Type') || 'file';
+  const sourceUrl = pageUrlProperty(page, '來源連結') || firstFileUrl(page, '附件檔案') || page.url || '';
+  const conversionType = normalizeAttachmentConversionType(context.conversionType || attachmentType || fileName);
+  const relationMessageIds = pageRelationIds(page, '訊息紀錄');
+  const relationConversationIds = pageRelationIds(page, '對話主檔');
+  const summary = `由 ${context.editedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 User UI 建立轉檔請求。${context.note ? `備註：${context.note}` : ''}`;
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID },
+      properties: compactProperties({
+        轉檔項目: titleProperty(`${fileName} - ${conversionType}`),
+        原始檔名: richTextProperty(fileName),
+        轉檔狀態: selectProperty('待轉檔'),
+        轉檔類型: selectProperty(conversionType),
+        附件類型: selectProperty(attachmentType),
+        '可供 Codex 判斷': checkboxProperty(false),
+        轉檔時間: dateProperty(context.submittedAt),
+        摘要: richTextProperty(summary),
+        轉檔來源附件: sourceUrl ? urlProperty(sourceUrl) : undefined,
+        附件紀錄: relationArrayProperty([page.id]),
+        訊息紀錄: relationMessageIds.length ? relationArrayProperty(relationMessageIds) : undefined,
+        對話主檔: relationConversationIds.length ? relationArrayProperty(relationConversationIds) : undefined,
+        轉檔內容: richTextProperty('尚未執行 OCR/PDF 文件抽取；等待轉檔 worker 接手後，結果會寫入此欄位。'),
+      }),
+      children: [
+        paragraphProperty('【轉檔佇列】此頁由 User UI 建立，目前狀態為待轉檔。'),
+        paragraphProperty('OCR/PDF 文件抽取 worker 尚未接上；worker 完成後，請將全文寫入「轉檔內容」，並將「可供 Codex 判斷」改為勾選。'),
+      ],
+    },
+  });
+}
+
+function normalizeOptionalTaskStatus(value) {
+  const status = stringOrEmpty(value);
+  return status ? normalizeTaskStatus(status) : '';
+}
+
+function normalizeAttachmentStatus(value) {
+  const text = stringOrEmpty(value);
+  if (!text) return '';
+  const aliases = new Map([
+    ['pending', '待轉檔'],
+    ['queued', '待轉檔'],
+    ['processing', '轉檔中'],
+    ['done', '已完成'],
+    ['completed', '已完成'],
+    ['failed', '失敗'],
+    ['skip', '不需轉檔'],
+    ['skipped', '不需轉檔'],
+  ]);
+  return aliases.get(text.toLowerCase()) || text;
+}
+
+function normalizeAttachmentConversionType(value) {
+  const text = stringOrEmpty(value);
+  if (/pdf/i.test(text)) return 'PDF 文字抽取';
+  if (/image|png|jpe?g|gif|webp|heic|ocr|圖片|照片/i.test(text)) return 'OCR';
+  if (/audio|m4a|mp3|wav|語音/i.test(text)) return '語音轉文字';
+  return text || '文件轉文字';
+}
+
+function normalizeProjectList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => stringOrEmpty(item)).filter(Boolean).join(', ');
+  }
+  return stringOrEmpty(value);
+}
+
+function stringOrEmpty(value) {
+  return String(value ?? '').trim();
+}
+
 function findCodexCommandTrigger(text) {
   const value = String(text || '');
   const triggers = [
@@ -221,6 +542,38 @@ function isAuthorized(req) {
   const authorization = req.headers.authorization || '';
   const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
   return headerKey === expected || bearerToken === expected;
+}
+
+function isUserUiAuthorized(req) {
+  const expectedUsername = process.env.SEVEN_USER_UI_USERNAME;
+  const expectedPassword = process.env.SEVEN_USER_UI_PASSWORD;
+  if (!expectedUsername || !expectedPassword) {
+    return false;
+  }
+
+  const credentials = parseBasicAuth(req);
+  return credentials?.username === expectedUsername && credentials.password === expectedPassword;
+}
+
+function parseBasicAuth(req) {
+  const authorization = String(req.headers.authorization || '');
+  if (!authorization.startsWith('Basic ')) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(authorization.slice('Basic '.length), 'base64').toString('utf8');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex < 0) {
+      return null;
+    }
+    return {
+      username: decoded.slice(0, separatorIndex),
+      password: decoded.slice(separatorIndex + 1),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isApprovalAuthorized(req, body) {
@@ -2006,9 +2359,26 @@ function pageSelectProperty(page, propertyName) {
   return property?.type === 'select' ? property.select?.name || '' : '';
 }
 
+function pageUrlProperty(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'url' ? property.url || '' : '';
+}
+
 function pageRelationId(page, propertyName) {
   const property = page?.properties?.[propertyName];
   return property?.type === 'relation' ? property.relation?.[0]?.id || '' : '';
+}
+
+function pageRelationIds(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return property?.type === 'relation' ? (property.relation || []).map((item) => item.id).filter(Boolean) : [];
+}
+
+function firstFileUrl(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  if (property?.type !== 'files') return '';
+  const file = property.files?.[0];
+  return file?.file?.url || file?.external?.url || '';
 }
 
 function pageDateProperty(page, propertyName) {
@@ -2046,6 +2416,10 @@ function checkboxProperty(value) {
 
 function relationProperty(id) {
   return { relation: [{ id }] };
+}
+
+function relationArrayProperty(ids) {
+  return { relation: ids.map((id) => ({ id })).filter((item) => item.id) };
 }
 
 function urlProperty(value) {
@@ -2122,6 +2496,36 @@ function serveReportPage(res, pathname) {
   }
 
   const html = readFileSync(new URL(reportFile, import.meta.url), 'utf8');
+  res.writeHead(200, {
+    ...corsHeaders(),
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(html);
+}
+
+function serveUserUiPage(req, res, pathname) {
+  if (!isUserUiAuthorized(req)) {
+    res.writeHead(401, {
+      ...corsHeaders(),
+      'WWW-Authenticate': 'Basic realm="SevenAM User UI"',
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    res.end('Login required.');
+    return;
+  }
+
+  const fileName = pathname === '/user-ui' ? 'user-ui-connected-preview.html' : pathname.replace(/^\/user-ui\/?/, '');
+  if (!/^user-ui-(connected-preview|project-\d+|task-\d+|line-\d+|scheduled-[a-z-]+)\.html$/.test(fileName)) {
+    return sendJson(res, 404, { error: 'User UI page not found' });
+  }
+
+  const fileUrl = new URL(`../docs/${fileName}`, import.meta.url);
+  if (!existsSync(fileUrl)) {
+    return sendJson(res, 404, { error: 'User UI page not generated yet' });
+  }
+
+  const html = readFileSync(fileUrl, 'utf8');
   res.writeHead(200, {
     ...corsHeaders(),
     'Content-Type': 'text/html; charset=utf-8',

@@ -321,12 +321,12 @@ function normalizeTargetType(value) {
 
 function inferProject(value) {
   const text = String(value || '');
-  if (/法規|合規|公司治理|公司設立|設立|合約|稅務|發票|保險|股東|登記/.test(text)) return '公司治理';
-  if (/工務|場域|採購|組裝|家具|設備|資產|裝修|工程|點交|硬體|維修|修繕/.test(text)) return '工程建置管理';
-  if (/品牌|官網|網站|內容|文案|SEO|照片|視覺|社群/.test(text)) return '品牌官網';
-  if (/房務|清潔|管家/.test(text)) return '房務管理';
-  if (/住客|客訴|客服|體驗|入住|退房/.test(text)) return '住客服務與體驗管理';
-  if (/系統|自動化|Notion|LINE|資料|Codex|Render|Webhook|API|報告/.test(text)) return '自動化';
+  if (/綦盛|恰恰小紅帽|茲心園|D\s*區|J\s*棟|建照|雜照|基地位置圖|工務|場域|採購|組裝|家具|設備|資產|裝修|工程|點交|硬體|維修|修繕|營造|估價|設計圖/.test(text)) return '茲心園工程';
+  if (/法規|合規|公司治理|公司設立|設立|合約|稅務|發票|保險|股東|登記|付款|匯款|報稅|銀行|股權移轉/.test(text)) return '財務';
+  if (/房客|租客|包租|代管|住客|客訴|客服|體驗|入住|退房|房務|清潔|管家/.test(text)) return '包租代管';
+  if (/人資|薪資|Bonnie|同仁|離職|退保|招募|面試/.test(text)) return '人資';
+  if (/系統|自動化|Notion|LINE|資料|Codex|Render|Webhook|API|報告|公司助理系統|手機.*會議記錄/.test(text)) return '營運';
+  if (/媽媽|溪州|天才家族|讀書會|私人/.test(text)) return '私人事務';
   return '未分類';
 }
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --import ./src/control-api.js src/server.js",
+    "start": "node scripts/start-server.js",
     "dev": "node --import ./src/control-api.js --watch src/server.js",
     "cron:report": "node scripts/render-cron-report.js",
     "line:groups": "node scripts/sync-line-group-options.js",

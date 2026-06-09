@@ -492,16 +492,30 @@ function inferDueDate(text) {
   const value = String(text || '');
   const isoMatch = value.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
   if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+    return validDateParts(isoMatch[1], isoMatch[2], isoMatch[3]);
   }
 
   const monthDayMatch = value.match(/(\d{1,2})[/-](\d{1,2})/);
   if (monthDayMatch) {
     const now = new Date();
-    return `${now.getFullYear()}-${monthDayMatch[1].padStart(2, '0')}-${monthDayMatch[2].padStart(2, '0')}`;
+    return validDateParts(now.getFullYear(), monthDayMatch[1], monthDayMatch[2]);
   }
 
   return null;
+}
+
+function validDateParts(year, month, day) {
+  const numericYear = Number(year);
+  const numericMonth = Number(month);
+  const numericDay = Number(day);
+  if (!numericYear || numericMonth < 1 || numericMonth > 12 || numericDay < 1 || numericDay > 31) {
+    return null;
+  }
+  const date = new Date(Date.UTC(numericYear, numericMonth - 1, numericDay));
+  if (date.getUTCFullYear() !== numericYear || date.getUTCMonth() !== numericMonth - 1 || date.getUTCDate() !== numericDay) {
+    return null;
+  }
+  return `${numericYear}-${String(numericMonth).padStart(2, '0')}-${String(numericDay).padStart(2, '0')}`;
 }
 
 function inferProgressStatus(text) {

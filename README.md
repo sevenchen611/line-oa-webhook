@@ -219,6 +219,42 @@ POST /control/reports/send
 
 若 body 沒有指定 targets，系統會先看 `SEVEN_REPORT_TARGET_ID`。如果沒有設定，系統會自動從 Notion 的 Seven LINE 對話主檔找出你跟 Seven Jr. 的一對一對話，並推送到那裡。
 
+### User UI 任務編輯
+
+```http
+GET /user-ui/user-ui-connected-preview.html
+```
+
+SevenAM User UI 可以由後端直接服務，使用 `SEVEN_USER_UI_USERNAME` / `SEVEN_USER_UI_PASSWORD` 做瀏覽器登入。使用者從 `/user-ui/...` 開啟任務頁時，不需要輸入 `SEVEN_CONTROL_API_KEY`；任務儲存會使用同一個登入授權，並把編輯者寫入任務頁正文紀錄。
+
+```http
+POST /control/tasks/update
+```
+
+SevenAM User UI 的單一任務頁可透過此端點更新 Notion 總控任務庫。此端點接受 `SEVEN_CONTROL_API_KEY` 或已登入的 User UI 使用者，且後端會先確認目標頁面屬於 `SEVEN_TASKS_DATA_SOURCE_ID`，才允許寫入。
+
+支援欄位：
+
+```json
+{
+  "pageId": "<Notion task page id>",
+  "updates": {
+    "status": "進行中",
+    "confirmation": "已確認",
+    "owner": "Seven",
+    "priority": "中",
+    "next": "下一步內容",
+    "judgment": "AM 判斷摘要",
+    "rawSource": "來源原文",
+    "pageContent": "要追加到 Notion 任務頁正文的內容",
+    "editedBy": "Seven",
+    "editNote": "本次編輯備註"
+  }
+}
+```
+
+`editNote` 與 `pageContent` 會追加到任務頁正文，其他欄位會依 Notion 屬性型別寫回任務資料庫。
+
 ### 報告確認回應
 
 ```http

@@ -1,3 +1,5 @@
 node_modules/
 .env
 line-keys/
+docs/user-ui-*.html
+docs/user-ui-media/
