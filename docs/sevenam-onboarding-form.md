@@ -168,7 +168,7 @@ NOTION_VERSION=2025-09-03
 
 | 報告 / 頁面 | 必填 | Render 環境變數 | URL |
 | --- | --- | --- | --- |
-| 08:00 早報 | 否 | `MORNING_BRIEF_URL` |  |
+| 08:30 早報 | 否 | `MORNING_BRIEF_URL` |  |
 | 10:00 / 13:00 / 17:00 跟催確認 | 否 | `FOLLOWUP_CONFIRMATION_URL` |  |
 | 20:30 每日總控報告 | 否 | `DAILY_REPORT_URL` |  |
 | 報告確認 Approval Key | 否 | `SEVEN_REPORT_APPROVAL_KEY` | 敏感資料 |
@@ -203,7 +203,7 @@ Render Cron 使用 UTC。台北時間 UTC+8。
 | 工作 | 台北時間 | UTC Cron | 是否啟用 | 備註 |
 | --- | --- | --- | --- | --- |
 | 會議任務同步 | 08:00-22:00 每小時 | `0 0-14 * * *` | 是 | `npm run meetings:sync -- --limit 50` |
-| 早報 | 08:00 | `0 0 * * *` | 是 | `npm run cron:report -- morning` |
+| 早報 | 08:30 | `30 0 * * *` | 是 | `npm run cron:report -- morning` |
 | 跟催確認 1 | 10:00 | `0 2 * * *` | 是 | `npm run cron:report -- followup-morning` |
 | 跟催確認 2 | 13:00 | `0 5 * * *` | 是 | `npm run cron:report -- followup-midday` |
 | 跟催確認 3 | 17:00 | `0 9 * * *` | 是 | `npm run cron:report -- followup-afternoon` |

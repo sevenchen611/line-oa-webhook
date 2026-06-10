@@ -13,8 +13,6 @@ if (shouldBuildUserUi) {
     'docs/user-ui-connected-preview.html',
     '--project-data-source-id',
     '2d4e4e80-09e6-447f-b2e2-36269ff1ac5c',
-    '--user-ui-base-path',
-    '/user-ui',
     '--skip-line-media',
   ], {
     stdio: 'inherit',

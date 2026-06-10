@@ -170,7 +170,7 @@ The following important artifacts are backed up in GitHub:
 - `src/control-api.js`: secure control API for proactive LINE push and report sending.
 - `scripts/render-cron-report.js`: Render Cron helper script.
 - `render.yaml`: Render Blueprint for the web service and scheduled Cron Jobs.
-- `reports/morning-brief-prototype.html`: 08:00 morning brief prototype.
+- `reports/morning-brief-prototype.html`: 08:30 morning brief prototype.
 - `reports/daily-control-report-prototype.html`: 20:30 daily control report prototype.
 - `reports/followup-confirmation-prototype.html`: 10:00 / 17:00 follow-up confirmation prototype.
 - `scripts/automation-run-log.js`: local + Notion automation execution logging helper.
@@ -582,7 +582,7 @@ Render Cron uses UTC. Taipei time is UTC+8.
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE message judgement sync |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
-| `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
+| `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
 | `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
 | `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |
@@ -734,7 +734,7 @@ After any report confirmation page submits to `POST /control/reports/approve`, R
 
 This applies to:
 
-- 08:00 morning brief
+- 08:30 morning brief
 - 10:00 follow-up and new task confirmation
 - 13:00 follow-up and new task confirmation
 - 17:00 follow-up and new task confirmation

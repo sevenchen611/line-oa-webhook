@@ -106,7 +106,7 @@ async function buildCommandReply(event) {
   if (morningBriefCommands.has(text)) {
     return {
       type: 'text',
-      text: `早上 8 點行程與待辦報告：\n${morningBriefUrl}\n\n目前這是試跑版，可以在手機上檢視今日行程、昨日未完成事項與今日優先處理清單。`,
+      text: `早上 8 點半行程與待辦報告：\n${morningBriefUrl}\n\n目前這是試跑版，可以在手機上檢視今日行程、昨日未完成事項與今日優先處理清單。`,
     };
   }
 

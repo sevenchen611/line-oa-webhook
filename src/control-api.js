@@ -13,6 +13,7 @@ const ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID = process.env.SEVEN_ATTACHMENT_CONVE
 const CODEX_COMMANDS_DATA_SOURCE_ID = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
 const DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID = process.env.SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID || '8f7f95a5-7428-4490-9327-7943499a0e22';
 const PROGRESS_REPORTS_DATA_SOURCE_ID = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || 'fc5e4e21-6af6-4de2-9380-aa95126ee13e';
+const JUDGMENT_RULES_DATA_SOURCE_ID = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const LINE_GROUP_OPTIONS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID || '';
@@ -76,9 +77,10 @@ async function handleControlRequest(req, res, pathname) {
       defaultReportTargetAutoResolveEnabled: Boolean(process.env.NOTION_TOKEN && process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID),
       codexCommandQueueConfigured: Boolean(CODEX_COMMANDS_DATA_SOURCE_ID),
       dailyReportSnapshotsConfigured: Boolean(DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID),
+      judgmentRulesConfigured: Boolean(JUDGMENT_RULES_DATA_SOURCE_ID),
       userUiLoginEnabled: Boolean(process.env.SEVEN_USER_UI_USERNAME && process.env.SEVEN_USER_UI_PASSWORD),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'GET /reports/followup-recipient-candidates', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/codex-commands/test'],
+      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'GET /reports/followup-recipient-candidates', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/judgment-rules/create', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -131,6 +133,11 @@ async function handleControlRequest(req, res, pathname) {
 
     if (pathname === '/control/attachments/update') {
       const result = await updateAttachmentFromUserUi(req, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/judgment-rules/create') {
+      const result = await createJudgmentRuleFromUserUi(req, body);
       return sendJson(res, 200, result);
     }
 
@@ -207,6 +214,77 @@ async function createCodexCommandTest(body) {
     sourceType,
     sourceId,
     lineMessageId,
+  };
+}
+
+async function createJudgmentRuleFromUserUi(req, body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+  if (!JUDGMENT_RULES_DATA_SOURCE_ID) {
+    throw new Error('SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID is not set.');
+  }
+
+  const name = stringOrEmpty(body.name || body.ruleName);
+  const preferred = stringOrEmpty(body.preferred || body.preferredJudgment);
+  if (!name) {
+    throw new Error('規則名稱不可空白。');
+  }
+  if (!preferred) {
+    throw new Error('應該怎麼判斷不可空白。');
+  }
+
+  const now = new Date();
+  const editedBy = resolveUserUiEditor(req, body);
+  const appliesTo = normalizeMultiSelect(body.appliesTo || 'SEVEN_AM');
+  const category = stringOrEmpty(body.category || 'Task extraction') || 'Task extraction';
+  const status = stringOrEmpty(body.status || 'Needs review') || 'Needs review';
+  const triggerPattern = stringOrEmpty(body.triggerPattern);
+  const avoided = stringOrEmpty(body.avoided || body.avoidedJudgment);
+  const reason = stringOrEmpty(body.reason);
+  const exceptions = stringOrEmpty(body.exceptions);
+  const checklistPlacement = stringOrEmpty(body.checklistPlacement || 'Manual task judgment rules');
+  const sourceNote = `User UI 手動新增｜${formatTaipeiDateTime(now)}｜${editedBy}`;
+
+  const page = await notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: JUDGMENT_RULES_DATA_SOURCE_ID },
+      properties: compactProperties({
+        'Rule Name': titleProperty(name),
+        Status: selectProperty(status),
+        'Applies To': multiSelectProperty(appliesTo),
+        'Preferred Judgment': richTextProperty(preferred),
+        'Avoided Judgment': avoided ? richTextProperty(avoided) : undefined,
+        Reason: reason ? richTextProperty(reason) : undefined,
+        'Trigger Pattern': triggerPattern ? richTextProperty(triggerPattern) : undefined,
+        Exceptions: exceptions ? richTextProperty(exceptions) : undefined,
+        'Checklist Placement': checklistPlacement ? selectProperty(checklistPlacement) : undefined,
+        'Last Verified': dateProperty(now),
+        'Source Case Count': numberProperty(0),
+      }),
+      children: [
+        paragraphProperty(`【手動加入任務判斷規則】${sourceNote}`),
+        paragraphProperty(`規則：${name}`),
+        paragraphProperty(`類別：${category}`),
+        paragraphProperty(`應該怎麼判斷：${preferred}`),
+        avoided ? paragraphProperty(`避免：${avoided}`) : undefined,
+        reason ? paragraphProperty(`原因：${reason}`) : undefined,
+        triggerPattern ? paragraphProperty(`觸發條件：${triggerPattern}`) : undefined,
+        exceptions ? paragraphProperty(`例外：${exceptions}`) : undefined,
+      ].filter(Boolean),
+    },
+  });
+
+  return {
+    ok: true,
+    pageId: page.id,
+    url: page.url,
+    name,
+    status,
+    appliesTo,
+    createdBy: editedBy,
+    createdAt: now.toISOString(),
   };
 }
 
@@ -516,6 +594,13 @@ function normalizeProjectList(value) {
     return value.map((item) => stringOrEmpty(item)).filter(Boolean).join(', ');
   }
   return stringOrEmpty(value);
+}
+
+function normalizeMultiSelect(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[,，、]/);
+  return [...new Set(values.map((item) => stringOrEmpty(item)).filter(Boolean))];
 }
 
 function stringOrEmpty(value) {
@@ -1531,7 +1616,7 @@ async function buildReportMessage(reportType, customText) {
   if (['morning', 'morning-brief', '早報'].includes(reportType)) {
     return {
       type: 'text',
-      text: `早上 8 點晨報：\n${morningBriefUrl}\n\n請先做目標追認：今天新增或尚未確認的任務/專案，都要先問負責人「完成目標是什麼、怎樣叫完成、由誰驗收」。口述內容要寫進「目標口述原文」並上傳給 Codex 確認；確認前不列入真實進度。`,
+      text: `早上 8 點半晨報：\n${morningBriefUrl}\n\n請先做目標追認：今天新增或尚未確認的任務/專案，都要先問負責人「完成目標是什麼、怎樣叫完成、由誰驗收」。口述內容要寫進「目標口述原文」並上傳給 Codex 確認；確認前不列入真實進度。`,
     };
   }
 
@@ -2788,6 +2873,17 @@ function richTextProperty(value) {
 
 function selectProperty(name) {
   return { select: { name } };
+}
+
+function multiSelectProperty(values) {
+  return {
+    multi_select: normalizeMultiSelect(values).map((name) => ({ name })),
+  };
+}
+
+function numberProperty(value) {
+  const number = Number(value);
+  return { number: Number.isFinite(number) ? number : 0 };
 }
 
 function dateProperty(value) {

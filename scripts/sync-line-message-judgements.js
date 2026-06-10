@@ -6,9 +6,10 @@ loadEnvFile('../env.txt');
 
 const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
-const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
+const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
 const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || '';
+const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const conversationProjectCache = new Map();
 const inRunCreatedTasks = new Map();
 
@@ -23,9 +24,10 @@ const reprocess = Boolean(args.reprocess || args['include-judged']);
 const sinceHours = clampNumber(Number(args['since-hours'] || process.env.SEVEN_LINE_JUDGEMENT_SINCE_HOURS || 36), 1, 24 * 14);
 const sinceIso = String(args['since-iso'] || '').trim();
 const limit = clampNumber(Number(args.limit || 50), 1, 100);
+const conversationContextLimit = clampNumber(Number(args['context-limit'] || process.env.SEVEN_LINE_JUDGEMENT_CONTEXT_LIMIT || 20), 1, 50);
 
 if (!notionToken) fail('NOTION_TOKEN is not set.');
-if (!messagesDataSourceId) fail('SEVEN_MESSAGES_DATA_SOURCE_ID is not set.');
+if (!conversationsDataSourceId) fail('SEVEN_CONVERSATIONS_DATA_SOURCE_ID is not set.');
 if (!tasksDataSourceId) fail('SEVEN_TASKS_DATA_SOURCE_ID is not set.');
 if (!progressReportsDataSourceId) fail('SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID is not set.');
 
@@ -51,6 +53,8 @@ try {
     skipProgress,
     reprocess,
     since: sinceIso || `${sinceHours}h`,
+    sourceDataSource: 'SEVEN_CONVERSATIONS_DATA_SOURCE_ID',
+    conversationContextLimit,
     scannedMessages: messages.length,
     conversationGroups: groupedMessages.length,
     updatedExistingTasks: results.reduce((count, item) => count + item.updatedExistingTasks.filter((task) => task.action === 'updated-existing').length, 0),
@@ -75,61 +79,39 @@ try {
 async function listMessagesForJudgement() {
   const since = sinceIso || new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
   const baseFilters = [
-    { property: '排序時間', date: { on_or_after: since } },
+    { property: '最後訊息時間', date: { on_or_after: since } },
   ];
 
   if (groupsOnly) {
-    baseFilters.push({ property: '群組標記', checkbox: { equals: true } });
+    baseFilters.push({ property: '對象類型', select: { equals: '群組' } });
   }
 
-  if (!reprocess) {
-    baseFilters.unshift({ property: '已進入判斷層', checkbox: { equals: false } });
-  }
-
-  if (includeOutgoingGroups) {
-    const [lineMessages, outgoingGroupMessages] = await Promise.all([
-      queryMessagesForJudgement([...baseFilters, { property: '訊息來源', select: { equals: 'line' } }]),
-      queryMessagesForJudgement([
-        ...baseFilters,
-        { property: '訊息來源', select: { equals: 'ai-engine' } },
-        ...(groupsOnly ? [] : [{ property: '群組標記', checkbox: { equals: true } }]),
-      ]),
-    ]);
-
-    return [...lineMessages, ...outgoingGroupMessages]
-      .sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0))
-      .slice(0, limit);
-  }
-
-  const filters = includeOutgoing
-    ? baseFilters
-    : [...baseFilters, { property: '訊息來源', select: { equals: 'line' } }];
-
-  return queryMessagesForJudgement(filters);
+  const conversations = await queryConversationsForJudgement(baseFilters);
+  const messageGroups = await Promise.all(conversations.map(conversationToJudgementMessages));
+  return messageGroups.flat()
+    .filter((message) => shouldIncludeConversationMessage(message))
+    .sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0));
 }
 
-async function queryMessagesForJudgement(filters) {
-  const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
+async function queryConversationsForJudgement(filters) {
+  const result = await notionRequest(`/v1/data_sources/${conversationsDataSourceId}/query`, {
     method: 'POST',
     body: {
       page_size: limit,
       filter: { and: filters },
-      sorts: [{ property: '排序時間', direction: 'ascending' }],
+      sorts: [{ property: '最後訊息時間', direction: 'descending' }],
     },
   });
 
-  const messages = (result.results || []).map(normalizeMessagePage);
-  return enrichMessagesWithConversationProject(messages);
+  return (result.results || []).map(normalizeConversationPage);
 }
 
-async function enrichMessagesWithConversationProject(messages) {
-  return Promise.all(messages.map(async (message) => {
-    const conversation = await getConversationProject(message.conversationId);
-    return {
-      ...message,
-      conversationProject: conversation.project,
-      conversationDisplayName: conversation.name || message.conversationName,
-    };
+async function conversationToJudgementMessages(conversation) {
+  const messages = await loadLatestConversationMessages(conversation);
+  return messages.map((message) => ({
+    ...message,
+    conversationProject: conversation.project,
+    conversationDisplayName: conversation.name,
   }));
 }
 
@@ -145,6 +127,116 @@ async function getConversationProject(pageId) {
   const value = { project, name };
   conversationProjectCache.set(pageId, value);
   return value;
+}
+
+async function loadLatestConversationMessages(conversation) {
+  const blocks = await getBlockChildren(conversation.id);
+  const parsed = parseConversationBlocks(conversation, blocks);
+  return parsed.slice(0, conversationContextLimit).reverse();
+}
+
+async function getBlockChildren(blockId) {
+  const blocks = [];
+  let startCursor;
+  do {
+    const query = startCursor ? `?page_size=100&start_cursor=${encodeURIComponent(startCursor)}` : '?page_size=100';
+    const result = await notionRequest(`/v1/blocks/${blockId}/children${query}`, { method: 'GET' });
+    blocks.push(...(result.results || []));
+    startCursor = result.has_more ? result.next_cursor : null;
+  } while (startCursor);
+  return blocks;
+}
+
+function parseConversationBlocks(conversation, blocks) {
+  const messages = [];
+  let current = null;
+
+  for (const block of blocks) {
+    const text = plainBlockText(block).trim();
+    if (!text || text.includes('LINE 對話記錄')) continue;
+
+    const meta = parseConversationMessageMeta(text);
+    if (meta) {
+      if (current) messages.push(finalizeConversationMessage(conversation, current, messages.length));
+      current = { ...meta, contentLines: [] };
+      continue;
+    }
+
+    if (current) current.contentLines.push(text);
+  }
+
+  if (current) messages.push(finalizeConversationMessage(conversation, current, messages.length));
+  return messages;
+}
+
+function parseConversationMessageMeta(text) {
+  const incoming = text.match(/^【(.+?)】(.+?) - (.+?)（(.+?)）$/);
+  if (incoming) {
+    return {
+      timeText: incoming[1],
+      conversationLabel: incoming[2].trim(),
+      actor: incoming[3].trim(),
+      type: messageTypeFromLabel(incoming[4]),
+      source: 'line',
+    };
+  }
+
+  const outgoing = text.match(/^【(.+?)】(.+?)：(.+?)$/);
+  if (outgoing) {
+    return {
+      timeText: outgoing[1],
+      conversationLabel: '',
+      actor: outgoing[2].trim(),
+      type: messageTypeFromLabel(outgoing[3]),
+      source: outgoing[2].trim() === outgoingActorName ? 'ai-engine' : 'line',
+    };
+  }
+
+  return null;
+}
+
+function finalizeConversationMessage(conversation, meta, index) {
+  const text = meta.contentLines.join('\n').trim();
+  const time = parseTaipeiDisplayTime(meta.timeText) || conversation.lastMessageTime || '';
+  const messageId = buildConversationMessageId(conversation.id, meta, text, index);
+  return {
+    id: messageId,
+    url: conversation.url,
+    sourceKind: 'conversation',
+    messageId,
+    actor: meta.actor,
+    source: meta.source,
+    type: meta.type,
+    time,
+    text,
+    judged: false,
+    conversationId: conversation.id,
+    conversationName: conversation.name || meta.conversationLabel,
+    conversationType: conversation.type,
+  };
+}
+
+function shouldIncludeConversationMessage(message) {
+  if (message.source !== 'ai-engine') return true;
+  if (includeOutgoing) return true;
+  if (includeOutgoingGroups && message.conversationType === '群組') return true;
+  return false;
+}
+
+function normalizeConversationPage(page) {
+  const properties = page.properties || {};
+  const name = textProperty(properties['LINE 對話名稱']) || textProperty(properties['自定義名稱']) || page.id;
+  const preview = textProperty(properties['最新訊息預覽']);
+  return {
+    id: page.id,
+    url: page.url,
+    name,
+    type: selectName(properties['對象類型']),
+    status: selectName(properties['監控狀態']),
+    lastMessageTime: dateValue(properties['最後訊息時間']),
+    preview,
+    project: selectName(properties['總控專案']) || inferConversationProject(`${name}\n${preview}`),
+  };
 }
 
 function groupMessagesByConversation(messages) {
@@ -255,39 +347,7 @@ async function loadSameConversationContext(message, runConversationMessages = []
     .filter((item) => item.conversationId === message.conversationId || item.conversationName === message.conversationName)
     .filter((item) => !item.time || !message.time || new Date(item.time) <= new Date(message.time));
 
-  if (!message.conversationId) {
-    return runContext.slice(-12);
-  }
-
-  const filters = [
-    { property: '對話主檔', relation: { contains: message.conversationId } },
-  ];
-  if (message.time) {
-    filters.push({ property: '排序時間', date: { on_or_before: message.time } });
-  }
-
-  try {
-    const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
-      method: 'POST',
-      body: {
-        page_size: 12,
-        filter: { and: filters },
-        sorts: [{ property: '排序時間', direction: 'descending' }],
-      },
-    });
-
-    return (result.results || [])
-      .map(normalizeMessagePage)
-      .map((item) => ({
-        ...item,
-        conversationProject: message.conversationProject,
-        conversationDisplayName: message.conversationDisplayName,
-      }))
-      .sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0));
-  } catch (error) {
-    console.warn(`Unable to load same conversation context for ${message.messageId}: ${error.message}`);
-    return runContext.slice(-12);
-  }
+  return runContext.slice(-conversationContextLimit);
 }
 
 function analyzeMessage(message) {
@@ -529,7 +589,7 @@ function buildCandidate(concern, message, importance) {
   const syncId = buildSyncId(message.id, concern.sourceText);
   const name = buildTaskName(concern, message);
   const sourceText = [
-    `LINE 訊息：${message.url}`,
+    `${message.sourceKind === 'conversation' ? 'LINE 對話主檔' : 'LINE 訊息'}：${message.url}`,
     message.conversationName ? `對話：${message.conversationName}` : '',
     message.actor ? `發話者：${message.actor}` : '',
     `同步識別碼：${syncId}`,
@@ -544,6 +604,18 @@ function buildCandidate(concern, message, importance) {
     `建議處理：${concern.nextStep}`,
     `摘要：${concern.summary}`,
   ].join('\n');
+  const taskBody = buildInitialTaskBody({
+    name,
+    project: concern.project,
+    status: '待確認',
+    owner: concern.owner,
+    nextStep: concern.nextStep,
+    sourceType: 'LINE',
+    sourceText,
+    judgementSummary,
+    confidence: concern.project === '未分類' ? '中' : '高',
+    message,
+  });
 
   const taskProperties = compactProperties({
     任務名稱: titleProperty(name),
@@ -554,7 +626,7 @@ function buildCandidate(concern, message, importance) {
     負責人: richTextProperty(concern.owner),
     截止日: concern.dueDate ? dateProperty(concern.dueDate) : undefined,
     來源: selectProperty('LINE'),
-    來源原文: richTextProperty(sourceText, 1900),
+    來源原文: richTextProperty(sourceOriginalCompatibilityText(message), 1900),
     'Codex 判斷摘要': richTextProperty(judgementSummary, 1900),
     信心等級: selectProperty(concern.project === '未分類' ? '中' : '高'),
     下一步: richTextProperty(concern.nextStep, 900),
@@ -581,26 +653,54 @@ function buildCandidate(concern, message, importance) {
     name,
     syncId,
     taskProperties,
+    taskBodyChildren: markdownToBlocks(taskBody),
     progressName,
     progressProperties,
   };
 }
 
-function normalizeMessagePage(page) {
-  const properties = page.properties || {};
-  return {
-    id: page.id,
-    url: page.url,
-    messageId: textProperty(properties['訊息 ID']),
-    actor: textProperty(properties['發話者名稱']),
-    source: selectName(properties['訊息來源']),
-    type: selectName(properties['訊息類型']),
-    time: dateValue(properties['排序時間']),
-    text: textProperty(properties['文字內容']) || textProperty(properties['原始內容']),
-    judged: checkboxValue(properties['已進入判斷層']),
-    conversationId: relationId(properties['對話主檔']),
-    conversationName: relationMentionName(properties['對話主檔']),
-  };
+function messageTypeFromLabel(label) {
+  const value = String(label || '').trim();
+  if (/文字/.test(value)) return 'text';
+  if (/圖片/.test(value)) return 'image';
+  if (/檔案/.test(value)) return 'file';
+  if (/貼圖/.test(value)) return 'sticker';
+  if (/位置/.test(value)) return 'location';
+  if (/影片/.test(value)) return 'video';
+  if (/語音/.test(value)) return 'audio';
+  return 'unsupported';
+}
+
+function parseTaipeiDisplayTime(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(上午|下午)?\s*(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const meridiem = match[4] || '';
+  let hour = Number(match[5]);
+  const minute = Number(match[6]);
+  if (meridiem === '下午' && hour < 12) hour += 12;
+  if (meridiem === '上午' && hour === 12) hour = 0;
+
+  const date = new Date(Date.UTC(year, month, day, hour - 8, minute));
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function buildConversationMessageId(conversationId, meta, text, index) {
+  const hash = createHash('sha1')
+    .update([conversationId, meta.timeText, meta.actor, meta.type, text, index].join('\n'))
+    .digest('hex')
+    .slice(0, 12);
+  return `conversation:${conversationId}:${hash}`;
+}
+
+function plainBlockText(block) {
+  const value = block?.[block.type] || {};
+  const richText = value.rich_text || value.caption || [];
+  return richText.map((item) => item.plain_text || item.text?.content || '').join('');
 }
 
 function inferCategory(text) {
@@ -1075,19 +1175,30 @@ async function updateTaskWithEvidence(task, candidate, message, sameConversation
     statusUpdate ? `狀態更新：${task.status || '未設定'} -> ${statusUpdate}` : '',
     `更新原因：${candidate.reasons.join('、') || '同對話前後文與活躍任務比對'}`,
   ].filter(Boolean).join('\n');
+  const record = buildUpdateEvidenceRecord({
+    task,
+    candidate,
+    message,
+    evidence,
+    judgement,
+    statusUpdate,
+  });
 
   await notionRequest(`/v1/pages/${task.id}`, {
     method: 'PATCH',
     body: {
       properties: compactProperties({
         狀態: statusUpdate ? selectProperty(statusUpdate) : undefined,
-        來源原文: richTextProperty(evidenceAlreadyRecorded ? task.sourceText : appendEvidence(task.sourceText, evidence), 1900),
+        來源原文: richTextProperty(sourceOriginalCompatibilityText(message), 1900),
         'Codex 判斷摘要': richTextProperty(appendEvidence('', judgement), 1900),
         下一步: richTextProperty(candidate.nextStep, 900),
         最後更新: dateProperty(new Date()),
       }),
     },
   });
+  if (!evidenceAlreadyRecorded || statusUpdate) {
+    await appendTaskEvidenceRecord(task.id, record);
+  }
 }
 
 function inferStatusUpdateFromCandidate(candidate, task) {
@@ -1115,7 +1226,7 @@ function buildTaskUpdateEvidence(candidate, message, sameConversationContext) {
 
   return [
     `LINE 任務更新證據：${new Date().toISOString()}`,
-    message.url ? `訊息：${message.url}` : '',
+    message.url ? `${message.sourceKind === 'conversation' ? '對話主檔' : '訊息'}：${message.url}` : '',
     message.conversationName ? `對話：${message.conversationName}` : '',
     message.actor ? `發話者：${message.actor}` : '',
     `判斷：更新既有任務，不建立新任務。`,
@@ -1128,6 +1239,232 @@ function appendEvidence(existing, addition, maxLength = 1900) {
   const merged = [existing, addition].filter(Boolean).join('\n\n');
   if (merged.length <= maxLength) return merged;
   return `${merged.slice(0, 450)}\n...\n${merged.slice(-(maxLength - 460))}`;
+}
+
+function buildInitialTaskBody({ name, project, status, owner, nextStep, sourceType, sourceText, judgementSummary, confidence, message }) {
+  return [
+    '# 任務控制紀錄',
+    '',
+    '## 目前任務摘要',
+    `- 任務：${name}`,
+    `- 專案目標：${project || '未分類'}`,
+    `- 目前狀態：${status || '待確認'}`,
+    `- 負責人：${owner || '未設定'}`,
+    `- 下一步：${nextStep || '未設定'}`,
+    '- 需要確認：未確認',
+    '',
+    '## 最新判斷',
+    `- 判斷時間：${formatTaipeiDateTime(new Date())}`,
+    `- 判斷來源：${sourceType}`,
+    `- 判斷結果：${judgementSummary}`,
+    '- 判斷理由：hourly LINE reconciliation 判定此訊息需要建立新的 event-level 總控任務。',
+    `- 信心程度：${confidence || '中'}`,
+    '- 是否需要人工確認：是，請依任務確認狀態補齊。',
+    '',
+    '## 證據與處理紀錄',
+    '',
+    '### 紀錄 1',
+    `- 擷取時間：${formatTaipeiDateTime(new Date())}`,
+    `- 來源類型：${sourceType}`,
+    `- 來源位置：${sourceLocationMarkdown(message)}`,
+    `- 來源時間：${message.time ? formatTaipeiDateTime(new Date(message.time)) : '未設定'}`,
+    `- 來源對象：${message.actor || '未設定'}`,
+    '',
+    '#### 來源原文',
+    '',
+    sourceText || '未取得來源原文。',
+    '',
+    '#### 證據摘要',
+    '',
+    'hourly reconciliation 從 LINE 訊息與同對話脈絡擷取出此任務來源證據。',
+    '',
+    '#### AM 判斷',
+    '',
+    judgementSummary || '未提供判斷摘要。',
+    '',
+    '#### 處理結果',
+    '',
+    '建立新的總控任務，並將來源原文寫入本筆證據與處理紀錄。',
+    '',
+    '#### 狀態變更',
+    '',
+    `無 → ${status || '待確認'}`,
+    '',
+    '#### 下一步',
+    '',
+    nextStep || '未設定',
+    '',
+    '#### 關聯規則',
+    '',
+    'AM-IMP-2026.0610.03：hourly reconciliation 建立任務時，必須使用任務控制紀錄格式，並把來源原文放在同一筆證據與處理紀錄內。',
+  ].join('\n');
+}
+
+function buildUpdateEvidenceRecord({ task, candidate, message, evidence, judgement, statusUpdate }) {
+  return [
+    `### 紀錄 ${formatTaipeiDateTime(new Date())}`,
+    `- 擷取時間：${formatTaipeiDateTime(new Date())}`,
+    '- 來源類型：LINE',
+    `- 來源位置：${sourceLocationMarkdown(message)}`,
+    `- 來源時間：${message.time ? formatTaipeiDateTime(new Date(message.time)) : '未設定'}`,
+    `- 來源對象：${message.actor || '未設定'}`,
+    '',
+    '#### 來源原文',
+    '',
+    evidence || candidate.sourceText || '未取得來源原文。',
+    '',
+    '#### 證據摘要',
+    '',
+    candidate.summary || '新 LINE 訊息被判定為既有任務的延伸。',
+    '',
+    '#### AM 判斷',
+    '',
+    judgement || '更新既有任務，不建立新任務。',
+    '',
+    '#### 處理結果',
+    '',
+    '已將本次 LINE reconciliation 判斷追加到既有任務內文的證據與處理紀錄。',
+    '',
+    '#### 狀態變更',
+    '',
+    statusUpdate ? `${task.status || '未設定'} → ${statusUpdate}` : `維持既有狀態：${task.status || '未設定'}`,
+    '',
+    '#### 下一步',
+    '',
+    candidate.nextStep || task.nextStep || '未設定',
+    '',
+    '#### 關聯規則',
+    '',
+    'AM-IMP-2026.0610.03：hourly reconciliation 更新既有任務時，必須追加一筆證據與處理紀錄，不得只把原文塞回獨立來源原文欄位。',
+  ].join('\n');
+}
+
+async function appendTaskEvidenceRecord(pageId, markdown) {
+  const blocks = markdownToBlocks(markdown);
+  for (const group of chunk(blocks, 80)) {
+    await notionRequest(`/v1/blocks/${pageId}/children`, {
+      method: 'PATCH',
+      body: { children: group },
+    });
+  }
+}
+
+function sourceLocationMarkdown(message) {
+  if (message.conversationId) {
+    const label = `${message.conversationName || 'LINE 對話'} / LINE 對話主檔`;
+    return `[${label}](${notionPageUrl(message.conversationId)})`;
+  }
+  if (message.url) return `[LINE 訊息](${message.url})`;
+  return 'LINE / 未設定來源頁面';
+}
+
+function sourceOriginalCompatibilityText(message) {
+  return [
+    '完整來源原文已依 AM-IMP-2026.0610.03 寫入內文各筆「證據與處理紀錄」中的「來源原文」區塊；此欄位僅保留為相容提示。',
+    message?.url ? `最新來源訊息：${message.url}` : '',
+    message?.conversationId ? `來源位置：${notionPageUrl(message.conversationId)}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function markdownToBlocks(markdown) {
+  const blocks = [];
+  const lines = String(markdown || '').split(/\r?\n/);
+  let paragraph = [];
+
+  function flushParagraph() {
+    const text = paragraph.join('\n').trim();
+    paragraph = [];
+    if (!text) return;
+    for (const part of splitText(text, 1800)) blocks.push(paragraphBlock(part));
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('# ')) {
+      flushParagraph();
+      blocks.push(headingBlock('heading_1', line.slice(2)));
+    } else if (line.startsWith('## ')) {
+      flushParagraph();
+      blocks.push(headingBlock('heading_2', line.slice(3)));
+    } else if (line.startsWith('### ')) {
+      flushParagraph();
+      blocks.push(headingBlock('heading_3', line.slice(4)));
+    } else if (line.startsWith('#### ')) {
+      flushParagraph();
+      blocks.push(paragraphBlock(line.slice(5), { bold: true }));
+    } else if (line.startsWith('- ')) {
+      flushParagraph();
+      blocks.push({
+        object: 'block',
+        type: 'bulleted_list_item',
+        bulleted_list_item: { rich_text: richTextArray(line.slice(2)) },
+      });
+    } else if (!line.trim()) {
+      flushParagraph();
+    } else {
+      paragraph.push(line);
+    }
+  }
+  flushParagraph();
+  return blocks;
+}
+
+function headingBlock(type, text) {
+  return { object: 'block', type, [type]: { rich_text: richTextArray(text) } };
+}
+
+function paragraphBlock(text, annotations = {}) {
+  return { object: 'block', type: 'paragraph', paragraph: { rich_text: richTextArray(text, annotations) } };
+}
+
+function richTextArray(text, annotations = {}) {
+  const output = [];
+  const pattern = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+  let last = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match.index > last) output.push(textRich(text.slice(last, match.index), annotations));
+    output.push(textRich(match[1], annotations, match[2]));
+    last = pattern.lastIndex;
+  }
+  if (last < text.length) output.push(textRich(text.slice(last), annotations));
+  return output.length ? output : [textRich('', annotations)];
+}
+
+function textRich(content, annotations = {}, url) {
+  return {
+    type: 'text',
+    text: { content: String(content || '').slice(0, 2000), ...(url ? { link: { url } } : {}) },
+    annotations,
+  };
+}
+
+function splitText(text, size) {
+  const value = String(text || '');
+  const parts = [];
+  for (let index = 0; index < value.length; index += size) parts.push(value.slice(index, index + size));
+  return parts.length ? parts : [''];
+}
+
+function chunk(items, size) {
+  const groups = [];
+  for (let index = 0; index < items.length; index += size) groups.push(items.slice(index, index + size));
+  return groups;
+}
+
+function notionPageUrl(pageId) {
+  return `https://app.notion.com/p/${String(pageId || '').replace(/-/g, '')}`;
+}
+
+function formatTaipeiDateTime(date) {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date).replace(/\//g, '/');
 }
 
 function topKeywords(value) {
@@ -1165,6 +1502,7 @@ async function createTask(candidate) {
     body: {
       parent: { type: 'data_source_id', data_source_id: tasksDataSourceId },
       properties: candidate.taskProperties,
+      children: candidate.taskBodyChildren || [],
     },
   });
 }
@@ -1188,6 +1526,10 @@ async function createProgressReport(candidate) {
 }
 
 async function markMessageJudged(message, relatedUrl) {
+  if (message.sourceKind === 'conversation') {
+    return;
+  }
+
   const properties = compactProperties({
     已進入判斷層: checkboxProperty(true),
     關聯總控事件: relatedUrl ? urlProperty(relatedUrl) : undefined,
@@ -1262,20 +1604,6 @@ function selectName(property) {
 
 function dateValue(property) {
   return property?.type === 'date' ? property.date?.start || '' : '';
-}
-
-function checkboxValue(property) {
-  return property?.type === 'checkbox' ? Boolean(property.checkbox) : false;
-}
-
-function relationMentionName(property) {
-  if (property?.type !== 'relation') return '';
-  return (property.relation || []).map((item) => item.name || item.id || '').filter(Boolean).join('、');
-}
-
-function relationId(property) {
-  if (property?.type !== 'relation') return '';
-  return property.relation?.[0]?.id || '';
 }
 
 function titleProperty(value) {

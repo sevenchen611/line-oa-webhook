@@ -98,7 +98,7 @@ Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 每小時 | `10 0-14 * * *` | LINE 訊息判斷同步 |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 每小時 | `0 0-14 * * *` | 會議紀錄同步 |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 每小時 | `15 0-14 * * *` | 權責候選清單同步 |
-| `seven-jr-morning-brief` | 08:00 | `0 0 * * *` | `morning` |
+| `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
 | `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
 | `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
 | `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |

@@ -11,6 +11,10 @@
     "inclusiveWindow": true
   },
   "inputs": [
+    "latest AMCore shared task judgment rules",
+    "project-local task judgment rules database",
+    "project-local learned calibration rules",
+    "active manual judgment rules submitted from User UI",
     "new LINE messages since previous run",
     "same LINE conversation history",
     "active SevenAM total-control tasks",
@@ -21,35 +25,64 @@
   "decisionFlow": [
     {
       "step": 1,
+      "name": "Load latest judgment rules",
+      "rule": "Before judging any message, load AMCore shared rules, project-local judgment rules, learned calibration rules, and active manual User UI rules. Do not rely only on hard-coded logic."
+    },
+    {
+      "step": 2,
       "name": "Load new messages",
       "rule": "Read new LINE messages in the hourly window before judging tasks."
     },
     {
-      "step": 2,
+      "step": 3,
       "name": "Recover conversation context",
       "rule": "For each new message, read earlier messages from the same LINE group, room, or user so the message is judged inside its event thread."
     },
     {
-      "step": 3,
+      "step": 4,
       "name": "Search active tasks",
       "rule": "Search the total-control task database for active tasks related by project, group, people, subject, delivery, dates, source page, or prior evidence."
     },
     {
-      "step": 4,
+      "step": 5,
       "name": "Prefer updating existing tasks",
       "rule": "If the new message reasonably extends, answers, blocks, completes, changes, or clarifies an existing task, update that task instead of creating a new one."
     },
     {
-      "step": 5,
+      "step": 6,
       "name": "Create new task only for new events",
-      "rule": "If no existing task can absorb the message and the message contains a real action, owner, delivery, decision, risk, or follow-up need, create a new event-level task."
+      "rule": "If no existing task can absorb the message and the message contains a real action, owner, delivery, decision, risk, or follow-up need, create a new event-level task only after source evidence can be written into the task body or source/evidence fields."
     },
     {
-      "step": 6,
+      "step": 7,
       "name": "Suppress background",
       "rule": "If the message is background, acknowledgement, duplicate, test text, pure knowledge sharing, or a record with no action, mark it as judged without creating a task."
     }
   ],
+  "judgmentRuleLoadingPolicy": {
+    "mandatory": true,
+    "sources": [
+      "AMCore shared rules",
+      "project-local judgment rules data source",
+      "project-local learned calibration rules",
+      "manual User UI judgment rules"
+    ],
+    "projectLocalEnvironmentVariables": [
+      "SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID",
+      "PROJECT_JUDGMENT_RULES_DATA_SOURCE_ID"
+    ],
+    "requiredUse": [
+      "task extraction",
+      "existing task update vs new task decision",
+      "task merge/suppression decision",
+      "task status update",
+      "project assignment",
+      "next step update",
+      "no-task suppression"
+    ],
+    "evidenceRequirement": "When a loaded rule materially changes the result, record the applied rule name or id in the task evidence, message judgment log, or calibration trace.",
+    "failurePolicy": "If rules cannot be loaded, record a warning and use the safest fallback behavior. Do not silently ignore rule loading failure."
+  },
   "existingTaskUpdateSignals": [
     "requested data was provided",
     "someone answered a prior question",
@@ -90,6 +123,19 @@
   ],
   "taskDatabasePolicy": {
     "primaryUnit": "event-level task",
+    "sourceEvidenceGate": {
+      "mandatoryForNewFormalTasks": true,
+      "rule": "A formal task cannot be created without project-local source evidence in the task body or source/evidence fields.",
+      "acceptedEvidenceTypes": [
+        "LINE conversation or message reference with group, time, sender, content, and media/file reference when present",
+        "meeting record reference with checkbox item, decision paragraph, or nearby discussion",
+        "daily report clue with report slot and decision trace",
+        "system suggestion trace with underlying source record",
+        "attachment or file reference linked to the source message or project record",
+        "linked project-local Notion source page"
+      ],
+      "failurePolicy": "If source evidence cannot be attached, do not create a confirmed formal task. Recover the source, create a candidate/pending-confirmation item, or log the failure for review."
+    },
     "avoid": [
       "one task per message",
       "duplicating existing task fragments",
@@ -101,7 +147,30 @@
       "what changed",
       "why the existing task was updated",
       "when the change was detected"
-    ]
+    ],
+    "requiredEvidenceOnCreate": [
+      "source conversation, meeting, report, suggestion, attachment, or linked source page",
+      "source excerpt or enough linked context for audit",
+      "reason the source creates a task",
+      "project goal or candidate project goal"
+    ],
+    "taskBodyEvidenceLogStandard": {
+      "version": "AM-IMP-2026.0610.03",
+      "bodyField": "內文",
+      "legacySourceOriginalProperty": "來源原文",
+      "rule": "Hourly reconciliation must write task creation and task update evidence into the task body using the 任務控制紀錄 / 證據與處理紀錄 format. The separate 來源原文 property is compatibility-only and must not be the authoritative evidence store.",
+      "requiredOnCreate": [
+        "create the 任務控制紀錄 body",
+        "write 目前任務摘要 and 最新判斷",
+        "write the first 證據與處理紀錄 entry",
+        "include 來源原文, 證據摘要, AM 判斷, 處理結果, 狀態變更, 下一步, and 關聯規則"
+      ],
+      "requiredOnUpdate": [
+        "append a new 證據與處理紀錄 entry",
+        "do not overwrite older evidence records",
+        "keep 來源位置 clickable when the LINE conversation master page is known",
+        "write the source original inside the matching record before the evidence summary"
+      ]
+    }
   }
 }
-
