@@ -18,7 +18,7 @@
       <div class="top">
         <div>
           <h1>Seven Jr. 追蹤確認與新任務確認</h1>
-          <div class="subtitle">這份 17:00 報告分成兩部分：先確認是否要對外追蹤，再確認候選任務是否正式成立。</div>
+          <div class="subtitle" id="briefSubtitle">這份追蹤報告分成兩部分：先確認是否要對外追蹤，再確認候選任務是否正式成立。</div>
         </div>
         <div class="date-card"><strong id="briefTime">下午 5:00</strong><span>確認時段</span></div>
       </div>
@@ -124,7 +124,9 @@
     const hashParams=new URLSearchParams(location.hash.replace(/^#/,''));
     const slot=params.get('slot')||hashParams.get('slot')||'17';
     const slotLabels={10:'上午 10:00',13:'下午 1:00',17:'下午 5:00'};
-    document.getElementById('briefTime').innerText=slotLabels[slot]||slotLabels[17];
+    const activeSlotLabel=slotLabels[slot]||slotLabels[17];
+    document.getElementById('briefTime').innerText=activeSlotLabel;
+    document.getElementById('briefSubtitle').innerText=`這份 ${activeSlotLabel} 報告分成兩部分：先確認是否要對外追蹤，再確認候選任務是否正式成立。`;
     renderReadOnlyTaskList('completedTaskList', completedTasks);
     renderReadOnlyTaskList('activeTaskList', activeTasks);
     renderTasks();
