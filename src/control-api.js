@@ -742,13 +742,32 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
 
   lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
 
+  const reportPageUrl = approvalReportPageUrl(reportType);
+  if (reportPageUrl) {
+    lines.push(`互動報告頁：${reportPageUrl}`);
+  }
+
   if (decisionPage?.url) {
-    lines.push(`Notion 紀錄：${decisionPage.url}`);
+    lines.push(`Notion 確認紀錄：${decisionPage.url}`);
   }
 
   lines.push('我會依照這次確認結果更新後續追蹤。');
 
   return { type: 'text', text: clampLineText(lines.join('\n')) };
+}
+
+function approvalReportPageUrl(reportType) {
+  const type = String(reportType || '').trim().toLowerCase();
+  const morningBriefUrl = process.env.MORNING_BRIEF_URL || `${PUBLIC_BASE_URL}/reports/morning-brief`;
+  const dailyReportUrl = process.env.DAILY_REPORT_URL || `${PUBLIC_BASE_URL}/reports/daily-control-report`;
+  const followupBaseUrl = process.env.FOLLOWUP_CONFIRMATION_URL || `${PUBLIC_BASE_URL}/reports/followup-confirmation`;
+
+  if (['morning', 'morning-brief', '早報'].includes(type)) return morningBriefUrl;
+  if (['daily', 'evening', 'night', '晚報', '每日報告'].includes(type)) return dailyReportUrl;
+  if (['followup-morning', 'followup-10', '10', '上午追蹤'].includes(type)) return withFollowupSlot(followupBaseUrl, '10');
+  if (['followup-midday', 'followup-13', '13', '中午追蹤'].includes(type)) return withFollowupSlot(followupBaseUrl, '13');
+  if (['followup-afternoon', 'followup-17', '17', '下午追蹤'].includes(type)) return withFollowupSlot(followupBaseUrl, '17');
+  return '';
 }
 
 async function dispatchApprovedFollowups(followups, context) {
