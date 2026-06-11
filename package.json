@@ -24,6 +24,7 @@
     "llm:extract": "node scripts/llm-task-extraction.js",
     "llm:commands": "node scripts/llm-codex-command-triage.js",
     "feedback:sync": "node scripts/sync-extraction-feedback.js",
+    "attachments:parse": "node scripts/parse-attachments.js",
     "eval:extraction": "node scripts/eval-extraction.js",
     "line:push": "node scripts/line-push.js",
     "setup:codex-commands": "node scripts/setup-codex-command-queue.js",
@@ -33,6 +34,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
-    "pg": "^8.16.3"
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.0",
+    "pg": "^8.16.3",
+    "xlsx": "^0.18.5"
   }
 }
