@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
+import { createLlmBackend } from '../src/llm-backend.js';
 
 loadEnvFile('.env');
 loadEnvFile('../env.txt');
@@ -26,8 +26,10 @@ const sinceHours = clampNumber(Number(args['since-hours'] || process.env.SEVEN_L
 const conversationLimit = clampNumber(Number(args.limit || 20), 1, 50);
 const contextLimit = clampNumber(Number(args['context-limit'] || process.env.SEVEN_LINE_JUDGEMENT_CONTEXT_LIMIT || 40), 5, 80);
 
-if (!anthropicApiKey) {
-  console.warn('ANTHROPIC_API_KEY is not set. Falling back to the legacy rule-based judgement script.');
+const llmBackend = createLlmBackend();
+
+if (!llmBackend.available) {
+  console.warn('LLM backend is not available (no ANTHROPIC_API_KEY). Falling back to the legacy rule-based judgement script.');
   runLegacyJudgementScript();
 } else {
   await main();
@@ -38,7 +40,7 @@ async function main() {
   if (!conversationsDataSourceId) fail('SEVEN_CONVERSATIONS_DATA_SOURCE_ID is not set.');
   if (!tasksDataSourceId) fail('SEVEN_TASKS_DATA_SOURCE_ID is not set.');
 
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+  const anthropic = llmBackend;
   const startedAt = new Date();
   const activeRules = await loadActiveJudgmentRules();
   const calibrationStats = await loadConfidenceCalibrationStats();
@@ -69,7 +71,8 @@ async function main() {
   console.log(JSON.stringify({
     ok: fatalCount < Math.max(conversations.length, 1),
     engine: 'claude-llm',
-    model: anthropicModel,
+    backend: llmBackend.name,
+    model: llmBackend.model,
     dryRun,
     since: `${sinceHours}h`,
     hierarchyPromptVersion: hierarchyPrompt.version || '',
@@ -261,21 +264,14 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks, sys
       ].filter(Boolean).join('\n'))
       .join('\n');
 
-  const response = await anthropic.messages.create({
-    model: anthropicModel,
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    system: [
+  return anthropic.completeJson({
+    system: systemPrompt,
+    maxTokens: 16000,
+    schema: extractionSchema(officialProjects),
+    userContent: [
       {
         type: 'text',
-        text: systemPrompt,
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    messages: [
-      {
-        role: 'user',
-        content: [
+        text: [
           `今天日期：${formatTaipeiDate(new Date())}`,
           `對話名稱：${conversation.name}`,
           `對話類型：${conversation.type || '未知'}`,
@@ -293,19 +289,7 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks, sys
         ].filter((line) => line !== '').join('\n'),
       },
     ],
-    output_config: {
-      format: {
-        type: 'json_schema',
-        schema: extractionSchema(officialProjects),
-      },
-    },
   });
-
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock) {
-    throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
-  }
-  return JSON.parse(textBlock.text);
 }
 
 async function loadOfficialProjects() {
@@ -592,7 +576,7 @@ function buildTaskBodyBlocks(conversation, candidate, now) {
     paragraph(`下一步：${candidate.nextStep || '未設定'}`),
     heading3('最新判斷'),
     paragraph(`判斷時間：${formatTaipeiDateTime(now)}`),
-    paragraph(`判斷來源：LINE 對話 LLM 萃取（${anthropicModel}）`),
+    paragraph(`判斷來源：LINE 對話 LLM 萃取（${llmBackend.model}）`),
     paragraph(`判斷理由：${candidate.reason || '未提供'}`),
     paragraph(`信心程度：${candidate.confidence || '中'}`),
     paragraph(`敏感項目：${candidate.sensitive ? '是，必須由使用者確認後才能執行。' : '否'}`),
@@ -617,7 +601,7 @@ async function applyTaskUpdate(conversation, pageId, update) {
     body: {
       children: [
         heading3(`紀錄 ${formatTaipeiDateTime(now)}`),
-        paragraph(`來源類型：LINE 對話 LLM 萃取（${anthropicModel}）`),
+        paragraph(`來源類型：LINE 對話 LLM 萃取（${llmBackend.model}）`),
         paragraph(`來源對話：${conversation.name}（${conversation.url}）`),
         paragraph(`證據摘要：${update.evidenceSummary || '未提供'}`),
         paragraph(`來源原文：${update.sourceExcerpt || '未取得'}`),
