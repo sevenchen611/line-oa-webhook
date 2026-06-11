@@ -234,6 +234,47 @@ services:
         value: c4eee8de-e596-4d64-906b-1405d79e721c
 
   - type: cron
+    name: seven-jr-attachment-parsing
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node scripts/run-cron-with-alert.js -- node scripts/parse-attachments.js --limit 8
+    schedule: "7,22,37,52 * * * *"
+    envVars:
+      - key: CRON_JOB_NAME
+        value: seven-jr-attachment-parsing
+      - key: CONTROL_LINE_PUSH_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
+      - key: AM_PROJECT_ENV_PREFIX
+        value: SEVEN
+      - key: AM_CONTROL_HEADER_PREFIX
+        value: seven
+      - key: AM_OUTGOING_ACTOR_NAME
+        value: "Seven Jr."
+      - key: AM_CRON_ALERTS_ENABLED
+        value: "true"
+      - key: SEVEN_CONTROL_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_CONTROL_API_KEY
+      - key: ANTHROPIC_API_KEY
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: ANTHROPIC_API_KEY
+      - key: NOTION_TOKEN
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: NOTION_TOKEN
+      - key: SEVEN_ATTACHMENTS_DATA_SOURCE_ID
+        fromService:
+          name: line-oa-webhook
+          type: web
+          envVarKey: SEVEN_ATTACHMENTS_DATA_SOURCE_ID
+
+  - type: cron
     name: seven-jr-extraction-feedback-sync
     runtime: node
     plan: starter
