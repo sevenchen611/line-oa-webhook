@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
+import { createLlmBackend } from '../src/llm-backend.js';
 
 loadEnvFile('.env');
 loadEnvFile('../env.txt');
@@ -7,21 +7,22 @@ loadEnvFile('../env.txt');
 const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const commandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || '';
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
-const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+const controlLinePushUrl = process.env.CONTROL_LINE_PUSH_URL || 'https://line-oa-webhook-nn5j.onrender.com/control/line/push';
+const controlApiKey = process.env.SEVEN_CONTROL_API_KEY || '';
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
+const replyEnabled = Boolean(args.reply);
 const limit = clampNumber(Number(args.limit || 10), 1, 50);
 
-if (!anthropicApiKey) {
-  console.warn('ANTHROPIC_API_KEY is not set. Codex command triage is skipped; commands stay Pending for a manual session.');
+const anthropic = createLlmBackend();
+
+if (!anthropic.available) {
+  console.warn('LLM backend is not available. Codex command triage is skipped; commands stay Pending.');
   process.exit(0);
 }
 if (!notionToken) fail('NOTION_TOKEN is not set.');
 if (!commandsDataSourceId) fail('SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID is not set.');
-
-const anthropic = new Anthropic({ apiKey: anthropicApiKey });
 const startedAt = new Date();
 const pending = await listPendingCommands();
 const results = [];
@@ -42,7 +43,9 @@ for (const command of pending) {
 console.log(JSON.stringify({
   ok: true,
   engine: 'claude-llm',
-  model: anthropicModel,
+  backend: anthropic.name,
+  model: anthropic.model,
+  replyEnabled,
   dryRun,
   scannedCommands: pending.length,
   done: results.filter((item) => item.action === 'done').length,
@@ -57,7 +60,7 @@ async function triageCommand(command) {
   const triage = await runTriage(command);
 
   const resultText = [
-    `AI 分流（${anthropicModel}）`,
+    `AI 分流（${anthropic.model}）`,
     `風險等級：${triage.riskLevel}`,
     `分類：${triage.category}`,
     '',
@@ -72,22 +75,54 @@ async function triageCommand(command) {
 
   if (triage.requiresUserConfirmation) {
     await markCommand(command.pageId, 'Needs Confirmation', resultText);
+    await maybeReply(command, [
+      `收到指令：「${clampText(command.command || command.originalText, 60)}」`,
+      '這個指令需要你確認才能執行。',
+      `分析：${clampText(triage.analysis, 400)}`,
+      triage.proposedAction ? `建議行動：${clampText(triage.proposedAction, 300)}` : '',
+    ].filter(Boolean).join('\n'));
     return { pageId: command.pageId, command: command.command, action: 'needs-confirmation', riskLevel: triage.riskLevel };
   }
 
   await markCommand(command.pageId, 'Done', resultText);
+  await maybeReply(command, clampText(triage.analysis, 1800));
   return { pageId: command.pageId, command: command.command, action: 'done', riskLevel: triage.riskLevel };
 }
 
+async function maybeReply(command, text) {
+  if (!replyEnabled || dryRun || !text) return;
+  if (!controlApiKey) {
+    console.warn('SEVEN_CONTROL_API_KEY is not set; instant reply skipped.');
+    return;
+  }
+  const targetId = command.sourceId || command.userId;
+  if (!targetId) return;
+
+  try {
+    const body = JSON.stringify({
+      targets: [{ id: targetId, type: command.sourceType || 'user' }],
+      text,
+    });
+    const response = await fetch(controlLinePushUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'x-seven-control-key': controlApiKey,
+      },
+      body: Buffer.from(body, 'utf8'),
+    });
+    if (!response.ok) {
+      console.warn(`Instant reply push failed: ${response.status} ${(await response.text()).slice(0, 200)}`);
+    }
+  } catch (error) {
+    console.warn(`Instant reply push failed: ${error.message}`);
+  }
+}
+
 async function runTriage(command) {
-  const response = await anthropic.messages.create({
-    model: anthropicModel,
-    max_tokens: 8000,
-    thinking: { type: 'adaptive' },
+  return anthropic.completeJson({
+    maxTokens: 8000,
     system: [
-      {
-        type: 'text',
-        text: [
           '你是 SevenAM（Seven Assistant Manager）的指令分流助理。使用者透過 LINE 對 Seven Jr. 下達指令，這些指令進入佇列等待處理。',
           '你的工作：分析每個指令，能直接回答的分析、整理、摘要類指令就直接給出完整答案；需要實際執行動作或屬於敏感事項的，標記為需要使用者確認並提出具體的執行計畫。',
           '',
@@ -97,14 +132,11 @@ async function runTriage(command) {
           '- 純粹的分析、解釋、摘要、建議類指令：直接在 analysis 給出完整、可直接使用的答案，requiresUserConfirmation 為 false。',
           '- 指令內容不明確、無法理解時：requiresUserConfirmation 為 true，在 analysis 說明需要使用者補充什麼。',
           '- 一律使用繁體中文回答。',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    messages: [
+    ].join('\n'),
+    userContent: [
       {
-        role: 'user',
-        content: [
+        type: 'text',
+        text: [
           `指令時間：${command.receivedAt || '未知'}`,
           `來源對話：${command.conversationName || '未知'}`,
           `發話者：${command.actorName || '未知'}`,
@@ -118,31 +150,20 @@ async function runTriage(command) {
         ].join('\n'),
       },
     ],
-    output_config: {
-      format: {
-        type: 'json_schema',
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['riskLevel', 'category', 'requiresUserConfirmation', 'analysis', 'proposedAction', 'draftReply'],
-          properties: {
-            riskLevel: { type: 'string', enum: ['低', '中', '高'] },
-            category: { type: 'string', description: '指令類型，例如：分析、摘要、任務操作、訊息發送、財務、其他。' },
-            requiresUserConfirmation: { type: 'boolean' },
-            analysis: { type: 'string', description: '對指令的完整分析或直接答覆。' },
-            proposedAction: { type: 'string', description: '需要確認時的具體執行計畫，否則填空字串。' },
-            draftReply: { type: 'string', description: '如果指令需要回覆某人，提供回覆草稿，否則填空字串。' },
-          },
-        },
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['riskLevel', 'category', 'requiresUserConfirmation', 'analysis', 'proposedAction', 'draftReply'],
+      properties: {
+        riskLevel: { type: 'string', enum: ['低', '中', '高'] },
+        category: { type: 'string', description: '指令類型，例如：分析、摘要、任務操作、訊息發送、財務、其他。' },
+        requiresUserConfirmation: { type: 'boolean' },
+        analysis: { type: 'string', description: '對指令的完整分析或直接答覆。' },
+        proposedAction: { type: 'string', description: '需要確認時的具體執行計畫，否則填空字串。' },
+        draftReply: { type: 'string', description: '如果指令需要回覆某人，提供回覆草稿，否則填空字串。' },
       },
     },
   });
-
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock) {
-    throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
-  }
-  return JSON.parse(textBlock.text);
 }
 
 async function listPendingCommands() {
@@ -165,6 +186,9 @@ async function listPendingCommands() {
       actorName: getText(properties['Actor Name']),
       riskLevel: properties['Risk Level']?.select?.name || '',
       receivedAt: properties['Received At']?.date?.start || '',
+      sourceType: properties['Source Type']?.select?.name || 'user',
+      sourceId: getText(properties['Source ID']),
+      userId: getText(properties['User ID']),
     };
   });
 }
