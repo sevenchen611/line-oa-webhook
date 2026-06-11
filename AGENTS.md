@@ -1082,6 +1082,35 @@ self-correcting:
    Requires `ANTHROPIC_API_KEY` and at least a few labeled cases (run the
    feedback sync first).
 
+## Dual-Mode Processing: Local Worker + Render Fallback (2026-06-12)
+
+The judgment brain can run on two interchangeable backends via `LLM_BACKEND`:
+
+- `api` (default): Anthropic API with metered billing — used by Render crons.
+- `claude-code`: local Claude Code CLI in headless mode (`claude -p`) — uses
+  the user's subscription quota. Implemented in `src/llm-backend.js`; the
+  prompts, schemas, calibration rules, and Notion writes are identical.
+
+**Local worker** (`npm run worker`, wrapper `scripts/start-local-worker.ps1`)
+runs on the 24/7 machine: every ~90 seconds it runs task extraction and
+command triage with `LLM_BACKEND=claude-code`, and triage gets `--reply` so
+7 Junior commands receive near-instant LINE answers. After each healthy cycle
+the worker POSTs `/worker/heartbeat` (control-key auth, stored in Postgres).
+
+**Automatic mode switching**: the extraction and triage Render crons run
+through `run-cron-with-alert.js` with `AM_SKIP_IF_WORKER_ACTIVE=true`; they
+check `GET /worker/status` first and exit quietly when a heartbeat is fresher
+than `SEVEN_WORKER_HEARTBEAT_MAX_AGE_SECONDS` (default 600). If the worker
+machine dies, loses CLI auth, or exhausts subscription quota, heartbeats stop
+and the API-billed crons take over automatically — no manual switch.
+
+Worker self-protection: a Claude Code auth self-test runs at startup (exit
+code 2 with login instructions on failure), and 3 consecutive failed cycles
+suspend heartbeats so Render reclaims the work. The CLI must be logged in
+interactively once (`claude` → `/login`) — its OAuth credential is separate
+from the desktop app login. Report crons, attachment parsing, feedback sync,
+and meeting/responsibility syncs stay on Render regardless of worker state.
+
 ## Cron Failure Alerts (2026-06-11)
 
 - Report crons already alert through `scripts/render-cron-report.js`.
