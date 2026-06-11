@@ -1046,6 +1046,22 @@ This pipeline coexists with the manual LINE calibration flow
 - Tasks never require a project to be created — 未分類 is the intake area.
 - `查待辦` LINE replies now read 截止日 (falling back to 期限/Due Date).
 
+### Project proposals and task promotion (2026-06-12, R2/R3)
+
+`scripts/propose-projects.js` (daily 22:20 Taipei) watches three signals:
+unclassified active tasks (clusters), group conversations without a project
+assignment, and parent tasks with 3+ active children (promotion candidates).
+Claude conservatively proposes at most 3 candidate projects per run, created
+in `總控專案庫` with `狀態=候選`, `啟用=false`, `建立來源=Codex` and the
+rationale in the page body. Candidates are **excluded from the controlled
+vocabulary** until approved.
+
+Approval happens in review page section 「六、專案提案」 via
+`projectProposalDecisions` (`{pageId, decision: approve|reject}`): approve
+sets `狀態=規劃中` + `啟用=true` + `開始日期` (the project then enters the
+extraction vocabulary on the next run); reject sets `狀態=封存`. A LINE
+notification is pushed when new proposals are created.
+
 ### Trustworthiness instruments (2026-06-11)
 
 Three additional instruments make extraction quality measurable and
