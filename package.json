@@ -24,6 +24,7 @@
     "llm:extract": "node scripts/llm-task-extraction.js",
     "llm:commands": "node scripts/llm-codex-command-triage.js",
     "feedback:sync": "node scripts/sync-extraction-feedback.js",
+    "eval:extraction": "node scripts/eval-extraction.js",
     "line:push": "node scripts/line-push.js",
     "setup:codex-commands": "node scripts/setup-codex-command-queue.js",
     "setup:daily-snapshots": "node scripts/setup-daily-report-snapshots.js",
