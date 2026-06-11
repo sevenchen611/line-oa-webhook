@@ -63,9 +63,10 @@ console.log(JSON.stringify({
 // ---- feedback collection ----
 
 async function queryRecentLineTasks() {
-  const result = await notionRequest(`/v1/data_sources/${tasksDataSourceId}/query`, {
-    method: 'POST',
-    body: {
+  const pages = [];
+  let startCursor;
+  do {
+    const body = {
       page_size: 100,
       filter: {
         and: [
@@ -73,10 +74,14 @@ async function queryRecentLineTasks() {
           { timestamp: 'last_edited_time', last_edited_time: { on_or_after: since } },
         ],
       },
-    },
-  });
+    };
+    if (startCursor) body.start_cursor = startCursor;
+    const result = await notionRequest(`/v1/data_sources/${tasksDataSourceId}/query`, { method: 'POST', body });
+    pages.push(...(result.results || []));
+    startCursor = result.has_more ? result.next_cursor : null;
+  } while (startCursor && pages.length < 500);
 
-  return (result.results || []).map((page) => {
+  return pages.map((page) => {
     const properties = page.properties || {};
     const status = selectName(properties['狀態']) || statusName(properties['狀態']);
     const confirmation = selectName(properties['確認狀態']);
