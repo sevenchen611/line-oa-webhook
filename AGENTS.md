@@ -968,6 +968,31 @@ calibration loop automatically:
 This pipeline coexists with the manual LINE calibration flow
 (`開始做任務校準` commands); both write to the same case and rule databases.
 
+### Trustworthiness instruments (2026-06-11)
+
+Three additional instruments make extraction quality measurable and
+self-correcting:
+
+1. **Confidence calibration injection**: at the start of each extraction run,
+   `llm-task-extraction.js` computes the historical confirm rate per
+   confidence level from the calibration case database. Once a level has at
+   least 5 labeled cases, the stats are injected into the system prompt with
+   an instruction to tighten or loosen confidence labels accordingly. Target:
+   「高」 confidence should correspond to a 90%+ confirm rate.
+2. **Borderline suppression sampling (false-negative guard)**: when the model
+   seriously considers creating a task but decides to suppress it, it must
+   mark the item `borderline: true`. Up to 2 borderline items per conversation
+   are written to the calibration case database (`Case Status = New`,
+   `Source Type = LINE message`) so the user can cheaply spot-check what the
+   AI almost caught. This is the only feedback signal for missed tasks.
+3. **Eval harness**: `npm run eval:extraction -- --limit 40 [--save out.json]`
+   replays the judgment core against the labeled golden set (user verdicts
+   from the calibration case database) and reports accuracy, precision,
+   recall, per-confidence accuracy, and mismatch samples. Run it before and
+   after any prompt or rule change; do not ship a change that drops recall.
+   Requires `ANTHROPIC_API_KEY` and at least a few labeled cases (run the
+   feedback sync first).
+
 ## Cron Failure Alerts (2026-06-11)
 
 - Report crons already alert through `scripts/render-cron-report.js`.
