@@ -300,6 +300,11 @@ async function loadOfficialProjects() {
       body: { page_size: 100 },
     });
     return (result.results || [])
+      .filter((page) => {
+        // 候選提案與封存專案不屬於受控詞彙，核准後才開放給萃取使用。
+        const status = page.properties?.['狀態']?.select?.name || '';
+        return !['候選', '封存'].includes(status);
+      })
       .map((page) => {
         const titleProperty = Object.values(page.properties || {}).find((property) => property.type === 'title');
         return (titleProperty?.title || []).map((item) => item.plain_text || '').join('').trim();
