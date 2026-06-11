@@ -17,6 +17,27 @@ const alertsEnabled = !['0', 'false', 'off', 'no'].includes(
 );
 const startedAt = new Date();
 
+// 雙模式切換：本機 worker 心跳新鮮時，Render cron 讓位（避免重複處理與重複計費）。
+const skipIfWorkerActive = !['', '0', 'false', 'off', 'no'].includes(String(process.env.AM_SKIP_IF_WORKER_ACTIVE || '').trim().toLowerCase());
+const workerStatusUrl = process.env.AM_WORKER_STATUS_URL || '';
+if (skipIfWorkerActive && workerStatusUrl) {
+  try {
+    const response = await fetch(workerStatusUrl, { signal: AbortSignal.timeout(15000) });
+    const status = await response.json();
+    if (status.workerActive) {
+      console.log(JSON.stringify({
+        event: 'cron-wrapper',
+        status: 'skipped-worker-active',
+        jobName: cronJobName,
+        heartbeat: status.heartbeat || null,
+      }));
+      process.exit(0);
+    }
+  } catch (error) {
+    console.warn(`Worker status check failed (${error.message}); running cron normally.`);
+  }
+}
+
 const executable = command[0] === 'node' ? process.execPath : command[0];
 const child = spawn(executable, command.slice(1), {
   stdio: ['inherit', 'inherit', 'pipe'],
