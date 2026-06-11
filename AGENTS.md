@@ -985,7 +985,18 @@ self-correcting:
    are written to the calibration case database (`Case Status = New`,
    `Source Type = LINE message`) so the user can cheaply spot-check what the
    AI almost caught. This is the only feedback signal for missed tasks.
-3. **Eval harness**: `npm run eval:extraction -- --limit 40 [--save out.json]`
+3. **Prompt hardening (2026-06-11)**: the conversation timeline is wrapped in
+   `<<<對話時間軸開始>>>` / `<<<對話時間軸結束>>>` delimiters and declared as
+   data-not-instructions, so text inside LINE messages cannot redirect the
+   extraction engine (prompt injection guard). Timeline entries are annotated
+   【新訊息】/【背景】 against `最後任務判斷訊息時間`; only new messages may
+   create tasks or change status (duplicate-task guard). Status suggestions
+   without a source-evidence excerpt are dropped in code. Child tasks link to
+   their parent through the `母任務` relation when the property exists.
+   Sensitive tasks are forced to 優先級=高. Max 5 new tasks per conversation
+   per run. Inspect the assembled prompt with
+   `node scripts/llm-task-extraction.js --print-system-prompt`.
+4. **Eval harness**: `npm run eval:extraction -- --limit 40 [--save out.json]`
    replays the judgment core against the labeled golden set (user verdicts
    from the calibration case database) and reports accuracy, precision,
    recall, per-confidence accuracy, and mismatch samples. Run it before and
