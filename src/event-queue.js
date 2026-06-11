@@ -51,6 +51,13 @@ export function createEventQueue({
       CREATE INDEX IF NOT EXISTS idx_${QUEUE_TABLE}_claim
       ON ${QUEUE_TABLE} (status, available_at, id)
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS worker_heartbeats (
+        worker_id TEXT PRIMARY KEY,
+        beat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        meta JSONB NOT NULL DEFAULT '{}'::jsonb
+      )
+    `);
 
     await recoverStaleProcessingRows();
     await cleanupDoneRows();
@@ -221,7 +228,31 @@ export function createEventQueue({
     }
   }
 
-  return { enabled, init, enqueue, stats };
+  async function setWorkerHeartbeat(workerId, meta = {}) {
+    if (!initialized) throw new Error('Event queue is not initialized.');
+    await pool.query(
+      `INSERT INTO worker_heartbeats (worker_id, beat_at, meta)
+       VALUES ($1, now(), $2::jsonb)
+       ON CONFLICT (worker_id) DO UPDATE SET beat_at = now(), meta = $2::jsonb`,
+      [workerId, JSON.stringify(meta)],
+    );
+  }
+
+  async function getLatestWorkerHeartbeat() {
+    if (!initialized) return null;
+    const result = await pool.query(
+      `SELECT worker_id, beat_at, meta,
+              EXTRACT(EPOCH FROM (now() - beat_at))::int AS age_seconds
+       FROM worker_heartbeats
+       ORDER BY beat_at DESC
+       LIMIT 1`,
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { workerId: row.worker_id, beatAt: row.beat_at, ageSeconds: row.age_seconds, meta: row.meta };
+  }
+
+  return { enabled, init, enqueue, stats, setWorkerHeartbeat, getLatestWorkerHeartbeat };
 }
 
 function buildEventKey(event) {
