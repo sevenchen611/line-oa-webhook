@@ -8,7 +8,7 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const controlApiKey = process.env.SEVEN_CONTROL_API_KEY || '';
 const pushUrl = process.env.CONTROL_LINE_PUSH_URL || 'https://line-oa-webhook-nn5j.onrender.com/control/line/push';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
-const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
+const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const groupMembersDataSourceId = process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
 const defaultTargetName = process.env.SEVEN_JUDGMENT_REVIEW_TARGET_NAME_KEYWORD || 'Seven 陳聖文';
 
@@ -153,8 +153,8 @@ async function resolveReviewTarget() {
   const member = groupMembersDataSourceId ? await findTargetFromGroupMembers(targetName) : null;
   if (member) return member;
 
-  const messageAuthor = messagesDataSourceId ? await findTargetFromMessages(targetName) : null;
-  if (messageAuthor) return messageAuthor;
+  const conversationTarget = conversationsDataSourceId ? await findTargetFromConversations(targetName) : null;
+  if (conversationTarget) return conversationTarget;
 
   fail(`Unable to find LINE user target by name: ${targetName}`);
 }
@@ -172,16 +172,16 @@ async function findTargetFromGroupMembers(targetName) {
   return match || null;
 }
 
-async function findTargetFromMessages(targetName) {
-  const pages = await queryAllPages(messagesDataSourceId, {
+async function findTargetFromConversations(targetName) {
+  const pages = await queryAllPages(conversationsDataSourceId, {
     page_size: clampNumber(Number(args.limit || 100), 1, 100),
-    sorts: [{ property: '排序時間', direction: 'descending' }],
+    sorts: [{ property: '最後訊息時間', direction: 'descending' }],
   });
   const match = pages
     .map((page) => ({
-      id: pageText(page, '發話者 ID'),
-      name: pageText(page, '發話者名稱'),
-      source: 'line messages',
+      id: pageText(page, 'User ID'),
+      name: pageText(page, '自定義名稱') || pageText(page, 'LINE 對話名稱') || pageTitle(page, 'LINE 對話名稱'),
+      source: 'line conversations',
       type: 'user',
     }))
     .find((item) => item.id && item.id.startsWith('U') && normalizedIncludes(item.name, targetName));

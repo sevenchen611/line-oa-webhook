@@ -118,6 +118,7 @@ NOTION_VERSION=2025-09-03
 | --- | --- | --- | --- | --- |
 | `{專案名稱} LINE 對話主檔` | LINE 對話主檔 | 是 | `SEVEN_CONVERSATIONS_DATA_SOURCE_ID` |  |
 | `{專案名稱} LINE 訊息紀錄` | LINE 訊息紀錄 | 是 | `SEVEN_MESSAGES_DATA_SOURCE_ID` |  |
+| `{專案名稱} LINE 群組成員索引` | LINE 群組成員索引 | 建議 | `SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID` |  |
 | `{專案名稱} LINE 附件紀錄` | LINE 附件紀錄 | 是 | `SEVEN_ATTACHMENTS_DATA_SOURCE_ID` |  |
 | `{專案名稱} LINE 附件轉檔資料庫` | LINE 附件轉檔資料庫 | 建議 | `SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID` |  |
 | `{專案名稱} Codex 指令佇列` | Codex 指令佇列 | 建議 | `SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID` |  |
@@ -128,6 +129,13 @@ NOTION_VERSION=2025-09-03
 | `{專案名稱} 風險與決策庫` | 風險與決策庫 | 建議 | `SEVEN_RISK_DECISIONS_DATA_SOURCE_ID` |  |
 | `{專案名稱} Automation Run Log` | Automation Run Log | 建議 | `SEVEN_AUTOMATION_RUN_LOG_DATA_SOURCE_ID` |  |
 | `{專案名稱} 通知候選佇列` | 通知候選 / Notification Queue | 未來功能 | 待擴充 |  |
+
+LINE 任務判斷資料來源規則：
+
+- `SEVEN_CONVERSATIONS_DATA_SOURCE_ID` 是 hourly LINE 任務判斷、任務來源證據與 User UI 對話呈現的主要來源。
+- `SEVEN_MESSAGES_DATA_SOURCE_ID` 仍需建立並設定，用於 raw LINE event log、outgoing message log、附件關聯、Webhook 重送追蹤與除錯。
+- 不要把 `SEVEN_MESSAGES_DATA_SOURCE_ID` 當作任務判斷輸入來源。
+- `SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID` 是 Group ID / Room ID 與 User ID 的成員索引來源；權責判斷與群組成員同步讀這張表，不讀 LINE 訊息紀錄。
 
 關於「總控專案庫」：
 
@@ -238,6 +246,7 @@ SEVEN_REPORT_APPROVAL_KEY=
 
 SEVEN_CONVERSATIONS_DATA_SOURCE_ID=
 SEVEN_MESSAGES_DATA_SOURCE_ID=
+SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID=
 SEVEN_ATTACHMENTS_DATA_SOURCE_ID=
 SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID=
 SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID=

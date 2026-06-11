@@ -7,19 +7,30 @@
     "start": "node scripts/start-server.js",
     "dev": "node --import ./src/control-api.js --watch src/server.js",
     "cron:report": "node scripts/render-cron-report.js",
+    "setup:line-group-members": "node scripts/setup-line-group-member-index.js",
+    "line:group-members": "node scripts/sync-line-group-member-index.js",
     "line:groups": "node scripts/sync-line-group-options.js",
-    "line:judgements": "node scripts/sync-line-message-judgements.js",
+    "line:conversation-judgements": "node scripts/sync-line-message-judgements.js",
+    "line:judgements": "npm run line:conversation-judgements --",
     "judgment:calibration": "node scripts/judgment-calibration.js",
     "meetings:sync": "node scripts/sync-meeting-actions.js",
-    "assistant:hourly": "node scripts/sync-line-group-options.js --limit 100 && node scripts/sync-meeting-actions.js --limit 50 && node scripts/sync-line-message-judgements.js --include-outgoing-groups --limit 50 && node scripts/sync-responsibility-candidates.js",
+    "assistant:hourly": "npm run line:group-members -- --limit 100 && node scripts/sync-line-group-options.js --limit 100 && node scripts/sync-meeting-actions.js --limit 50 && npm run line:conversation-judgements -- --include-outgoing-groups --limit 50 && node scripts/sync-responsibility-candidates.js",
     "responsibility:sync": "node scripts/sync-responsibility-candidates.js",
     "tasks:clean-titles": "node scripts/clean-total-control-task-titles.js",
     "tasks:backfill-details": "node scripts/backfill-active-task-details.js",
+    "tasks:backfill-media": "node scripts/backfill-task-media-evidence-from-conversations.js",
+    "tasks:rebuild-candidates": "node scripts/rebuild-task-candidates-from-conversations.js",
     "codex:commands": "node scripts/codex-command-queue.js",
+    "llm:extract": "node scripts/llm-task-extraction.js",
+    "llm:commands": "node scripts/llm-codex-command-triage.js",
     "line:push": "node scripts/line-push.js",
     "setup:codex-commands": "node scripts/setup-codex-command-queue.js",
     "setup:daily-snapshots": "node scripts/setup-daily-report-snapshots.js",
     "setup:judgment-calibration": "node scripts/judgment-calibration.js create --write-env",
     "setup:responsibility": "node scripts/setup-responsibility-owner-narrowing.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
+    "pg": "^8.16.3"
   }
 }

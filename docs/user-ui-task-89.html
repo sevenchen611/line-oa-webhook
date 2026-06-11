@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>營運：確認一泊二食價格與通路報價 - SevenAM User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    h3 { margin:18px 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; width:150px; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    .preline { white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">SevenAM</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日/進度報告</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">判斷規則</a>
+        <a href="user-ui-connected-preview.html#calibration" data-view="calibration">任務校準案例</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-project-3.html" data-back-link>← 回到上一頁</a></p>
+      <h1>營運：確認一泊二食價格與通路報價</h1>
+      <p>
+        <span class="badge wait">等待回覆</span>
+        <span class="badge neutral">已確認</span>
+        <span class="badge neutral">逸凡 / 謝承昀</span>
+      </p>
+      <div class="note">這是單一任務頁。此頁只顯示「營運：確認一泊二食價格與通路報價」的資料，不顯示其他任務。</div>
+      <section class="section">
+        <h2>編輯任務</h2>
+        <div class="note">儲存會透過 SevenAM 後端寫回 Notion。請從 /user-ui 網址登入後使用；系統會記錄編輯者與編輯內容。</div>
+        <form id="taskEditForm">
+          <div class="edit-grid">
+            <div class="field">
+              <label for="apiBaseUrl">API Base URL</label>
+              <input id="apiBaseUrl" name="apiBaseUrl" value="https://line-oa-webhook-nn5j.onrender.com" autocomplete="url">
+            </div>
+            <div class="field">
+              <label for="editedBy">編輯者</label>
+              <input id="editedBy" name="editedBy" value="" placeholder="例如：Seven">
+            </div>
+            <div class="field">
+              <label for="taskStatus">狀態</label>
+              <select id="taskStatus" name="status">
+                <option value="待確認">待確認</option><option value="未開始">未開始</option><option value="進行中">進行中</option><option value="等待回覆" selected>等待回覆</option><option value="待確認完成">待確認完成</option><option value="已完成">已完成</option><option value="封存">封存</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskConfirmation">確認狀態</label>
+              <input id="taskConfirmation" name="confirmation" value="已確認">
+            </div>
+            <div class="field">
+              <label for="taskOwner">負責人</label>
+              <input id="taskOwner" name="owner" value="逸凡 / 謝承昀">
+            </div>
+            <div class="field">
+              <label for="taskPriority">優先順序</label>
+              <input id="taskPriority" name="priority" value="中">
+            </div>
+            <div class="field full">
+              <label for="taskNext">下一步</label>
+              <textarea id="taskNext" name="next">等待謝承昀依較準確月份重新估算一泊二食價格；逸凡提醒六月資料不準，謝承昀回覆「了解，那我再算看看」。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskJudgment">Codex 判斷摘要</label>
+              <textarea id="taskJudgment" name="judgment">狀態更新：一泊二食議題已從「確認價格」進入等待重新試算。平日 3400、Booking 3978、Agoda 3859 是背景資料，六月資料不準是判斷條件。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskRawSource">來源原文</label>
+              <textarea id="taskRawSource" name="rawSource">LINE 訊息：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0
+對話：37851c68-6dac-812a-898b-e8e9f025cb03
+發話者：謝承昀
+同步識別碼：line:37951c68-6dac-81aa-8aa8-d8ef371403a0:467556753c77
+BOOKING  3978 (現場付款)
+AGODA 3859 (線上刷卡)</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskEditNote">本次編輯備註</label>
+              <textarea id="taskEditNote" name="editNote" placeholder="例如：由 User UI 手動確認狀態，下一步改為..."></textarea>
+            </div>
+            <div class="field full">
+              <label for="taskPageContent">Notion 頁面內容更新</label>
+              <textarea id="taskPageContent" name="pageContent" placeholder="在這裡填入要新增到 Notion 任務頁正文的內容。">## 2026-06-08 任務重新判斷
+- 判斷修正：Booking/Agoda 金額是價格比較，不是稅務或付款放行。
+- 同議題串後續「六月會不太準」「再算看看」表示任務仍在進行。
+## 【總控任務資料補齊】
+補齊時間：2026/06/08 下午11:30
+## 一、任務基本資料
+- 專案：營運
+- 狀態：等待回覆；優先級：中；確認狀態：已確認
+- 負責人：逸凡 / 謝承昀；截止日：未設定
+## 二、Codex 判斷摘要
+狀態更新：一泊二食議題已從「確認價格」進入等待重新試算。平日 3400、Booking 3978、Agoda 3859 是背景資料，六月資料不準是判斷條件。
+## 三、下一步
+等待謝承昀依較準確月份重新估算一泊二食價格；逸凡提醒六月資料不準，謝承昀回覆「了解，那我再算看看」。
+## 四、來源與會議/對話紀錄
+來源訊息：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0
+對話：茲心園幹部群
+發話者：謝承昀
+時間：2026-06-08T02:49:00.000+00:00
+BOOKING  3978 (現場付款)
+AGODA 3859 (線上刷卡)
+關聯頁面：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0</textarea>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="saveTaskButton" type="submit">儲存到 Notion</button>
+            <button class="secondary" type="button" id="rememberApiButton">記住設定</button>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </form>
+      </section>
+      <section class="section">
+        <h2>任務資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>所屬專案</th><td><a href="user-ui-project-3.html">營運</a></td></tr>
+            <tr><th>負責人</th><td>逸凡 / 謝承昀</td></tr>
+            <tr><th>確認狀態</th><td>已確認</td></tr>
+            <tr><th>來源</th><td>LINE</td></tr>
+            <tr><th>優先順序</th><td>中</td></tr>
+            <tr><th>判斷信心</th><td></td></tr>
+            <tr><th>下一步</th><td>等待謝承昀依較準確月份重新估算一泊二食價格；逸凡提醒六月資料不準，謝承昀回覆「了解，那我再算看看」。</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>AM 判斷與來源</h2>
+        <table>
+          <tbody>
+            <tr><th>Codex 判斷摘要</th><td class="preline">狀態更新：一泊二食議題已從「確認價格」進入等待重新試算。平日 3400、Booking 3978、Agoda 3859 是背景資料，六月資料不準是判斷條件。</td></tr>
+            <tr><th>來源原文</th><td class="preline">LINE 訊息：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0
+對話：37851c68-6dac-812a-898b-e8e9f025cb03
+發話者：謝承昀
+同步識別碼：line:37951c68-6dac-81aa-8aa8-d8ef371403a0:467556753c77
+BOOKING  3978 (現場付款)
+AGODA 3859 (線上刷卡)</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>Notion 頁面內容</h2>
+        <div class="card"><h3>2026-06-08 任務重新判斷</h3><p>• 判斷修正：Booking/Agoda 金額是價格比較，不是稅務或付款放行。</p><p>• 同議題串後續「六月會不太準」「再算看看」表示任務仍在進行。</p><h3>【總控任務資料補齊】</h3><p>補齊時間：2026/06/08 下午11:30</p><h3>一、任務基本資料</h3><p>• 專案：營運</p><p>• 狀態：等待回覆；優先級：中；確認狀態：已確認</p><p>• 負責人：逸凡 / 謝承昀；截止日：未設定</p><h3>二、Codex 判斷摘要</h3><p>狀態更新：一泊二食議題已從「確認價格」進入等待重新試算。平日 3400、Booking 3978、Agoda 3859 是背景資料，六月資料不準是判斷條件。</p><h3>三、下一步</h3><p>等待謝承昀依較準確月份重新估算一泊二食價格；逸凡提醒六月資料不準，謝承昀回覆「了解，那我再算看看」。</p><h3>四、來源與會議/對話紀錄</h3><p>來源訊息：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0
+對話：茲心園幹部群
+發話者：謝承昀
+時間：2026-06-08T02:49:00.000+00:00
+BOOKING  3978 (現場付款)
+AGODA 3859 (線上刷卡)</p><p>關聯頁面：https://app.notion.com/p/617494961050353893-37951c686dac81aa8aa8d8ef371403a0</p></div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const taskPageId = "37951c68-6dac-8180-aa82-d97318cbea4d";
+    const backLink = document.querySelector('[data-back-link]');
+    const storagePrefix = 'sevenam-user-ui:';
+    const apiInput = document.getElementById('apiBaseUrl');
+    const editorInput = document.getElementById('editedBy');
+    const statusNode = document.getElementById('saveStatus');
+    const saveButton = document.getElementById('saveTaskButton');
+    const savedApiBase = localStorage.getItem(storagePrefix + 'apiBaseUrl');
+    const savedEditor = localStorage.getItem(storagePrefix + 'editedBy');
+    if (location.protocol.startsWith('http') && location.pathname.startsWith('/user-ui')) {
+      apiInput.value = location.origin;
+    }
+    if (savedApiBase) apiInput.value = savedApiBase;
+    if (savedEditor) editorInput.value = savedEditor;
+    backLink?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+    document.getElementById('rememberApiButton').addEventListener('click', () => {
+      localStorage.setItem(storagePrefix + 'apiBaseUrl', apiInput.value.trim());
+      localStorage.setItem(storagePrefix + 'editedBy', editorInput.value.trim());
+      statusNode.textContent = '設定已記住在此瀏覽器。';
+    });
+    document.getElementById('taskEditForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const apiBaseUrl = apiInput.value.trim().replace(/\/+$/, '');
+      if (!apiBaseUrl) {
+        statusNode.textContent = '請先填 API Base URL。';
+        return;
+      }
+      const form = new FormData(event.currentTarget);
+      const updates = Object.fromEntries(['status', 'confirmation', 'owner', 'priority', 'next', 'judgment', 'rawSource', 'editNote', 'pageContent', 'editedBy'].map((key) => [key, String(form.get(key) || '').trim()]));
+      saveButton.disabled = true;
+      statusNode.textContent = '正在儲存...';
+      try {
+        const response = await fetch(apiBaseUrl + '/control/tasks/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ pageId: taskPageId, updates }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || '儲存失敗');
+        }
+        localStorage.setItem(storagePrefix + 'apiBaseUrl', apiBaseUrl);
+        localStorage.setItem(storagePrefix + 'editedBy', updates.editedBy);
+        statusNode.textContent = '已儲存到 Notion。重新產生 User UI 後會看到最新資料。';
+      } catch (error) {
+        statusNode.textContent = '儲存失敗：' + (error.message || error);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

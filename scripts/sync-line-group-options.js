@@ -6,9 +6,9 @@ loadEnvFile('../env.txt');
 const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
-const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const groupOptionsDataSourceId = process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID || '';
 const groupMembersDataSourceId = process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
+const memberIndexDataSourceId = process.env.SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID || '';
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
@@ -16,15 +16,16 @@ const limit = clampNumber(Number(args.limit || 100), 1, 100);
 
 if (!notionToken) fail('NOTION_TOKEN is not set.');
 if (!conversationsDataSourceId) fail('SEVEN_CONVERSATIONS_DATA_SOURCE_ID is not set.');
-if (!messagesDataSourceId) fail('SEVEN_MESSAGES_DATA_SOURCE_ID is not set.');
 if (!groupOptionsDataSourceId) fail('SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID is not set.');
 if (!groupMembersDataSourceId) fail('SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID is not set.');
+if (!memberIndexDataSourceId) fail('SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID is not set.');
 
 try {
   await Promise.all([
     assertSevenDataSource(conversationsDataSourceId),
     assertSevenDataSource(groupOptionsDataSourceId),
     assertSevenDataSource(groupMembersDataSourceId),
+    assertSevenDataSource(memberIndexDataSourceId),
   ]);
 
   const conversations = await queryAllPages(conversationsDataSourceId, {
@@ -39,6 +40,7 @@ try {
   });
   const existingGroups = await queryAllPages(groupOptionsDataSourceId, { page_size: 100 });
   const existingMembers = await queryAllPages(groupMembersDataSourceId, { page_size: 100 });
+  const memberIndexRows = await queryAllPages(memberIndexDataSourceId, { page_size: 100 });
 
   const existingGroupsBySourcePage = new Map();
   const existingGroupsByTarget = new Map();
@@ -87,26 +89,20 @@ try {
     }
   }
 
-  const messages = await queryAllPages(messagesDataSourceId, {
-    page_size: limit,
-    filter: { property: '發話者 ID', rich_text: { is_not_empty: true } },
-    sorts: [{ property: '排序時間', direction: 'descending' }],
-  });
-
   const existingMemberKeys = new Set(existingMembers.map((page) => normalizeMemberKey(page)).filter(Boolean));
   const memberCandidates = new Map();
-  for (const message of messages) {
-    const conversationPageId = relationIds(message.properties?.['對話主檔'])[0];
-    const groupOption = activeGroupOptions.get(conversationPageId);
+  for (const indexRow of memberIndexRows.map(normalizeMemberIndexRow)) {
+    if (!indexRow.userId || indexRow.status === 'left') continue;
+    const groupOption = [...activeGroupOptions.values()].find((option) => option.targetKey === indexRow.targetKey);
     if (!groupOption) continue;
 
-    const userId = pageText(message, '發話者 ID');
+    const userId = indexRow.userId;
     if (!userId || userId === groupOption.groupId) continue;
 
     const key = `${groupOption.id}:${userId}`;
     if (existingMemberKeys.has(key)) continue;
 
-    const seenAt = pageDate(message, '排序時間');
+    const seenAt = indexRow.lastSeenAt || indexRow.syncedAt;
     const existing = memberCandidates.get(key);
     if (existing) {
       existing.count += 1;
@@ -118,7 +114,7 @@ try {
 
     memberCandidates.set(key, {
       userId,
-      displayName: pageText(message, '發話者名稱') || '未命名成員',
+      displayName: indexRow.displayName || '未命名成員',
       groupPageId: groupOption.id,
       groupId: groupOption.groupId,
       groupName: groupOption.title,
@@ -137,7 +133,7 @@ try {
         GroupID: richTextProperty(member.groupId),
         群組顯示名稱: richTextProperty(member.groupName),
         LINE群組: relationProperty([member.groupPageId]),
-        來源: richTextProperty('7AM LINE 訊息紀錄'),
+        來源: richTextProperty('7AM LINE 群組成員索引'),
         最後出現時間: member.lastSeenAt ? dateProperty(member.lastSeenAt) : undefined,
         出現次數: numberProperty(member.count),
         同步狀態: selectProperty('自動建立'),
@@ -246,6 +242,21 @@ function normalizeMemberKey(page) {
   const groupPageIds = relationIds(page.properties?.['LINE群組']);
   if (!userId || !groupPageIds.length) return '';
   return `${groupPageIds[0]}:${userId}`;
+}
+
+function normalizeMemberIndexRow(page) {
+  const targetType = selectName(page.properties?.['對象類型']) || 'group';
+  const targetId = targetType === 'room' ? pageText(page, 'RoomID') : pageText(page, 'GroupID');
+  return {
+    userId: pageText(page, 'UserID'),
+    displayName: pageText(page, '成員顯示名稱') || pageTitle(page, '成員索引名稱'),
+    targetType,
+    targetId,
+    targetKey: `${targetType}:${targetId}`,
+    status: selectName(page.properties?.['成員狀態']) || 'unknown',
+    syncedAt: pageDate(page, '最後同步時間'),
+    lastSeenAt: pageDate(page, '最後出現時間'),
+  };
 }
 
 async function queryAllPages(dataSourceId, body = {}) {

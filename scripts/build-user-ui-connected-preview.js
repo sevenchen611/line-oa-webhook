@@ -8,6 +8,7 @@ const outputPath = path.resolve(args.output || path.join(projectRoot, 'docs', 'u
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const projectPrefix = resolveProjectPrefix(projectRoot, projectName, args.prefix);
 const userUiBasePath = normalizeUserUiBasePath(args.userUiBasePath || process.env.USER_UI_BASE_PATH || '');
+const conversationLedUserUi = args['conversation-led'] !== 'false';
 
 loadEnvFile(path.join(projectRoot, '.env'));
 loadEnvFile(path.resolve(projectRoot, '..', 'env.txt'));
@@ -23,7 +24,7 @@ const dataSources = {
   projectMaster: projectEnv('PROJECTS_DATA_SOURCE_ID') || args.projectDataSourceId || '',
   tasks: projectEnv('TASKS_DATA_SOURCE_ID') || '',
   conversations: projectEnv('CONVERSATIONS_DATA_SOURCE_ID') || '',
-  messages: projectEnv('MESSAGES_DATA_SOURCE_ID') || '',
+  messages: conversationLedUserUi ? '' : projectEnv('MESSAGES_DATA_SOURCE_ID') || '',
   attachments: projectEnv('ATTACHMENTS_DATA_SOURCE_ID') || '',
   meetings: projectEnv('MEETINGS_DATA_SOURCE_ID') || '',
   progressReports: projectEnv('PROGRESS_REPORTS_DATA_SOURCE_ID') || '',
@@ -59,7 +60,7 @@ for (const [key, id] of Object.entries(dataSources)) {
   }
 }
 
-const conversations = mapConversations(data.conversations);
+const conversations = await mapConversations(data.conversations);
 const conversationById = new Map(conversations.map((item) => [item.id, item]));
 const lineTargetNameById = buildLineTargetNameMap(conversations);
 const messages = (await mapMessages(data.messages)).map((message) => {
@@ -100,7 +101,7 @@ viewModel.dataCounts = {
   projectMaster: viewModel.projects.length,
   tasks: viewModel.tasks.length,
   conversations: viewModel.conversations.length,
-  messages: viewModel.messages.length,
+  messages: viewModel.conversations.reduce((count, conversation) => count + (conversation.messages?.length || 0), 0),
   attachments: viewModel.attachments.length,
   meetings: viewModel.meetings.length,
   progressReports: viewModel.progressReports.length,
@@ -234,7 +235,12 @@ async function pageContentPreview(pageId) {
 async function pageMediaFiles(pageId) {
   try {
     const blocks = await listBlocks(pageId, 80);
-    return blocks.map(blockToMedia).filter(Boolean).slice(0, 8);
+    const media = blocks.map(blockToMedia).filter(Boolean).slice(0, 24);
+    const cached = [];
+    for (const item of media) {
+      cached.push(await cacheRemoteMedia(item, pageId));
+    }
+    return cached;
   } catch {
     return [];
   }
@@ -264,7 +270,31 @@ function blockToMedia(block) {
     type: block.type,
     name: data.name || caption || block.type,
     url,
+    caption,
+    lineMessageId: caption.match(/[0-9]{10,}/)?.[0] || '',
   };
+}
+
+async function cacheRemoteMedia(item, scope = '') {
+  if (!item?.url || item.url.startsWith('user-ui-media/')) return item;
+  try {
+    mkdirSync(userUiMediaDir, { recursive: true });
+    const response = await fetch(item.url);
+    if (!response.ok) return item;
+    const contentType = response.headers.get('content-type') || '';
+    const extension = mediaExtension(contentType, item.name, item.type);
+    const baseName = safeFileName(item.lineMessageId || item.name || scope || 'media').replace(/\.(png|jpe?g|gif|webp|bmp|heic|pdf|xlsx?|docx?|pptx?|txt)$/i, '');
+    const fileName = `${baseName}${extension}`;
+    const absolutePath = path.join(userUiMediaDir, fileName);
+    writeFileSync(absolutePath, Buffer.from(await response.arrayBuffer()));
+    return {
+      ...item,
+      type: contentType.startsWith('image/') ? 'image' : item.type,
+      url: `user-ui-media/${fileName}`,
+    };
+  } catch {
+    return item;
+  }
 }
 
 function blockToLine(block) {
@@ -641,6 +671,7 @@ async function mapTasks(pages) {
       updatedAt: firstPageText(page, ['最後更新', '最後更新時間', 'Last updated', 'Last Updated']) || pageText(page, '最後編輯時間') || page.last_edited_time || '',
       createdAt: firstPageText(page, ['建立時間', '建立日期', 'Created time', 'Created Time']) || page.created_time || '',
       content: await pageContentPreview(page.id),
+      media: await pageMediaFiles(page.id),
       uiUrl: userUiPageHref(`user-ui-task-${index}.html`),
       notionUrl: pageUrl(page),
       url: pageUrl(page),
@@ -657,24 +688,128 @@ function isArchivedTaskStatus(status) {
   return /封存|Archived/i.test(String(status || ''));
 }
 
-function mapConversations(pages) {
-  return pages.map((page, index) => ({
-    id: page.id,
-    index,
-    uiUrl: userUiPageHref(`user-ui-line-${index}.html`),
-    name: pageText(page, '自定義名稱') || pageTitle(page),
-    userId: pageText(page, 'User ID') || '',
-    groupId: pageText(page, 'Group ID') || '',
-    roomId: pageText(page, 'Room ID') || '',
-    conversationKey: pageText(page, '對話統一鍵') || '',
-    type: pageText(page, '對象類型') || '',
-    project: pageText(page, '關聯專案') || pageText(page, '總控專案') || pageText(page, '專案') || '',
-    status: pageText(page, '監控狀態') || '',
-    latestAt: pageText(page, '最後訊息時間') || '',
-    count: pageText(page, '訊息數（總）') || '',
-    preview: pageText(page, '最新訊息預覽') || pageText(page, '備註') || '',
-    url: pageUrl(page),
-  }));
+async function mapConversations(pages) {
+  const mapped = [];
+  for (const [index, page] of pages.entries()) {
+    const content = await pageContentPreview(page.id);
+    const conversation = {
+      id: page.id,
+      index,
+      uiUrl: userUiPageHref(`user-ui-line-${index}.html`),
+      name: pageText(page, '自定義名稱') || pageTitle(page),
+      userId: pageText(page, 'User ID') || '',
+      groupId: pageText(page, 'Group ID') || '',
+      roomId: pageText(page, 'Room ID') || '',
+      conversationKey: pageText(page, '對話統一鍵') || '',
+      type: pageText(page, '對象類型') || '',
+      project: pageText(page, '關聯專案') || pageText(page, '總控專案') || pageText(page, '專案') || '',
+      status: pageText(page, '監控狀態') || '',
+      latestAt: pageText(page, '最後訊息時間') || '',
+      count: pageText(page, '訊息數（總）') || '',
+      preview: pageText(page, '最新訊息預覽') || pageText(page, '備註') || '',
+      content,
+      url: pageUrl(page),
+    };
+    conversation.messages = parseConversationMasterMessages(conversation, content);
+    mapped.push(conversation);
+  }
+  return mapped;
+}
+
+function parseConversationMasterMessages(conversation, lines) {
+  const messages = [];
+  let current = null;
+
+  for (const line of lines || []) {
+    const text = String(line || '').trim();
+    if (!text || text.includes('LINE 對話記錄')) continue;
+    const meta = parseConversationMasterHeader(text);
+    if (meta) {
+      if (current) messages.push(finalizeConversationMasterMessage(conversation, current, messages.length));
+      current = { ...meta, body: [] };
+      continue;
+    }
+    if (current) current.body.push(text);
+  }
+
+  if (current) messages.push(finalizeConversationMasterMessage(conversation, current, messages.length));
+  return messages;
+}
+
+function parseConversationMasterHeader(text) {
+  const incoming = text.match(/^【(.+?)】(.+?) - (.+?)（(.+?)）$/);
+  if (incoming) {
+    return {
+      timeText: incoming[1],
+      conversationName: incoming[2].trim(),
+      speaker: incoming[3].trim(),
+      type: messageTypeFromConversationLabel(incoming[4]),
+      source: 'line',
+    };
+  }
+
+  const outgoing = text.match(/^【(.+?)】(.+?)：(.+?)$/);
+  if (outgoing) {
+    return {
+      timeText: outgoing[1],
+      conversationName: '',
+      speaker: outgoing[2].trim(),
+      type: messageTypeFromConversationLabel(outgoing[3]),
+      source: 'ai-engine',
+    };
+  }
+
+  return null;
+}
+
+function finalizeConversationMasterMessage(conversation, meta, index) {
+  const content = meta.body.join('\n').trim();
+  return {
+    id: `${conversation.id}:conversation-master:${index}`,
+    lineMessageId: '',
+    conversationIds: [conversation.id],
+    conversationName: conversation.name || meta.conversationName,
+    conversationUrl: conversation.url,
+    conversationUiUrl: conversation.uiUrl,
+    speaker: meta.speaker,
+    speakerType: meta.source === 'ai-engine' ? 'oa' : 'user',
+    type: meta.type,
+    source: meta.source,
+    sentAt: parseConversationMasterTime(meta.timeText) || conversation.latestAt || '',
+    content,
+    media: [],
+    judged: conversation.judgementStatus || '',
+    related: '',
+    url: conversation.url,
+    sourceKind: 'conversation-master',
+  };
+}
+
+function messageTypeFromConversationLabel(label) {
+  const value = String(label || '');
+  if (/文字/.test(value)) return 'text';
+  if (/圖片/.test(value)) return 'image';
+  if (/檔案/.test(value)) return 'file';
+  if (/貼圖/.test(value)) return 'sticker';
+  if (/位置/.test(value)) return 'location';
+  if (/影片/.test(value)) return 'video';
+  if (/語音/.test(value)) return 'audio';
+  return 'text';
+}
+
+function parseConversationMasterTime(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(上午|下午)?\s*(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  let hour = Number(match[5]);
+  const minute = Number(match[6]);
+  if (match[4] === '下午' && hour < 12) hour += 12;
+  if (match[4] === '上午' && hour === 12) hour = 0;
+  const date = new Date(Date.UTC(year, month, day, hour - 8, minute));
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
 async function mapMessages(pages) {
@@ -701,7 +836,6 @@ async function mapMessages(pages) {
       sentAt: firstPageText(page, ['排序時間', '建立時間', '訊息時間', '最後更新時間']) || page.created_time || '',
       content,
       media: [...pageMedia, ...lineMedia],
-      judged: pageText(page, '已進入判斷層') || '',
       related: pageText(page, '關聯總控事件') || '',
       url: pageUrl(page),
     });
@@ -1431,7 +1565,7 @@ function renderHtml(model) {
       <section id="overview" class="grid view-panel">
         ${metric('Projects', model.projects.length)}
         ${metric('Tasks', model.tasks.length)}
-        ${metric('LINE messages', model.messages.length)}
+        ${metric('LINE conversation messages', model.dataCounts.messages)}
         ${metric('Meetings', model.meetings.length)}
       </section>
 
@@ -1489,15 +1623,15 @@ function renderHtml(model) {
             </p>
           </article>`)}
         </div>
-        <h3>最新訊息</h3>
+        <h3>最新對話主檔訊息</h3>
         <table>
-          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th><th>Judged</th><th>Link</th></tr></thead>
-          <tbody>${rows(model.messages, [
+          <thead><tr><th>Conversation</th><th>Speaker</th><th>Type</th><th>Content</th><th>Link</th></tr></thead>
+          <tbody>${rows(latestConversationMasterMessages(model.conversations, 80), [
+            { value: 'conversationName' },
             { value: 'speaker' },
             { value: 'type' },
             { value: (item) => short(item.content, 180) },
-            { value: (item) => `<span class="badge ${item.judged === 'Yes' ? 'ok' : 'wait'}">${escapeHtml(item.judged || 'No')}</span>`, html: true },
-            { value: (item) => link(item.url, 'Open'), html: true },
+            { value: (item) => link(item.conversationUiUrl || item.url, 'Open'), html: true },
           ])}</tbody>
         </table>
       </section>
@@ -2113,6 +2247,7 @@ function renderTaskOnlyHtml(model, task) {
           </tbody>
         </table>
       </section>
+      ${renderTaskPageMedia(task.media || [])}
       <section class="section">
         <h2>原始來源證據</h2>
         ${renderTaskEvidence(task, model)}
@@ -2261,14 +2396,13 @@ function renderConversationOnlyHtml(model, conversation) {
       </section>
       <section class="section">
         <h2>對話訊息</h2>
-        <p class="muted">共 ${conversationMessages.length} 筆訊息。</p>
+        <p class="muted">共 ${conversationMessages.length} 筆對話主檔訊息。</p>
         <table>
-          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th><th>Judged</th></tr></thead>
+          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th></tr></thead>
           <tbody>${rows(conversationMessages, [
             { value: 'speaker' },
             { value: 'type' },
             { value: (item) => renderLineConversationMessage(item, attachmentsForMessage(item, conversationAttachments)), html: true },
-            { value: (item) => `<span class="badge ${item.judged === 'Yes' ? 'ok' : 'wait'}">${escapeHtml(item.judged || 'No')}</span>`, html: true },
           ])}</tbody>
         </table>
       </section>
@@ -2598,31 +2732,17 @@ function renderProjectDetailSection(project, index, taskItems, conversationItems
 function renderTaskEvidence(task, model) {
   const rawSource = String(task.rawSource || '').trim();
   const taskText = [rawSource, task.source, task.judgment, ...(task.content || [])].filter(Boolean).join('\n');
-  const messageMap = new Map(model.messages.map((message) => [normalizeId(message.id), message]));
-  for (const message of model.messages) {
-    if (message.url) messageMap.set(normalizeId(message.url), message);
-    if (message.lineMessageId) messageMap.set(normalizeId(message.lineMessageId), message);
-  }
-  const ids = [
-    ...extractNotionPageIds(taskText),
-    ...(task.messageIds || []),
-  ];
-  const matchedMessages = ids.map((id) => messageMap.get(normalizeId(id))).filter(Boolean);
   const matchedConversations = findEvidenceConversations(task, taskText, model);
-  const expandedMessages = expandEvidenceMessages(taskText, matchedMessages, model.messages, matchedConversations);
-  const seen = new Set();
-  const uniqueMessages = expandedMessages.filter((message) => {
-    const key = message.id || message.url || message.lineMessageId;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const conversationEvidence = renderConversationEvidence(taskText, matchedConversations, model);
   const meetingEvidence = renderMeetingEvidence(task, taskText, model);
   const attachmentEvidence = renderAttachmentEvidence(taskText, model);
-  if (!uniqueMessages.length && !rawSource && !meetingEvidence && !attachmentEvidence) return '<p class="muted">目前沒有可驗證的原始來源證據。若任務內文只有摘要，請補上 LINE 訊息、會議記錄或附件引用。</p>';
-  const cards = uniqueMessages.map((message) => renderEvidenceMessageCard(message, model.attachments)).join('');
-  const remainingRaw = renderRemainingRawEvidence(rawSource, uniqueMessages, model);
-  return `<div class="evidence-list">${cards}${meetingEvidence}${attachmentEvidence}${remainingRaw}</div>`;
+  if (conversationEvidence || meetingEvidence || attachmentEvidence) {
+    const remainingRaw = renderRemainingRawEvidence(rawSource, [], model);
+    return `<div class="evidence-list">${conversationEvidence}${meetingEvidence}${attachmentEvidence}${remainingRaw}</div>`;
+  }
+
+  if (!rawSource) return '<p class="muted">目前沒有可驗證的原始來源證據。若任務內文只有摘要，請補上 LINE 對話主檔、會議記錄或附件引用。</p>';
+  return `<div class="evidence-list">${renderRemainingRawEvidence(rawSource, [], model)}</div>`;
 }
 
 function extractNotionPageIds(text) {
@@ -2663,6 +2783,37 @@ function findEvidenceConversations(task, taskText, model) {
     if (idMatch || nameMatch || urlMatch) matches.push(conversation);
   }
   return matches;
+}
+
+function renderConversationEvidence(taskText, conversations, model) {
+  const items = (conversations || []).slice(0, 4);
+  if (!items.length) return '';
+
+  return items.map((conversation) => {
+    const messages = relevantConversationMessages(taskText, conversation, 8);
+    const messageHtml = messages.length
+      ? messages.map((message) => renderLineConversationMessage(message, attachmentsForMessage(message, model.attachments || []))).join('')
+      : `<div class="preline">${escapeHtml((conversation.content || []).slice(0, 18).join('\n'))}</div>`;
+    return `<article class="evidence-card">
+      <div class="evidence-meta"><span class="badge neutral">LINE 對話主檔</span>${conversation.latestAt ? `<span class="badge neutral">${escapeHtml(displayDateValue(conversation.latestAt) || conversation.latestAt)}</span>` : ''}</div>
+      <h3>${escapeHtml(conversation.name || 'LINE 對話')}</h3>
+      ${messageHtml}
+      ${conversation.url ? `<p class="muted">${link(conversation.url, '開啟 LINE 對話主檔')}</p>` : ''}
+    </article>`;
+  }).join('');
+}
+
+function relevantConversationMessages(taskText, conversation, limit = 8) {
+  const raw = normalizeEvidenceText(taskText);
+  const messages = conversation.messages || [];
+  const matched = messages.filter((message) => {
+    const content = normalizeEvidenceText(message.content);
+    if (!content) return false;
+    if (content.length >= 6 && raw.includes(content.slice(0, Math.min(32, content.length)))) return true;
+    const speaker = normalizeEvidenceText(message.speaker);
+    return speaker && raw.includes(speaker) && evidenceKeywords(content).some((word) => raw.includes(word));
+  });
+  return (matched.length ? matched : messages).slice(0, limit);
 }
 
 function messageMatchesEvidenceText(message, raw, dateTokens) {
@@ -2904,6 +3055,15 @@ function renderContentLine(line, model) {
 function renderTaskContent(task, model) {
   const content = normalizeTaskContentSourceReferences(task, model);
   return content.length ? content.map((line) => renderTaskContentLine(line, model)).join('') : '<p class="muted">No page content loaded.</p>';
+}
+
+function renderTaskPageMedia(mediaItems = []) {
+  const unique = mediaItems.filter((item, index, list) => item.url && list.findIndex((other) => other.url === item.url) === index);
+  if (!unique.length) return '';
+  return `<section class="section">
+    <h2>任務內文圖片與附件</h2>
+    <div class="message-media">${unique.map(renderMessageMedia).join('')}</div>
+  </section>`;
 }
 
 function renderTaskContentLine(line, model) {
@@ -3339,7 +3499,20 @@ function conversationsForProject(project, conversationItems) {
   });
 }
 
+function latestConversationMasterMessages(conversationItems, limit = 80) {
+  return (conversationItems || [])
+    .flatMap((conversation) => (conversation.messages || []).map((message) => ({
+      ...message,
+      conversationName: conversation.name || message.conversationName,
+      conversationUiUrl: conversation.uiUrl,
+      url: conversation.url,
+    })))
+    .sort((a, b) => messageTimestamp(b) - messageTimestamp(a))
+    .slice(0, limit);
+}
+
 function messagesForConversation(conversation, messageItems) {
+  if (conversation.messages?.length) return conversation.messages;
   const conversationId = normalizeId(conversation.id);
   return messageItems.filter((message) => message.conversationIds.some((id) => normalizeId(id) === conversationId));
 }

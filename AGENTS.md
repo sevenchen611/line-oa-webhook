@@ -242,6 +242,7 @@ Related option tables:
 
 - `LINE 群組選項表`: data source ID `b6cfffbf-e7b2-4da4-b21d-d055bc68af69`
 - `LINE 群組成員選項表`: data source ID `979949aa-bac3-45ac-a4cc-a38585addb89`
+- `LINE 群組成員索引表`: data source ID from `SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID`
 
 Rules:
 
@@ -260,15 +261,18 @@ Rules:
   `候選負責人（依群組自動帶出）` with only known members of that group. Use
   `第三層：主要負責人` to select the responsible person. The selected person's
   User ID is retained in the option row.
+- Group member User IDs must come from `LINE 群組成員索引表`, not from
+  `LINE 訊息紀錄`. The index table stores the durable relationship between a
+  Group ID / Room ID and the member User IDs returned by LINE API.
 - Use `代理人對話群組` and `代理人` the same way when a backup contact is needed.
 - Run `npm run responsibility:sync` to refresh candidate groups, candidate
   members, candidate counts, selection status, and LINE target result fields.
 - `LINE對象名稱（結果）`, `LINE對象類型（結果）`, and `LINE對象ID（結果）` are
   system-facing result fields for sending or logging. They should not replace
   the group/person selection flow above.
-- `LINE 群組成員選項表` can only include people who have appeared in webhook
-  records or LINE membership events. LINE OA cannot fetch a complete historical
-  group roster for members who have never appeared in captured events.
+- `LINE 群組成員選項表` is derived from `LINE 群組成員索引表`. If LINE API cannot
+  provide a full group roster for the current OA account type, keep missing
+  members as unknown instead of reading `LINE 訊息紀錄` as a replacement source.
 - If a LINE conversation master has `總控專案`, project assignment still comes
   from the conversation first; this table decides the owner / supervisor /
   default tracking target for that project.
@@ -579,7 +583,8 @@ Render Cron uses UTC. Taipei time is UTC+8.
 
 | Render Cron Job | Taipei Time | UTC Cron | reportType |
 | --- | --- | --- | --- |
-| `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE message judgement sync |
+| `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE conversation LLM task extraction |
+| `seven-jr-codex-command-triage` | every 15 minutes | `*/15 * * * *` | Codex command queue LLM triage |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
 | `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
@@ -606,13 +611,32 @@ Meeting action sync runs:
 npm run meetings:sync -- --limit 50
 ```
 
-LINE message judgement sync runs:
+LINE conversation judgement sync runs:
 
 ```bash
-npm run line:judgements -- --include-outgoing-groups --limit 50
+npm run llm:extract -- --include-outgoing-groups --limit 20
 ```
 
-It scans `Seven LINE 訊息紀錄` records with `已進入判斷層 = false`, but its purpose is task reconciliation, not direct message-to-task conversion. For every new LINE message, the hourly job must first read the same LINE conversation context, then check the active `總控任務庫` for related tasks. If the message extends, answers, completes, blocks, changes, or clarifies an existing task, update that task and record the evidence. Only when no existing task can reasonably absorb the message should the job decide whether it is a genuinely new event and create one event-level task.
+This is the LLM extraction engine (`scripts/llm-task-extraction.js`). It calls the
+Claude API (`ANTHROPIC_API_KEY`, model from `ANTHROPIC_MODEL`, default
+`claude-opus-4-8`) with the shared hierarchy master prompt from
+`config/conversation-task-hierarchy-prompt.json` and a strict JSON output schema.
+If `ANTHROPIC_API_KEY` is not configured, it automatically falls back to the
+legacy rule-based engine:
+
+```bash
+npm run line:conversation-judgements -- --include-outgoing-groups --limit 50
+```
+
+It scans `Seven LINE 對話主檔`, not `Seven LINE 訊息紀錄`. The judgement source must be `SEVEN_CONVERSATIONS_DATA_SOURCE_ID`; do not use `SEVEN_MESSAGES_DATA_SOURCE_ID` as task judgement input. For each updated LINE conversation, the hourly job reads the latest 20 conversation messages from the conversation master page, orders them from older to newer, then checks the active `總控任務庫` for related tasks. If the conversation segment extends, answers, completes, blocks, changes, or clarifies an existing task, update that task and record the evidence. Only when no existing task can reasonably absorb the conversation segment should the job decide whether it is a genuinely new event and create one event-level task.
+
+Conversation judgement state is tracked on `Seven LINE 對話主檔` with these fields:
+
+- `最後任務判斷時間`
+- `最後任務判斷訊息時間`
+- `任務判斷狀態`
+
+Do not use the message-record field `已進入判斷層` for hourly LINE task judgement.
 
 The 08:00-22:00 hourly LINE judgement contract is defined in:
 
@@ -635,7 +659,7 @@ members from that group.
 Hourly assistant maintenance has three lanes:
 
 - Meeting lane: `npm run meetings:sync -- --limit 50`
-- LINE lane: `npm run line:judgements -- --include-outgoing-groups --limit 50`
+- LINE lane: `npm run line:conversation-judgements -- --include-outgoing-groups --limit 50`
 - Responsibility lane: `npm run responsibility:sync`
 
 Local full hourly run:
@@ -647,13 +671,13 @@ npm run assistant:hourly
 Rule-update backfill:
 
 ```bash
-npm run line:judgements -- --reprocess --since-hours 24 --limit 100
+npm run line:conversation-judgements -- --reprocess --since-hours 24 --limit 100
 ```
 
 Same-day group-only task status reconciliation:
 
 ```bash
-npm run line:judgements -- --reprocess --groups-only --include-outgoing-groups --update-existing-only --skip-progress --since-iso <UTC midnight for Taipei> --limit 100
+npm run line:conversation-judgements -- --reprocess --groups-only --include-outgoing-groups --update-existing-only --skip-progress --since-iso <UTC midnight for Taipei> --limit 100
 ```
 
 Use this when the user asks to reread today's LINE group messages and update the
@@ -661,7 +685,10 @@ current task list without creating new task pages or progress reports. For
 Taipei midnight, pass the previous UTC date at 16:00, for example
 `2026-06-08T16:00:00.000Z` for 2026-06-09.
 
-The 20:30 daily report is dynamic. It reads today's LINE raw messages, judgement-created tasks, and progress reports. To inspect the generated report without sending LINE:
+The 20:30 daily report is dynamic. It reads today's updated `Seven LINE 對話主檔`
+conversation content, judgement-created tasks, and progress reports. It must
+not use `Seven LINE 訊息紀錄` as the report clue source. To inspect the generated
+report without sending LINE:
 
 ```text
 POST /control/reports/preview
@@ -872,6 +899,56 @@ Recommended statuses:
 - 已發送
 - 發送失敗
 - 封存
+
+## Durable Event Queue (2026-06-11)
+
+The webhook server now stores LINE events in a Postgres queue before writing to
+Notion, so messages survive Notion outages, rate limits, and server restarts.
+
+- `src/event-queue.js` owns the queue. Table: `line_event_queue` with statuses
+  `pending` / `processing` / `done` / `dead`.
+- Webhook flow with `DATABASE_URL` set: validate signature, insert events,
+  reply 200 to LINE immediately, then a background worker writes to Notion with
+  retry (30s, 1m, 5m, 15m, 30m, 1h, 2h backoff; max 8 attempts).
+- Events that exhaust retries move to `dead` status and trigger a LINE alert to
+  `SEVEN_ALERT_TARGET_ID` (if set). The raw event stays in Postgres for manual
+  reprocessing.
+- Without `DATABASE_URL`, the webhook falls back to the previous synchronous
+  Notion write behavior. Nothing breaks; there is just no durability layer.
+- `GET /health` reports queue status under `eventQueue`.
+- `render.yaml` defines the `sevenam-queue-db` Postgres database. The Render
+  free Postgres plan expires after 30 days; production should use a paid plan.
+
+## LLM Extraction and Command Triage (2026-06-11)
+
+Task extraction and Codex command processing are now Render-side services that
+call the Claude API directly. They no longer depend on a human-driven Codex
+session being online.
+
+- `scripts/llm-task-extraction.js` (hourly): reads conversation timelines from
+  `Seven LINE 對話主檔`, judges them with the shared hierarchy master prompt,
+  creates candidate tasks in `總控任務庫` (`狀態 = 待確認`,
+  `確認狀態 = 未確認`), appends evidence to existing active tasks, and marks
+  conversations judged. It never sets `已完成`; completion reports become
+  `待確認完成`. Falls back to the legacy rule engine when `ANTHROPIC_API_KEY`
+  is missing.
+- `scripts/llm-codex-command-triage.js` (every 15 minutes): processes Pending
+  items in the Codex command queue. Pure analysis/summary commands are answered
+  directly and marked `Done`. Anything sensitive (money, contract, legal, HR,
+  tax, external commitment) or requiring real-world action is marked
+  `Needs Confirmation` with a proposed plan in `Result`. The triage service
+  never sends LINE messages itself. When `ANTHROPIC_API_KEY` is missing it
+  exits cleanly and commands stay `Pending` for a manual session.
+- Required env: `ANTHROPIC_API_KEY` (secret, set on the Render web service and
+  shared to crons), optional `ANTHROPIC_MODEL` (default `claude-opus-4-8`).
+
+## Cron Failure Alerts (2026-06-11)
+
+- Report crons already alert through `scripts/render-cron-report.js`.
+- All other crons (judgement sync, meeting sync, responsibility sync, command
+  triage) run through `scripts/run-cron-with-alert.js`, which pushes a LINE
+  alert to the default report target via the Control API when the wrapped
+  script exits non-zero.
 
 ## Current Limitations
 

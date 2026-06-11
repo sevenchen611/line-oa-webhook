@@ -1,0 +1,2174 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AM Project User UI Connected Preview</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:0 0 10px; font-size:21px; }
+    h3 { margin:0 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .nav a.active { background:#e8f0ff; color:#123e9c; font-weight:850; }
+    .top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; margin-bottom:18px; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+    .metric,.section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .metric { padding:14px; min-height:86px; }
+    .metric .label { color:var(--muted); font-size:13px; font-weight:800; }
+    .metric .value { font-size:24px; font-weight:850; margin-top:6px; }
+    .section { padding:18px; margin:18px 0; }
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(220px,1fr)); gap:12px; }
+    .card { padding:14px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .mono { font-family:Consolas,"SFMono-Regular",Menlo,monospace; font-size:13px; word-break:break-all; }
+    .empty { padding:20px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); text-align:center; background:#fbfcfe; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    .hidden { display:none !important; }
+    .view-panel.hidden { display:none !important; }
+    .link-list { display:flex; flex-direction:column; gap:6px; }
+    .task-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; margin:12px 0 16px; }
+    .filter-group { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .filter-label { color:var(--muted); font-size:13px; font-weight:850; margin-right:2px; }
+    .filter-button { min-height:32px; border:1px solid var(--line); border-radius:999px; background:#fff; color:#334155; padding:6px 10px; font-weight:800; font-size:13px; cursor:pointer; }
+    .filter-button.ok.active { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .filter-button.wait.active { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .filter-button.bad.active { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .filter-button.neutral.active { color:#334155; background:#f8fafc; border-color:var(--line); }
+    .filter-button.off { opacity:.42; text-decoration:line-through; }
+    .filter-button.ok.off { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .filter-button.wait.off { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .filter-button.bad.off { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .filter-button.neutral.off { color:#334155; background:#f8fafc; border-color:var(--line); }
+    .rule-meta { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:130px; }
+    .task-group { margin-top:14px; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }
+    .task-group h3 { margin:0; padding:12px 14px; background:#f9fbfd; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .project-detail-panel.hidden { display:none !important; }
+    .attachment-actions { display:grid; gap:7px; min-width:260px; }
+    .attachment-actions input,.attachment-actions select { width:100%; min-height:32px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; font-size:13px; background:#fff; color:var(--ink); }
+    .attachment-buttons { display:flex; flex-wrap:wrap; gap:6px; }
+    .attachment-buttons button { min-height:30px; border:1px solid #1d4ed8; border-radius:6px; background:#2563eb; color:#fff; padding:5px 8px; font-weight:850; cursor:pointer; font-size:12px; }
+    .attachment-buttons button.secondary { background:#fff; color:#1d4ed8; }
+    .attachment-buttons button.danger { border-color:#b42318; background:#fff; color:#b42318; }
+    .attachment-result { color:var(--muted); font-size:12px; min-height:16px; }
+    .manual-rule-panel { margin-top:18px; padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .manual-rule-form { display:grid; gap:12px; }
+    .manual-rule-grid { display:grid; grid-template-columns:repeat(2,minmax(220px,1fr)); gap:12px; }
+    .manual-rule-form label { display:grid; gap:6px; color:#344253; font-weight:850; font-size:13px; }
+    .manual-rule-form input,.manual-rule-form select,.manual-rule-form textarea { width:100%; min-height:36px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:14px; background:#fff; color:var(--ink); }
+    .manual-rule-form textarea { resize:vertical; line-height:1.5; }
+    .manual-rule-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .manual-rule-actions button { min-height:34px; border:1px solid #1d4ed8; border-radius:6px; background:#2563eb; color:#fff; padding:7px 12px; font-weight:850; cursor:pointer; }
+    .manual-rule-result { color:var(--muted); font-size:13px; min-height:18px; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } .grid,.cards { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">AM Project</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="top">
+        <div>
+          <h1>AM Project User UI</h1>
+          <p class="muted">Connected preview generated at 2026/6/11 上午1:03:24 from D:\Codex_project\SevenAM\line-oa-webhook</p>
+        </div>
+        <span class="badge ok">Actual Notion data</span>
+      </div>
+      <div class="note">目前頁籤：<strong id="currentViewLabel">檔案總覽</strong>。請使用左側選單切換；每次只會顯示一個主要資料頁。</div>
+      <div class="note">Secret values are masked. This preview is generated inside the project folder so AMCore does not store project data or tokens.</div>
+
+      <section id="overview" class="grid view-panel">
+        <div class="metric"><div class="label">Projects</div><div class="value">9</div></div>
+        <div class="metric"><div class="label">Tasks</div><div class="value">21</div></div>
+        <div class="metric"><div class="label">LINE conversation messages</div><div class="value">304</div></div>
+        <div class="metric"><div class="label">Meetings</div><div class="value">2</div></div>
+      </section>
+
+      <section id="projects" class="section view-panel hidden">
+        <h2>所有專案</h2>
+        <div class="cards">
+          <article class="card">
+            <h3><a href="user-ui-project-0.html">溪頭 / 南投鹿谷旅館投資評估案</a></h3>
+            <p class="muted">評估南投鹿谷溪頭旅館物件是否值得進一步看現場、談斡旋或暫停評估。</p>
+            <p><span class="badge wait">等待回覆</span> <span class="badge neutral">Seven陳聖文</span> <span class="badge neutral">任務 1</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-1.html">包租代管</a></h3>
+            <p class="muted">建立 HOZO 好住、寓好包租代管業務流程與後台協作系統。</p>
+            <p><span class="badge neutral">進行中</span> <span class="badge neutral">Seven / 昱晴</span> <span class="badge neutral">任務 0</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-2.html">私人事務</a></h3>
+            <p class="muted">管理不屬於公司或專案的個人雜事與待辦。</p>
+            <p><span class="badge neutral">規劃中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 4</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-3.html">營運</a></h3>
+            <p class="muted">管理公司日常營運、跨部門協調、流程與例行事項。</p>
+            <p><span class="badge neutral">規劃中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 5</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-4.html">茲心園工程</a></h3>
+            <p class="muted">管理茲心園 D 區 / J 棟等改建工程進度、圖面、估價與廠商回覆。</p>
+            <p><span class="badge neutral">進行中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 2</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-5.html">人資</a></h3>
+            <p class="muted">管理人資制度、招募、薪酬、員工溝通與人員事件。</p>
+            <p><span class="badge neutral">規劃中</span> <span class="badge neutral">Seven / Bonnie</span> <span class="badge neutral">任務 4</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-6.html">SmartFront / AI Brain</a></h3>
+            <p class="muted">建立個人與公司總控 AI Brain，串接 LINE OA、Notion、任務與每日報告。</p>
+            <p><span class="badge neutral">規劃中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 0</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-7.html">HOZO 後臺</a></h3>
+            <p class="muted">治理 HOZO 後臺系統、權限、環境分流與功能維護。</p>
+            <p><span class="badge neutral">進行中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 0</span></p>
+          </article><article class="card">
+            <h3><a href="user-ui-project-8.html">財務</a></h3>
+            <p class="muted">管理公司財務、報稅、付款、請款、收支與財務決策。</p>
+            <p><span class="badge neutral">規劃中</span> <span class="badge neutral">Seven</span> <span class="badge neutral">任務 5</span></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="project-detail" class="section view-panel hidden">
+        <p><a href="#projects" data-back-projects>← 回到所有專案</a></p>
+        <section id="project-detail-0" class="project-detail-panel hidden" data-project-detail-panel="0">
+    <h2>溪頭 / 南投鹿谷旅館投資評估案</h2>
+    <p>
+      <span class="badge wait">等待回覆</span>
+      <span class="badge neutral">Seven陳聖文</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>評估南投鹿谷溪頭旅館物件是否值得進一步看現場、談斡旋或暫停評估。</td></tr>
+        <tr><th>目前進度</th><td>Andy 已提供部分資料與 PDF 附件；Seven 已校正地區權責：吳副總負責南部，溪頭屬中部，因此此案不轉交吳副總，仍留在 Andy &amp; Seven 群組討論。</td></tr>
+        <tr><th>下一步</th><td>此案仍留在 Andy &amp; Seven 群組討論。先補齊精確房型、樓層平面圖、66 間與 50 間差異；若要看件，再由本群組重新協調中部溪頭案看件安排。</td></tr>
+        <tr><th>主要風險</th><td>旅館投資金額與決策風險高；資料仍不完整，且曾出現地區權責誤會：溪頭屬中部，不應交給負責嘉義以南南部案件的吳副總。</td></tr>
+        <tr><th>成功條件</th><td>取得完整物件資料與附件背景，確認是否進一步看件；若不繼續評估，需明確記錄暫停原因。</td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-8.html">Andy &amp; Seven (34 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <h3>案件卷宗</h3><h3>這個專案如何完成</h3><p>本專案不是單一任務，而是一個上層案件。完成判斷以「是否完成投資評估、是否安排看件、或是否明確暫停評估」為準，而不是只看某一則 LINE 訊息是否回覆。</p><p>目前成功條件：取得完整物件資料與附件背景，確認是否進一步看件；若不繼續評估，明確記錄暫停原因。</p><h3>支撐任務</h3><p>以下任務共同支撐本專案完成。總控任務庫已新增 總控專案 relation，這些任務已連回本專案。</p><p>• 溪頭案：補齊物件評估資料</p><p>• 溪頭案：保存並關聯 PDF 附件</p><p>• 溪頭案：確認是否安排現場看件</p><p>• 溪頭案：OCR / 文件解析測試</p><h3>案件過程紀錄</h3><p>來源對話：Andy &amp; Seven</p><h3>2026/06/08 13:30 前後：建立案件討論脈絡</h3><p>Seven 建立 Andy &amp; Seven 群組作為後續案件討論與記錄位置，並請 Andy 針對溪頭旅館案補充更完整資料，包含房間間數、各房型、平面圖、停車位與餐廳資訊。</p><h3>2026/06/08 15:54：附件保存</h3><p>Seven 上傳或保存「組合（無謄本）南投縣鹿谷鄉內湖村興產路24-17、24-18號.pdf」。此附件成為後續物件判斷的主要資料來源之一。</p><p>附件頁：PDF 附件資料庫頁</p><h3>2026/06/08 15:55：Seven 補問關鍵資料</h3><p>Seven 追問：66 間與 50 間差額的 16 間在哪一邊、餐廳位置、車位數與位置、地下室功能、以及是否有房間平面圖。這些問題構成「補齊物件評估資料」主任務。</p><h3>2026/06/08 16:21：Andy 回覆物件資訊</h3><p>Andy 補充：9 樓與 10 樓共 16 間，目前做宿舍使用；餐廳在一樓；戶外停車場可停 50 台小車與 4 台遊覽車；地下室為倉庫與廚房；並補充房型概況。</p><h3>2026/06/08 16:23：Andy 建議現場看件</h3><p>Andy 表示現場看房會比較清楚，裝潢與裝修程度需要到現場才知道，並提到看完後可再談斡旋與各自想法。</p><h3>2026/06/08 18:24 到 19:40：看件時間協調</h3><p>Seven 請 Andy 安排現場看件時間。Andy 詢問是否可安排隔天下午或 14:00。</p><h3>2026/06/08 20:28：地區權責校正</h3><p>Seven 回覆 Andy：「Andy，吳副總負責南部，其他案件如果有需要看，我會跟你說謝謝。」這句話的正確意思是：溪頭位於南投，屬中部案件；吳副總負責嘉義以南的南部案件，所以溪頭案不應傳給吳副總處理。Andy 回覆「收到，那我先收回」應理解為收回對吳副總的看件安排/訊息，不代表溪頭案轉交吳副總，也不代表本案在 Andy &amp; Seven 群組結束。</p><h3>目前判斷</h3><p>本案已完成初步資料保存與部分資訊補齊，但尚未完成完整投資評估。重要校正：本案不轉由南部/吳副總負責，因溪頭屬中部；案件仍留在 Andy &amp; Seven 群組討論。下一步應補齊精確房型、樓層平面圖、66 間與 50 間差異，並由本群組確認是否安排現場看件。</p><h3>架構規則</h3><p>• 屬性區保存結果、狀態、目標、成功條件、風險與下一步。</p><p>• 正文區保存過程、對話脈絡、附件、判斷轉折與支撐任務。</p><p>• 總控任務庫的 總控專案 relation 是正式關聯；舊的 專案 select 僅作為過渡分類。</p><p>• 本專案是否完成，要看支撐任務是否完成，以及案件是否已明確推進或暫停；不要把「吳副總負責南部」誤判為溪頭案轉交。</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 1 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-11.html">追蹤溪頭夏緹/米堤飯店投資案看屋、要約與營業資料</a></td><td><span class="badge wait">等待回覆</span></td><td>Andy / Seven</td><td>整理投資評估資料，向業主/仲介索取去年到今年完整營業報表，確認 60 萬開價、要約書、支票與 Kevin 回覆。</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-1" class="project-detail-panel hidden" data-project-detail-panel="1">
+    <h2>包租代管</h2>
+    <p>
+      <span class="badge neutral">進行中</span>
+      <span class="badge neutral">Seven / 昱晴</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>建立 HOZO 好住、寓好包租代管業務流程與後台協作系統。</td></tr>
+        <tr><th>目前進度</th><td>已有 HOZO CRM 對話主檔作為 LINE 紀錄與附件整理參考。</td></tr>
+        <tr><th>下一步</th><td>確認昱晴可如何使用 Codex 或低技術方式協助調整後台。</td></tr>
+        <tr><th>主要風險</th><td>系統複雜度與權限接口尚未完全清楚。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><span class="muted">目前沒有找到已關聯的 LINE 對話。</span></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">目前沒有找到直接歸屬於這個專案的任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td colspan="8" class="muted">No records.</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-2" class="project-detail-panel hidden" data-project-detail-panel="2">
+    <h2>私人事務</h2>
+    <p>
+      <span class="badge neutral">規劃中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>管理不屬於公司或專案的個人雜事與待辦。</td></tr>
+        <tr><th>目前進度</th><td>可作為未來私人 LINE 對話或個人任務的歸類位置。</td></tr>
+        <tr><th>下一步</th><td>視需要接入私人事務來源。</td></tr>
+        <tr><th>主要風險</th><td>私人事務與公司任務需要避免混淆。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-9.html">嘉娜 (4 messages)</a><a href="user-ui-line-14.html">7人中區讀書會 (19 messages)</a><a href="user-ui-line-15.html">溪州家族 (76 messages)</a><a href="user-ui-line-48.html">謝明錩老師 (25 messages)</a><a href="user-ui-line-49.html">天才家族 (8 messages)</a><a href="user-ui-line-59.html">我的文件資料夾 (3 messages)</a><a href="user-ui-line-61.html">Seven Junior (156 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 4 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-1.html">確認嘉娜簽名文件處理方式</a></td><td><span class="badge wait">待確認</span></td><td>嘉娜 / Seven</td><td>確認文件是否可透過 LINE 傳送、是否需要直接簽名，以及最簡單的處理方式。</td></tr><tr><td><a href="user-ui-task-8.html">確認謝明錩老師包裹與三本書領取狀態</a></td><td><span class="badge wait">等待回覆</span></td><td>Seven / 謝明錩老師</td><td>確認包裹是否已領取，以及三本書是否已收到。</td></tr><tr><td><a href="user-ui-task-19.html">建立 2027 年個人所得稅申報重要日期提醒</a></td><td><span class="badge wait">未開始</span></td><td>Seven Jr.</td><td>將 2027 年 5 月 25 日到 5 月 31 日列為個人所得稅申報重要提醒區間。</td></tr><tr><td><a href="user-ui-task-20.html">完成報稅處理與報繳資料歸檔</a></td><td><span class="badge neutral">進行中</span></td><td>Seven</td><td>整理報稅逾期處理方式與民國 114 年個人所得稅報繳資料，確認是否已完成申報與歸檔。</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-3" class="project-detail-panel hidden" data-project-detail-panel="3">
+    <h2>營運</h2>
+    <p>
+      <span class="badge neutral">規劃中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>管理公司日常營運、跨部門協調、流程與例行事項。</td></tr>
+        <tr><th>目前進度</th><td>尚未正式建立獨立 LINE 對話來源。</td></tr>
+        <tr><th>下一步</th><td>等營運群組接入後，建立對話主檔並指定專案。</td></tr>
+        <tr><th>主要風險</th><td>容易與人資、財務、工程混在一起，需要清楚分流。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-6.html">KevinJen, Woody, Seven (4 messages)</a><a href="user-ui-line-7.html">Andy Tsai, Woody, Seven陳聖文 (1 messages)</a><a href="user-ui-line-8.html">Andy &amp; Seven (34 messages)</a><a href="user-ui-line-10.html">茲心園幹部群 (51 messages)</a><a href="user-ui-line-11.html">陳逸凡 (11 messages)</a><a href="user-ui-line-58.html">*月會群＜葉綠宿＞ (4 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 5 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-0.html">確認茲心園 H 區地板清潔口注意事項是否需施工追蹤</a></td><td><span class="badge wait">待確認</span></td><td>茲心園幹部</td><td>確認 H 區化糞管與排水管清潔口注意事項是否需要安排現場處理或施工追蹤。</td></tr><tr><td><a href="user-ui-task-7.html">追蹤陳逸凡月報完成</a></td><td><span class="badge neutral">進行中</span></td><td>陳逸凡</td><td>追蹤月報完成進度，確認是否已完成並回報。</td></tr><tr><td><a href="user-ui-task-14.html">協助茲心園 FB 發文</a></td><td><span class="badge wait">未開始</span></td><td>待指定</td><td>確認發文內容、素材與帳號權限後，用茲心園 FB 發文。</td></tr><tr><td><a href="user-ui-task-17.html">安排茲心園上半年度防火教育訓練與自衛消防編組報告書</a></td><td><span class="badge wait">未開始</span></td><td>虹紅 / 茲心園幹部</td><td>安排上半年度防火教育訓練，並配合 6 月中送出自衛消防編組訓練成果報告書。</td></tr><tr><td><a href="user-ui-task-18.html">追蹤茲心園 4/5 月營業報表提供與財務回覆</a></td><td><span class="badge neutral">進行中</span></td><td>陳逸凡 / 財務</td><td>確認 4、5 月營業報表應提供的格式與窗口，整理後回覆財務。</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-4" class="project-detail-panel hidden" data-project-detail-panel="4">
+    <h2>茲心園工程</h2>
+    <p>
+      <span class="badge neutral">進行中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>管理茲心園 D 區 / J 棟等改建工程進度、圖面、估價與廠商回覆。</td></tr>
+        <tr><th>目前進度</th><td>已開始透過 Seven Jr. 收集台翰營造&amp;茲心園改建群組訊息。</td></tr>
+        <tr><th>下一步</th><td>追蹤廠商下週四以前提供初步答案，並整理比價與圖面檢查事項。</td></tr>
+        <tr><th>主要風險</th><td>設計圖、水電配置與估價廠商比價尚未完整收斂。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-10.html">茲心園幹部群 (51 messages)</a><a href="user-ui-line-13.html">山牧設計場域設計 (1 messages)</a><a href="user-ui-line-60.html">台翰營造 (17 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 2 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-2.html">追蹤台翰營造下週四前初步答案</a></td><td><span class="badge wait">等待回覆</span></td><td>台翰營造</td><td>等待台翰營造提供評估與廠商尋找的初步答案，若逾期需追蹤。</td></tr><tr><td><a href="user-ui-task-3.html">取得 Gmail 信箱並發送名片/資料</a></td><td><span class="badge wait">等待回覆</span></td><td>Seven / 陳聖文</td><td>取得 Gmail 信箱後，確認要發送的名片或資料並完成寄送。</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-5" class="project-detail-panel hidden" data-project-detail-panel="5">
+    <h2>人資</h2>
+    <p>
+      <span class="badge neutral">規劃中</span>
+      <span class="badge neutral">Seven / Bonnie</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>管理人資制度、招募、薪酬、員工溝通與人員事件。</td></tr>
+        <tr><th>目前進度</th><td>Bonnie 群組準備接入 Seven Jr.，待確認 LINE 對話主檔是否成功建立。</td></tr>
+        <tr><th>下一步</th><td>確認 Bonnie 群組收訊後，指定到人資專案。</td></tr>
+        <tr><th>主要風險</th><td>人資資訊敏感，涉及人員、薪酬或處分時需人工確認。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-50.html">葉綠宿勞資會議 (1 messages)</a><a href="user-ui-line-51.html">允赫律師事務所服務團隊(葉綠宿集團) (1 messages)</a><a href="user-ui-line-52.html">歐陽老師 &amp; 葉綠宿 (1 messages)</a><a href="user-ui-line-53.html">Seven&amp;Bonnie (14 messages)</a><a href="user-ui-line-55.html">葉綠宿_總管理處 (1 messages)</a><a href="user-ui-line-56.html">黃.子.雲, Seven陳聖文, Bonnie～蔡雅婷🌷 (1 messages)</a><a href="user-ui-line-57.html">薪資/獎金放行群 (9 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 4 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-9.html">追蹤邱耀霆與陳孟輝兩位同仁處理狀況</a></td><td><span class="badge wait">待確認</span></td><td>Bonnie / 人資</td><td>確認兩位同仁目前處理狀況、是否已結案，以及是否需要後續追蹤。</td></tr><tr><td><a href="user-ui-task-10.html">寄送並追蹤給謝老師的掛號</a></td><td><span class="badge neutral">進行中</span></td><td>Bonnie</td><td>確認寄送內容、掛號狀態與是否已送達謝老師。</td></tr><tr><td><a href="user-ui-task-13.html">與謝承昀討論休假天數</a></td><td><span class="badge wait">未開始</span></td><td>謝承昀</td><td>安排週五與謝承昀討論休假天數。</td></tr><tr><td><a href="user-ui-task-16.html">彙整各部門 6/20 前假表</a></td><td><span class="badge wait">未開始</span></td><td>各部門負責人</td><td>提醒並收齊各部門負責人假表，期限為 2026-06-20。</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-6" class="project-detail-panel hidden" data-project-detail-panel="6">
+    <h2>SmartFront / AI Brain</h2>
+    <p>
+      <span class="badge neutral">規劃中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>建立個人與公司總控 AI Brain，串接 LINE OA、Notion、任務與每日報告。</td></tr>
+        <tr><th>目前進度</th><td>已建立 Seven LINE CRM 原始紀錄層、對話主檔、訊息紀錄、附件紀錄與每日報告原型。</td></tr>
+        <tr><th>下一步</th><td>讓每日報告可寫回 Notion，並逐步接上任務確認與附件解析流程。</td></tr>
+        <tr><th>主要風險</th><td>資料分流、任務判斷、轉檔與自動確認規則仍需逐步校準。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><span class="muted">目前沒有找到已關聯的 LINE 對話。</span></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">目前沒有找到直接歸屬於這個專案的任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td colspan="8" class="muted">No records.</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-7" class="project-detail-panel hidden" data-project-detail-panel="7">
+    <h2>HOZO 後臺</h2>
+    <p>
+      <span class="badge neutral">進行中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>治理 HOZO 後臺系統、權限、環境分流與功能維護。</td></tr>
+        <tr><th>目前進度</th><td>已有後臺頁面與資料控制面，但 Local / Staging / Production 隔離仍需整理。</td></tr>
+        <tr><th>下一步</th><td>建立系統修改規則與權限接口定義，降低 Codex 修改失控風險。</td></tr>
+        <tr><th>主要風險</th><td>Codex 可能東改西改導致系統不穩，權限與環境分割仍不足。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><span class="muted">目前沒有找到已關聯的 LINE 對話。</span></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">目前沒有找到直接歸屬於這個專案的任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td colspan="8" class="muted">No records.</td></tr></tbody>
+    </table>
+  </section><section id="project-detail-8" class="project-detail-panel hidden" data-project-detail-panel="8">
+    <h2>財務</h2>
+    <p>
+      <span class="badge neutral">規劃中</span>
+      <span class="badge neutral">Seven</span>
+    </p>
+    <table>
+      <tbody>
+        <tr><th>目標</th><td>管理公司財務、報稅、付款、請款、收支與財務決策。</td></tr>
+        <tr><th>目前進度</th><td>尚未正式建立 LINE 對話來源與財務工作流。</td></tr>
+        <tr><th>下一步</th><td>定義財務資料來源與哪些附件需要優先解析。</td></tr>
+        <tr><th>主要風險</th><td>報稅與財務資料具時效與高風險，需要人工確認。</td></tr>
+        <tr><th>成功條件</th><td></td></tr>
+        <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-10.html">茲心園幹部群 (51 messages)</a><a href="user-ui-line-12.html">吳碧純 (11 messages)</a><a href="user-ui-line-16.html">葉綠宿房東林董 (1 messages)</a><a href="user-ui-line-17.html">蔡其興借人民幣用 (1 messages)</a><a href="user-ui-line-18.html">漂鳥&lt;投資&gt; (1 messages)</a><a href="user-ui-line-19.html">白代書&lt;原民地買賣&gt; (1 messages)</a><a href="user-ui-line-20.html">財務部&amp;專案部 (1 messages)</a><a href="user-ui-line-21.html">獎金規劃討論 (1 messages)</a><a href="user-ui-line-22.html">蔡董人民幣 (1 messages)</a><a href="user-ui-line-23.html">博旅旅館&lt;投資&gt; (1 messages)</a><a href="user-ui-line-24.html">林順成，原民地 (1 messages)</a><a href="user-ui-line-25.html">吳碧純 (1 messages)</a><a href="user-ui-line-26.html">佪嘉居&lt;投資&gt; (1 messages)</a><a href="user-ui-line-27.html">Charles Lai (1 messages)</a><a href="user-ui-line-28.html">Kevin &amp; Woody (1 messages)</a><a href="user-ui-line-29.html">立鉑國際 &lt;投資&gt; (1 messages)</a><a href="user-ui-line-30.html">葉綠宿房東群組 (1 messages)</a><a href="user-ui-line-31.html">萬鑫-謝會計師 (1 messages)</a><a href="user-ui-line-32.html">一中漫走房東 (1 messages)</a><a href="user-ui-line-33.html">茲心園幹部盜用公款 (1 messages)</a><a href="user-ui-line-34.html">程果科技&lt;投資&gt; (1 messages)</a><a href="user-ui-line-35.html">葉綠宿＆台銀 (1 messages)</a><a href="user-ui-line-36.html">預算會議-光合 (1 messages)</a><a href="user-ui-line-37.html">預算會議-城光 (1 messages)</a><a href="user-ui-line-38.html">預算會議-茲心園 (1 messages)</a><a href="user-ui-line-39.html">預算會議-綠宿 (1 messages)</a><a href="user-ui-line-40.html">預算會議-茶覺旅 (1 messages)</a><a href="user-ui-line-41.html">預算會議-一中 (1 messages)</a><a href="user-ui-line-42.html">預算會議-橙宿 (1 messages)</a><a href="user-ui-line-43.html">葉綠宿採購群 (1 messages)</a><a href="user-ui-line-44.html">葉綠宿_財務部 (2 messages)</a><a href="user-ui-line-45.html">KevinJen, Seven陳聖文, 葉綠宿財務主管&lt;黃瓊慧&gt; (1 messages)</a><a href="user-ui-line-46.html">會計自動化顧問群組 (36 messages)</a><a href="user-ui-line-47.html">Seven &amp; Amber (12 messages)</a><a href="user-ui-line-54.html">用印群組 (1 messages)</a></div></td></tr>
+      </tbody>
+    </table>
+    <h3>Notion 頁面內容</h3>
+    <div class="card">
+      <p class="muted">No page content loaded.</p>
+    </div>
+    <h3>這個專案下面的任務</h3>
+    <p class="muted">共 5 筆任務。</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+      <tbody><tr><td><a href="user-ui-task-4.html">追蹤吳碧純回國後資訊與詢問回覆</a></td><td><span class="badge wait">等待回覆</span></td><td>吳碧純 / Seven</td><td>等待碧純姐回國後詢問並補回相關資訊。</td></tr><tr><td><a href="user-ui-task-5.html">追蹤需要補放行的款項</a></td><td><span class="badge neutral">進行中</span></td><td>Amber / Seven</td><td>確認需要補放行的款項清單、放行人與完成狀態。</td></tr><tr><td><a href="user-ui-task-6.html">通知股權轉換完成</a></td><td><span class="badge wait">未開始</span></td><td>Seven / Amber</td><td>確認通知對象與內容，完成股權轉換完成通知。</td></tr><tr><td><a href="user-ui-task-12.html">排除會計自動化工具打不開問題並完成測試</a></td><td><span class="badge neutral">進行中</span></td><td>會計自動化顧問群組</td><td>請使用者重新安裝版本、提供 LOG 與顯卡型號，必要時會議時直接檢查電腦配置並完成明日測試。</td></tr><tr><td><a href="user-ui-task-15.html">確認兩筆申請是否可送財務</a></td><td><span class="badge wait">等待回覆</span></td><td>陳逸凡</td><td>請逸凡確認兩筆是否可以申請，確認後回覆財務。</td></tr></tbody>
+    </table>
+  </section>
+      </section>
+
+      <section id="tasks" class="section view-panel hidden">
+        <h2>所有任務清單</h2>
+        <div class="task-toolbar">
+          <div class="filter-group" id="taskStatusFilters">
+            <span class="filter-label">Status</span>
+            <button class="filter-button wait active" type="button" data-status-filter="未開始">未開始 (6)</button><button class="filter-button wait active" type="button" data-status-filter="待確認">待確認 (3)</button><button class="filter-button wait active" type="button" data-status-filter="等待回覆">待回覆 (6)</button><button class="filter-button neutral active" type="button" data-status-filter="進行中">進行中 (6)</button>
+          </div>
+          <div class="filter-group" id="taskModeFilters">
+            <span class="filter-label">Project</span>
+            <button class="filter-button active" type="button" data-task-mode="list">一般清單</button>
+            <button class="filter-button" type="button" data-task-mode="project">By Project</button>
+          </div>
+        </div>
+        <p id="taskFilterSummary" class="muted"></p>
+        <table id="taskTable">
+          <thead><tr><th>Task</th><th>Status</th><th>Project</th><th>Owner</th><th>Next step</th></tr></thead>
+          <tbody>
+    <tr data-task-row data-status="待確認" data-project="私人事務">
+      <td><a href="user-ui-task-1.html">確認嘉娜簽名文件處理方式</a></td>
+      <td><span class="badge wait">待確認</span></td>
+      <td>私人事務</td>
+      <td>嘉娜 / Seven</td>
+      <td>確認文件是否可透過 LINE 傳送、是否需要直接簽名，以及最簡單的處理方式。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="營運">
+      <td><a href="user-ui-task-14.html">協助茲心園 FB 發文</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>營運</td>
+      <td>待指定</td>
+      <td>確認發文內容、素材與帳號權限後，用茲心園 FB 發文。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="茲心園工程">
+      <td><a href="user-ui-task-3.html">取得 Gmail 信箱並發送名片/資料</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>茲心園工程</td>
+      <td>Seven / 陳聖文</td>
+      <td>取得 Gmail 信箱後，確認要發送的名片或資料並完成寄送。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="茲心園工程">
+      <td><a href="user-ui-task-2.html">追蹤台翰營造下週四前初步答案</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>茲心園工程</td>
+      <td>台翰營造</td>
+      <td>等待台翰營造提供評估與廠商尋找的初步答案，若逾期需追蹤。</td>
+    </tr>
+  
+    <tr data-task-row data-status="待確認" data-project="人資">
+      <td><a href="user-ui-task-9.html">追蹤邱耀霆與陳孟輝兩位同仁處理狀況</a></td>
+      <td><span class="badge wait">待確認</span></td>
+      <td>人資</td>
+      <td>Bonnie / 人資</td>
+      <td>確認兩位同仁目前處理狀況、是否已結案，以及是否需要後續追蹤。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="溪頭 / 南投鹿谷旅館投資評估案">
+      <td><a href="user-ui-task-11.html">追蹤溪頭夏緹/米堤飯店投資案看屋、要約與營業資料</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>溪頭 / 南投鹿谷旅館投資評估案</td>
+      <td>Andy / Seven</td>
+      <td>整理投資評估資料，向業主/仲介索取去年到今年完整營業報表，確認 60 萬開價、要約書、支票與 Kevin 回覆。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="財務">
+      <td><a href="user-ui-task-5.html">追蹤需要補放行的款項</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>財務</td>
+      <td>Amber / Seven</td>
+      <td>確認需要補放行的款項清單、放行人與完成狀態。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="人資">
+      <td><a href="user-ui-task-10.html">寄送並追蹤給謝老師的掛號</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>人資</td>
+      <td>Bonnie</td>
+      <td>確認寄送內容、掛號狀態與是否已送達謝老師。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="財務">
+      <td><a href="user-ui-task-12.html">排除會計自動化工具打不開問題並完成測試</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>財務</td>
+      <td>會計自動化顧問群組</td>
+      <td>請使用者重新安裝版本、提供 LOG 與顯卡型號，必要時會議時直接檢查電腦配置並完成明日測試。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="財務">
+      <td><a href="user-ui-task-6.html">通知股權轉換完成</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>財務</td>
+      <td>Seven / Amber</td>
+      <td>確認通知對象與內容，完成股權轉換完成通知。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="私人事務">
+      <td><a href="user-ui-task-8.html">確認謝明錩老師包裹與三本書領取狀態</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>私人事務</td>
+      <td>Seven / 謝明錩老師</td>
+      <td>確認包裹是否已領取，以及三本書是否已收到。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="營運">
+      <td><a href="user-ui-task-17.html">安排茲心園上半年度防火教育訓練與自衛消防編組報告書</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>營運</td>
+      <td>虹紅 / 茲心園幹部</td>
+      <td>安排上半年度防火教育訓練，並配合 6 月中送出自衛消防編組訓練成果報告書。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="私人事務">
+      <td><a href="user-ui-task-20.html">完成報稅處理與報繳資料歸檔</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>私人事務</td>
+      <td>Seven</td>
+      <td>整理報稅逾期處理方式與民國 114 年個人所得稅報繳資料，確認是否已完成申報與歸檔。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="私人事務">
+      <td><a href="user-ui-task-19.html">建立 2027 年個人所得稅申報重要日期提醒</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>私人事務</td>
+      <td>Seven Jr.</td>
+      <td>將 2027 年 5 月 25 日到 5 月 31 日列為個人所得稅申報重要提醒區間。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="財務">
+      <td><a href="user-ui-task-15.html">確認兩筆申請是否可送財務</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>財務</td>
+      <td>陳逸凡</td>
+      <td>請逸凡確認兩筆是否可以申請，確認後回覆財務。</td>
+    </tr>
+  
+    <tr data-task-row data-status="等待回覆" data-project="財務">
+      <td><a href="user-ui-task-4.html">追蹤吳碧純回國後資訊與詢問回覆</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>財務</td>
+      <td>吳碧純 / Seven</td>
+      <td>等待碧純姐回國後詢問並補回相關資訊。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="營運">
+      <td><a href="user-ui-task-18.html">追蹤茲心園 4/5 月營業報表提供與財務回覆</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>營運</td>
+      <td>陳逸凡 / 財務</td>
+      <td>確認 4、5 月營業報表應提供的格式與窗口，整理後回覆財務。</td>
+    </tr>
+  
+    <tr data-task-row data-status="進行中" data-project="營運">
+      <td><a href="user-ui-task-7.html">追蹤陳逸凡月報完成</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>營運</td>
+      <td>陳逸凡</td>
+      <td>追蹤月報完成進度，確認是否已完成並回報。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="人資">
+      <td><a href="user-ui-task-16.html">彙整各部門 6/20 前假表</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>人資</td>
+      <td>各部門負責人</td>
+      <td>提醒並收齊各部門負責人假表，期限為 2026-06-20。</td>
+    </tr>
+  
+    <tr data-task-row data-status="未開始" data-project="人資">
+      <td><a href="user-ui-task-13.html">與謝承昀討論休假天數</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>人資</td>
+      <td>謝承昀</td>
+      <td>安排週五與謝承昀討論休假天數。</td>
+    </tr>
+  
+    <tr data-task-row data-status="待確認" data-project="營運">
+      <td><a href="user-ui-task-0.html">確認茲心園 H 區地板清潔口注意事項是否需施工追蹤</a></td>
+      <td><span class="badge wait">待確認</span></td>
+      <td>營運</td>
+      <td>茲心園幹部</td>
+      <td>確認 H 區化糞管與排水管清潔口注意事項是否需要安排現場處理或施工追蹤。</td>
+    </tr>
+  </tbody>
+        </table>
+        <div id="taskProjectGroups" class="hidden"><section class="task-group" data-task-group="人資">
+      <h3>人資 <span class="badge neutral" data-group-count>4 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="待確認">
+            <td><a href="user-ui-task-9.html">追蹤邱耀霆與陳孟輝兩位同仁處理狀況</a></td>
+            <td><span class="badge wait">待確認</span></td>
+            <td>Bonnie / 人資</td>
+            <td>確認兩位同仁目前處理狀況、是否已結案，以及是否需要後續追蹤。</td>
+          </tr>
+        
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-10.html">寄送並追蹤給謝老師的掛號</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>Bonnie</td>
+            <td>確認寄送內容、掛號狀態與是否已送達謝老師。</td>
+          </tr>
+        
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-16.html">彙整各部門 6/20 前假表</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>各部門負責人</td>
+            <td>提醒並收齊各部門負責人假表，期限為 2026-06-20。</td>
+          </tr>
+        
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-13.html">與謝承昀討論休假天數</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>謝承昀</td>
+            <td>安排週五與謝承昀討論休假天數。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section><section class="task-group" data-task-group="私人事務">
+      <h3>私人事務 <span class="badge neutral" data-group-count>4 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="待確認">
+            <td><a href="user-ui-task-1.html">確認嘉娜簽名文件處理方式</a></td>
+            <td><span class="badge wait">待確認</span></td>
+            <td>嘉娜 / Seven</td>
+            <td>確認文件是否可透過 LINE 傳送、是否需要直接簽名，以及最簡單的處理方式。</td>
+          </tr>
+        
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-8.html">確認謝明錩老師包裹與三本書領取狀態</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>Seven / 謝明錩老師</td>
+            <td>確認包裹是否已領取，以及三本書是否已收到。</td>
+          </tr>
+        
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-20.html">完成報稅處理與報繳資料歸檔</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>Seven</td>
+            <td>整理報稅逾期處理方式與民國 114 年個人所得稅報繳資料，確認是否已完成申報與歸檔。</td>
+          </tr>
+        
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-19.html">建立 2027 年個人所得稅申報重要日期提醒</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>Seven Jr.</td>
+            <td>將 2027 年 5 月 25 日到 5 月 31 日列為個人所得稅申報重要提醒區間。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section><section class="task-group" data-task-group="茲心園工程">
+      <h3>茲心園工程 <span class="badge neutral" data-group-count>2 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-3.html">取得 Gmail 信箱並發送名片/資料</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>Seven / 陳聖文</td>
+            <td>取得 Gmail 信箱後，確認要發送的名片或資料並完成寄送。</td>
+          </tr>
+        
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-2.html">追蹤台翰營造下週四前初步答案</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>台翰營造</td>
+            <td>等待台翰營造提供評估與廠商尋找的初步答案，若逾期需追蹤。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section><section class="task-group" data-task-group="財務">
+      <h3>財務 <span class="badge neutral" data-group-count>5 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-5.html">追蹤需要補放行的款項</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>Amber / Seven</td>
+            <td>確認需要補放行的款項清單、放行人與完成狀態。</td>
+          </tr>
+        
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-12.html">排除會計自動化工具打不開問題並完成測試</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>會計自動化顧問群組</td>
+            <td>請使用者重新安裝版本、提供 LOG 與顯卡型號，必要時會議時直接檢查電腦配置並完成明日測試。</td>
+          </tr>
+        
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-6.html">通知股權轉換完成</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>Seven / Amber</td>
+            <td>確認通知對象與內容，完成股權轉換完成通知。</td>
+          </tr>
+        
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-15.html">確認兩筆申請是否可送財務</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>陳逸凡</td>
+            <td>請逸凡確認兩筆是否可以申請，確認後回覆財務。</td>
+          </tr>
+        
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-4.html">追蹤吳碧純回國後資訊與詢問回覆</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>吳碧純 / Seven</td>
+            <td>等待碧純姐回國後詢問並補回相關資訊。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section><section class="task-group" data-task-group="溪頭 / 南投鹿谷旅館投資評估案">
+      <h3>溪頭 / 南投鹿谷旅館投資評估案 <span class="badge neutral" data-group-count>1 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="等待回覆">
+            <td><a href="user-ui-task-11.html">追蹤溪頭夏緹/米堤飯店投資案看屋、要約與營業資料</a></td>
+            <td><span class="badge wait">等待回覆</span></td>
+            <td>Andy / Seven</td>
+            <td>整理投資評估資料，向業主/仲介索取去年到今年完整營業報表，確認 60 萬開價、要約書、支票與 Kevin 回覆。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section><section class="task-group" data-task-group="營運">
+      <h3>營運 <span class="badge neutral" data-group-count>5 tasks</span></h3>
+      <table>
+        <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+        <tbody>
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-14.html">協助茲心園 FB 發文</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>待指定</td>
+            <td>確認發文內容、素材與帳號權限後，用茲心園 FB 發文。</td>
+          </tr>
+        
+          <tr data-task-card data-status="未開始">
+            <td><a href="user-ui-task-17.html">安排茲心園上半年度防火教育訓練與自衛消防編組報告書</a></td>
+            <td><span class="badge wait">未開始</span></td>
+            <td>虹紅 / 茲心園幹部</td>
+            <td>安排上半年度防火教育訓練，並配合 6 月中送出自衛消防編組訓練成果報告書。</td>
+          </tr>
+        
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-18.html">追蹤茲心園 4/5 月營業報表提供與財務回覆</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>陳逸凡 / 財務</td>
+            <td>確認 4、5 月營業報表應提供的格式與窗口，整理後回覆財務。</td>
+          </tr>
+        
+          <tr data-task-card data-status="進行中">
+            <td><a href="user-ui-task-7.html">追蹤陳逸凡月報完成</a></td>
+            <td><span class="badge neutral">進行中</span></td>
+            <td>陳逸凡</td>
+            <td>追蹤月報完成進度，確認是否已完成並回報。</td>
+          </tr>
+        
+          <tr data-task-card data-status="待確認">
+            <td><a href="user-ui-task-0.html">確認茲心園 H 區地板清潔口注意事項是否需施工追蹤</a></td>
+            <td><span class="badge wait">待確認</span></td>
+            <td>茲心園幹部</td>
+            <td>確認 H 區化糞管與排水管清潔口注意事項是否需要安排現場處理或施工追蹤。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section></div>
+      </section>
+
+      <section id="line" class="section view-panel hidden">
+        <h2>LINE 群組與最新訊息</h2>
+        <div class="cards">
+          <article class="card" id="line-conversation-0">
+            <h3><a href="user-ui-line-0.html">夏緹Kevin &amp; 葉綠宿Seven</a></h3>
+            <p class="muted">不用客氣！</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">7 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-1">
+            <h3><a href="user-ui-line-1.html">程果科技 &amp; 溪頭夏緹</a></h3>
+            <p class="muted">我是溪頭夏緹飯店 凱文</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">7 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-2">
+            <h3><a href="user-ui-line-2.html">群組 Ce95c126b2947866b81d3b7b7a89ab7cd</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">4 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-3">
+            <h3><a href="user-ui-line-3.html">群組 C53fe72abf0259dc6ff85c5cb5aa7d3ab</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">10 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-4">
+            <h3><a href="user-ui-line-4.html">群組 Cb6fae4343c2fba6dc91f393f0f399aec</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-5">
+            <h3><a href="user-ui-line-5.html">Seven陳聖文, 恰恰小紅帽🎉, Seven Jr.</a></h3>
+            <p class="muted">這個沒有標單喔，只有設計師畫的施工圖。 地址是在：南投縣仁愛鄉大同村榮光巷 36-1 號。</p>
+            <p>
+              <span class="badge wait">Project: 未綁定專案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">12 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-6">
+            <h3><a href="user-ui-line-6.html">KevinJen, Woody, Seven</a></h3>
+            <p class="muted">Sorry，我以為是這週二 好的，那我先看看再跟你們說</p>
+            <p>
+              <span class="badge ok">Project: 營運</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">4 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-7">
+            <h3><a href="user-ui-line-7.html">Andy Tsai, Woody, Seven陳聖文</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 營運</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-8">
+            <h3><a href="user-ui-line-8.html">Andy &amp; Seven</a></h3>
+            <p class="muted">{&quot;type&quot;:&quot;textV2&quot;,&quot;text&quot;:&quot;{seven} 提醒：Andy 明天下午 1 點會到公司找你。&quot;,&quot;substitution&quot;:{&quot;seven&quot;:{&quot;type&quot;:&quot;mention&quot;,&quot;mentionee&quot;:{&quot;type&quot;:&quot;user&quot;,&quot;us...</p>
+            <p>
+              <span class="badge ok">Project: 營運</span> <span class="badge ok">Project: 溪頭 / 南投鹿谷旅館投資評估案</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">34 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-9">
+            <h3><a href="user-ui-line-9.html">嘉娜</a></h3>
+            <p class="muted">我要續保，怎麼樣做最快？ 你可以把那個保單的申請書 LINE 給我嗎？我直接簽名還是怎麼樣會最容易呢？</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">4 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-10">
+            <h3><a href="user-ui-line-10.html">茲心園幹部群</a></h3>
+            <p class="muted">這個</p>
+            <p>
+              <span class="badge ok">Project: 營運</span> <span class="badge ok">Project: 茲心園工程</span> <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">51 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-11">
+            <h3><a href="user-ui-line-11.html">陳逸凡</a></h3>
+            <p class="muted">可以～</p>
+            <p>
+              <span class="badge ok">Project: 營運</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">11 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-12">
+            <h3><a href="user-ui-line-12.html">吳碧純</a></h3>
+            <p class="muted">等他回國，我再跟他做詢問。</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">11 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-13">
+            <h3><a href="user-ui-line-13.html">山牧設計場域設計</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 茲心園工程</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-14">
+            <h3><a href="user-ui-line-14.html">7人中區讀書會</a></h3>
+            <p class="muted">7月讀書會地址：台灣大道三段590號2樓鄉林皇居 8月讀書會地址：北屯區南興東路287號，建儒公司</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">19 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-15">
+            <h3><a href="user-ui-line-15.html">溪州家族</a></h3>
+            <p class="muted">[sticker] package:11537 sticker:52002752</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">76 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-16">
+            <h3><a href="user-ui-line-16.html">葉綠宿房東林董</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-17">
+            <h3><a href="user-ui-line-17.html">蔡其興借人民幣用</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-18">
+            <h3><a href="user-ui-line-18.html">漂鳥&lt;投資&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-19">
+            <h3><a href="user-ui-line-19.html">白代書&lt;原民地買賣&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-20">
+            <h3><a href="user-ui-line-20.html">財務部&amp;專案部</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-21">
+            <h3><a href="user-ui-line-21.html">獎金規劃討論</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-22">
+            <h3><a href="user-ui-line-22.html">蔡董人民幣</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-23">
+            <h3><a href="user-ui-line-23.html">博旅旅館&lt;投資&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-24">
+            <h3><a href="user-ui-line-24.html">林順成，原民地</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-25">
+            <h3><a href="user-ui-line-25.html">吳碧純</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-26">
+            <h3><a href="user-ui-line-26.html">佪嘉居&lt;投資&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-27">
+            <h3><a href="user-ui-line-27.html">Charles Lai</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-28">
+            <h3><a href="user-ui-line-28.html">Kevin &amp; Woody</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-29">
+            <h3><a href="user-ui-line-29.html">立鉑國際 &lt;投資&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-30">
+            <h3><a href="user-ui-line-30.html">葉綠宿房東群組</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-31">
+            <h3><a href="user-ui-line-31.html">萬鑫-謝會計師</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-32">
+            <h3><a href="user-ui-line-32.html">一中漫走房東</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-33">
+            <h3><a href="user-ui-line-33.html">茲心園幹部盜用公款</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-34">
+            <h3><a href="user-ui-line-34.html">程果科技&lt;投資&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-35">
+            <h3><a href="user-ui-line-35.html">葉綠宿＆台銀</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-36">
+            <h3><a href="user-ui-line-36.html">預算會議-光合</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-37">
+            <h3><a href="user-ui-line-37.html">預算會議-城光</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-38">
+            <h3><a href="user-ui-line-38.html">預算會議-茲心園</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-39">
+            <h3><a href="user-ui-line-39.html">預算會議-綠宿</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-40">
+            <h3><a href="user-ui-line-40.html">預算會議-茶覺旅</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-41">
+            <h3><a href="user-ui-line-41.html">預算會議-一中</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-42">
+            <h3><a href="user-ui-line-42.html">預算會議-橙宿</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-43">
+            <h3><a href="user-ui-line-43.html">葉綠宿採購群</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-44">
+            <h3><a href="user-ui-line-44.html">葉綠宿_財務部</a></h3>
+            <p class="muted">06/08 信用卡支付 橙宿 5月EXP佣金 金額$ 2020.64元</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">2 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-45">
+            <h3><a href="user-ui-line-45.html">KevinJen, Seven陳聖文, 葉綠宿財務主管&lt;黃瓊慧&gt;</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-46">
+            <h3><a href="user-ui-line-46.html">會計自動化顧問群組</a></h3>
+            <p class="muted">謝謝</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">36 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-47">
+            <h3><a href="user-ui-line-47.html">Seven &amp; Amber</a></h3>
+            <p class="muted">Seven，6/10 匯款失敗需要補放行的有以下，謝謝。 10號交易失敗，表單已到Seven 1、茶覺旅聯邦，客人訂金(收款人之戶名與帳號不一致)，金額990元 2、茲心園聯邦，五星級洗滌費(收款人之戶名與帳號不一致)：金額53482元 3、綠宿聯邦，goog...</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">12 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-48">
+            <h3><a href="user-ui-line-48.html">謝明錩老師</a></h3>
+            <p class="muted">老師，今天回來已經有收到您寄來的包裹了，裡面有三本非常棒的畫冊： 1. 《水彩畫法的奧秘》 2. 《臺灣名家美術 100 年》 3. 《意蘊與意念》 哇，非常棒的三本書！我會好好地學習、拜讀，然後會把這些書帶到茲心園，給更多的客人能夠看到這麼棒的書。</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">25 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-49">
+            <h3><a href="user-ui-line-49.html">天才家族</a></h3>
+            <p class="muted">@YiChen （Ethan) 豆，這邊講怎麼樣把英文練好：每天只要花 3 個小時，一年可以把英文變成母語，你要不要試試看呢？</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">8 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-50">
+            <h3><a href="user-ui-line-50.html">葉綠宿勞資會議</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-51">
+            <h3><a href="user-ui-line-51.html">允赫律師事務所服務團隊(葉綠宿集團)</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-52">
+            <h3><a href="user-ui-line-52.html">歐陽老師 &amp; 葉綠宿</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-53">
+            <h3><a href="user-ui-line-53.html">Seven&amp;Bonnie</a></h3>
+            <p class="muted">(emoji)一併跟Seven呈報漫漫回嘉，昨天Woody處理的狀況： 兩位同仁-邱耀霆&amp;陳孟輝，昨天傍晚Woody各別約談後，已要求他們各自寫下自白書，並提出離職。 昨晚已同步於104系統作完離職程序+退保。 同步也緊急跟旅行社調整今明兩天員旅的人數及排房。...</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">14 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-54">
+            <h3><a href="user-ui-line-54.html">用印群組</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 財務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-55">
+            <h3><a href="user-ui-line-55.html">葉綠宿_總管理處</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-56">
+            <h3><a href="user-ui-line-56.html">黃.子.雲, Seven陳聖文, Bonnie～蔡雅婷🌷</a></h3>
+            <p class="muted">(非 message 事件)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">1 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-57">
+            <h3><a href="user-ui-line-57.html">薪資/獎金放行群</a></h3>
+            <p class="muted">(thumbs up)(joy)(Brown bow)</p>
+            <p>
+              <span class="badge ok">Project: 人資</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">9 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-58">
+            <h3><a href="user-ui-line-58.html">*月會群＜葉綠宿＞</a></h3>
+            <p class="muted">(emoji)(emoji)大家早安～ 【6月營運行政月會-會議通知】 (emoji)2026/6/16(二)9:30 AM (emoji)茶覺旅-13F會議室 會議時程如下： 9:30-10:30 營運單位報告 10:30-10:40 休息時間 10:40-...</p>
+            <p>
+              <span class="badge ok">Project: 營運</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">4 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-59">
+            <h3><a href="user-ui-line-59.html">我的文件資料夾</a></h3>
+            <p class="muted">我再測試一次看看</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">3 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-60">
+            <h3><a href="user-ui-line-60.html">台翰營造</a></h3>
+            <p class="muted">等我一下☝️一回回來</p>
+            <p>
+              <span class="badge ok">Project: 茲心園工程</span>
+              <span class="badge neutral">群組</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">17 messages</span>
+            </p>
+          </article><article class="card" id="line-conversation-61">
+            <h3><a href="user-ui-line-61.html">Seven Junior</a></h3>
+            <p class="muted">[image] 617852392054456442</p>
+            <p>
+              <span class="badge ok">Project: 私人事務</span>
+              <span class="badge neutral">個人</span>
+              <span class="badge ok">啟用</span>
+              <span class="badge neutral">156 messages</span>
+            </p>
+          </article>
+        </div>
+        <h3>最新對話主檔訊息</h3>
+        <table>
+          <thead><tr><th>Conversation</th><th>Speaker</th><th>Type</th><th>Content</th><th>Link</th></tr></thead>
+          <tbody><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>不用客氣！</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>Seven陳聖文</td><td>text</td><td>好的，那就麻煩 Kevin 了，謝謝(thumbs up)</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>我去美國前會約大甲業主和你們見面！</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>@溪頭夏緹飯店 凱文 這一隻是急事通話（七月整個月都在美國）！</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>謝明錩老師</td><td>Seven陳聖文</td><td>text</td><td>老師，今天回來已經有收到您寄來的包裹了，裡面有三本非常棒的畫冊： 1. 《水彩畫法的奧秘》 2. 《臺灣名家美術 100 年》 3. 《意蘊與意念》 哇，非常棒的三本書！我會好好地學習、拜讀，然後會把這些書帶到茲心園，給更多的客人能夠看到這麼棒的書。</td><td><a href="user-ui-line-48.html">Open</a></td></tr><tr><td>謝明錩老師</td><td>Seven陳聖文</td><td>image</td><td>617865162686464069</td><td><a href="user-ui-line-48.html">Open</a></td></tr><tr><td>謝明錩老師</td><td>Seven陳聖文</td><td>image</td><td>617865161595945420</td><td><a href="user-ui-line-48.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>Seven陳聖文</td><td>text</td><td>好的，沒問題！ 你看看你再提供電話或者是 LINE 給我，我來加您</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>好喔！ 我目前這個line是滿的，如果要通電話可能要加另一個line，因為我下個月會去美國一個月，在美國只會帶一支手機出門，如果有任何急事要通電話再加另一支手機的lime！</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>夏緹Kevin &amp; 葉綠宿Seven</td><td>unknown</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-0.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>我是溪頭夏緹飯店 凱文</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>image</td><td>617864677590565443</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>image</td><td>617864677774328032</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>image</td><td>617864677003362475</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>@薛富州 薛老闆您好！</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>溪頭夏緹凱文 急事0955-987076</td><td>text</td><td>沒問題</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>Seven陳聖文</td><td>text</td><td>@溪頭夏緹凱文 急事0955-987076 Kevin，程果科技的老闆是 Joe，我們跟他配合已經十幾年了。 最早我們還請他幫我們寫過 PMS，所以 Joe 對於旅館業的生態需求是很瞭解的。如果有什麼需要的話，你可以再跟他聊聊。</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>Seven陳聖文</td><td>text</td><td>@薛富州 Hello Joe，群組裡面是溪頭夏緹的老闆 Kevin。 我有跟 Kevin 提到說你的 SmartFornt 功能非常好用，茲心園用的也很不錯。如果有機會的話，你看看要不要跟 Kevin 那邊介紹一下？ 那我今天也聽你說你有去溪頭的另外一家旅館還是民宿，對方也有推，他有跟你問到這家是哪一家呢？</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>unknown</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>unknown</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>程果科技 &amp; 溪頭夏緹</td><td>unknown</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-1.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>sticker</td><td>[sticker] package:11537 sticker:52002752 [sticker] package:11537 sticker:52002752</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>陳菊姍</td><td>text</td><td>https://youtu.be/fC676GKgiWc?si=PcqTHGmhHkzL-ZMd</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>Seven陳聖文</td><td>text</td><td>(joy)(heart)(good)</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617852392054456442</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>自己的工作美學，就是雕琢自己獨特心魂的歷程</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>積極、正向</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>溫暖、體貼'</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617851740008219086</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617851636140474709</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>江振誠《工作美學》</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617851544352325888</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617851338210672709</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>自己的工作美學，就是自己的心魂目標</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>雕琢自己獨特心魂的歷程</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td>自己的工作美學，就是自己的靈魂目標</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617851022664794301</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617850880611582022</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>image</td><td>617850730455237040</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>text</td><td>是要感謝各方衆神的保佑</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>陳菊姍</td><td>text</td><td>感謝眾神明幫忙，馬祖婆婆，土地公公，觀世音菩薩，還有普濟堂關公⋯⋯</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>sticker</td><td>[sticker] package:36513 sticker:802632400 [sticker] package:36513 sticker:802632400</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>陳菊姍</td><td>text</td><td>真的</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>text</td><td>真的是好消息~终於可以不用那麼擔心了！</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>陳菊姍</td><td>sticker</td><td>[sticker] package:3 sticker:183 [sticker] package:3 sticker:183</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven Jr.</td><td>text</td><td>20:30 每日總控報告 日期：2026-06-10 摘要：已整合 8 件主要事件；每件事以「主題、對象、影響、結論、建議待辦」呈現。 一、今日主要事件 1. 吳小姐案件：財務回應速度｜營運 / 財務｜高 主題：吳小姐案件：財務回應速度 對象：吳小姐 / 公司財務窗口 / Seven 影響：財務回應速度太慢會讓對方感覺事情被拖延，影響信任與後續合作關係。 結...</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>text</td><td>😄😄</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>text</td><td>是喔！我覺得國畫都差不多</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>Seven陳聖文</td><td>text</td><td>應該是佈局都差不多，長這樣子</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>Seven陳聖文</td><td>text</td><td>看起來像是同一個地方耶</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>image</td><td>617841692250996857</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>謝謝</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>有log嗎</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>目前最有可能的原因是籤卡驅動有衝突 我有改了方法可以降低衝突的可能性 如果還是會閃退 那就可能需要提供一下這台電腦的險卡型號 我再來看針對這台顯卡看要怎麼做調整</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>image</td><td>617822876569698767</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>這版幫我看一下</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven Jr.</td><td>text</td><td>下午 5 點目標追認與新任務確認： https://line-oa-webhook-nn5j.onrender.com/reports/followup-confirmation?slot=17 請確認下午要發出的 LINE/Email 追問；如果窗口不知道目標，請她指定真正負責人。Codex 確認完成目標後，下一個時段才告訴負責人後續要做什麼。</td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>群組 C53fe72abf0259dc6ff85c5cb5aa7d3ab</td><td>unknown</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-3.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>好</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>另一個夥伴今日請假，要明天測試</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>有其他夥伴有反映相同的狀況嗎 還是只有這台</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>了解</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>我等等在貼一版 如果不行 可能要 當天開會的時候 讓我看一下電腦直接看配置比較清楚了</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>@葉綠宿財務主管&lt;黃瓊慧&gt; 這版應該可以動了 如果還是不可以 就在給我一版log 我有猜測到原因了只是還需要確認看看</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>image</td><td>617816736124895424</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>溪州家族</td><td>鄭麗峰</td><td>sticker</td><td>[sticker] package:1 sticker:407 [sticker] package:1 sticker:407</td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>Seven &amp; Amber</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>Seven，6/10 匯款失敗需要補放行的有以下，謝謝。 10號交易失敗，表單已到Seven 1、茶覺旅聯邦，客人訂金(收款人之戶名與帳號不一致)，金額990元 2、茲心園聯邦，五星級洗滌費(收款人之戶名與帳號不一致)：金額53482元 3、綠宿聯邦，google 廣告費用(收款銀行系統異常)：金額20000元</td><td><a href="user-ui-line-47.html">Open</a></td></tr><tr><td>Seven &amp; Amber</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>回報： 1.股東轉帳：吳碧純、陳承穎 已通知股權轉換完成。 吳碧純已收到訊息；陳承穎未讀訊息。 2. 06/10 已收到鉅陞國際開發股份有限公司 退回票據。 3. 06/10 有收到光合甲存餘額不足通知，已處理完成。 →佳雯搜尋報表日期區間不正確，待員旅回來後教學。 4. 06/10 GCR因需要測試顧問開發工具，目前Leni電腦該程式無法開啟，問題排除中，...</td><td><a href="user-ui-line-47.html">Open</a></td></tr><tr><td>溪州家族</td><td>陳菊姍</td><td>text</td><td></td><td><a href="user-ui-line-15.html">Open</a></td></tr><tr><td>Seven &amp; Amber</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>(非 message 事件)</td><td><a href="user-ui-line-47.html">Open</a></td></tr><tr><td>Seven &amp; Amber</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td>回報： 1.股東轉帳：吳碧純、陳承穎 已通知股權轉換完成。 吳碧純已收到；陳承穎未讀訊息。 2. 06/10 已收到鉅陞國際開發股份有限公司 退回票據。 3. 06/10 有收到光合甲存餘額不足通知，已處理完成。 →佳雯搜尋報表日期區間不正確，待員旅回來後教學。</td><td><a href="user-ui-line-47.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>謝謝</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>image</td><td>617812577723875794</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>file</td><td>檔案：app.log 附件資料庫：app.log</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>如果有這個檔案也一起給我</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>會計自動化顧問群組</td><td>李岳軒</td><td>text</td><td>tartup_hang.txt 這裡有可能會有這個</td><td><a href="user-ui-line-46.html">Open</a></td></tr><tr><td>Seven Junior</td><td>Seven陳聖文</td><td>text</td><td></td><td><a href="user-ui-line-61.html">Open</a></td></tr><tr><td>茲心園幹部群</td><td>逸凡YIFAN</td><td>text</td><td>這個</td><td><a href="user-ui-line-10.html">Open</a></td></tr><tr><td>謝明錩老師</td><td>Seven陳聖文</td><td>text</td><td>美珍姐，住宿券背面有蓋藍色的章，有藍色的章就表示這個館是可以使用的；那沒有藍色的章，這張住宿券就不能使用那個館。</td><td><a href="user-ui-line-48.html">Open</a></td></tr><tr><td>陳逸凡</td><td>逸凡YIFAN</td><td>text</td><td>可以～</td><td><a href="user-ui-line-11.html">Open</a></td></tr></tbody>
+        </table>
+      </section>
+
+      <section id="attachments" class="section view-panel hidden">
+        <h2>附件與檔案</h2>
+        <p class="muted">可以直接開啟附件、調整關聯專案、改轉檔狀態、標記不保存，或先建立待轉檔請求。實際 OCR/PDF 文字抽取會等 worker 接上後執行。</p>
+        <div class="attachment-actions" style="max-width:520px;margin:10px 0 14px;">
+          <input id="attachmentApiBaseUrl" value="https://line-oa-webhook-nn5j.onrender.com" placeholder="API Base URL">
+          <div class="attachment-buttons">
+            <button class="secondary" type="button" id="rememberAttachmentApiButton">記住 API 位置</button>
+          </div>
+          <div class="attachment-result" id="attachmentGlobalResult">若從 /user-ui 登入後使用，會自動使用目前網站位置。</div>
+        </div>
+        <table>
+          <thead><tr><th>File</th><th>Project</th><th>LINE group</th><th>Sender</th><th>Message</th><th>Status</th><th>Source</th><th>Manage</th></tr></thead>
+          <tbody>
+    <tr data-attachment-row="37b51c68-6dac-81b7-8131-c8aebad7373d">
+      <td>
+        <a href="https://app.notion.com/p/app-log-37b51c686dac81b78131c8aebad7373d" target="_blank" rel="noopener">app.log</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">財務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac8131b3f1eaa1aa092c40" target="_blank" rel="noopener">會計自動化顧問群組</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">失敗</span></td>
+      <td><a href="https://app.notion.com/p/app-log-37b51c686dac81b78131c8aebad7373d" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37b51c68-6dac-81b7-8131-c8aebad7373d">
+    <input data-attachment-projects value="財務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔">待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗" selected>失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37b51c68-6dac-81c8-92c0-cdfba8838a6d">
+      <td>
+        <a href="https://app.notion.com/p/app-log-37b51c686dac81c892c0cdfba8838a6d" target="_blank" rel="noopener">app.log</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">財務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac8131b3f1eaa1aa092c40" target="_blank" rel="noopener">會計自動化顧問群組</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">失敗</span></td>
+      <td><a href="https://app.notion.com/p/app-log-37b51c686dac81c892c0cdfba8838a6d" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37b51c68-6dac-81c8-92c0-cdfba8838a6d">
+    <input data-attachment-projects value="財務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔">待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗" selected>失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37b51c68-6dac-817b-841f-dae0719ae7ff">
+      <td>
+        <a href="https://app.notion.com/p/app-log-37b51c686dac817b841fdae0719ae7ff" target="_blank" rel="noopener">app.log</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">財務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac8131b3f1eaa1aa092c40" target="_blank" rel="noopener">會計自動化顧問群組</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">失敗</span></td>
+      <td><a href="https://app.notion.com/p/app-log-37b51c686dac817b841fdae0719ae7ff" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37b51c68-6dac-817b-841f-dae0719ae7ff">
+    <input data-attachment-projects value="財務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔">待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗" selected>失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37a51c68-6dac-810c-a14f-de3ea7fceb35">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/6b82e160-ecfd-41d3-850f-2cea0f12c43c/%E5%90%8D%E7%89%87ME.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=9fe23ae26113a02bb3c77fd9a52316097dc48c169daa0d31a9db790c7c375ba6&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">名片ME.pdf</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge wait">未綁定專案</span></td>
+      <td><a href="https://app.notion.com/p/37a51c686dac818fbf17d56da3d6eee8" target="_blank" rel="noopener">Seven陳聖文, 恰恰小紅帽🎉, Seven Jr.</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/ME-pdf-37a51c686dac810ca14fde3ea7fceb35" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37a51c68-6dac-810c-a14f-de3ea7fceb35">
+    <input data-attachment-projects value="" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-8179-8379-d7a8be8f1820">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/e460caa7-d4f1-4bef-a0d9-ce8a17f6db47/%E7%A8%BB%E7%9B%9B%E4%B8%83%E5%80%8B%E6%BF%80%E5%8B%B5%E6%B3%95%E7%AC%AC%E4%B8%89%E7%AB%A0_%E5%B0%8E%E5%9C%96.pptx?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=773cbd47341a2e256d44fddc67f64cad0ee1b9d89dd1458e9cc7af1ed66bde08&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">稻盛七個激勵法第三章 導圖.pptx</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac816f9bfcdd590c5cd177" target="_blank" rel="noopener">7人中區讀書會</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/pptx-37951c686dac81798379d7a8be8f1820" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-8179-8379-d7a8be8f1820">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-81e9-a6d2-cec9cc49cd20">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/f82801ca-563c-40df-9f19-6bf25a1b7a22/%E7%B5%84%E5%90%88%EF%BC%88%E7%84%A1%E8%AC%84%E6%9C%AC%EF%BC%89%E5%8D%97%E6%8A%95%E7%B8%A3%E9%B9%BF%E8%B0%B7%E9%84%89%E5%85%A7%E6%B9%96%E6%9D%91%E8%88%88%E7%94%A2%E8%B7%AF24-17%E3%80%8124-18%E8%99%9F.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=90a96cab449e18576f2da96bfbe85eff05fc493d3765bb0bcb8398ee5f2644b4&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">組合（無謄本）南投縣鹿谷鄉內湖村興產路24-17、24-18號.pdf</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">營運</span> <span class="badge ok">溪頭 / 南投鹿谷旅館投資評估案</span></td>
+      <td><a href="https://app.notion.com/p/Andy-Seven-37951c686dac815caa80f59631e4d06d" target="_blank" rel="noopener">Andy &amp; Seven</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/24-17-24-18-pdf-37951c686dac81e9a6d2cec9cc49cd20" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-81e9-a6d2-cec9cc49cd20">
+    <input data-attachment-projects value="營運, 溪頭 / 南投鹿谷旅館投資評估案" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-8143-adff-fb9ae0f50ae8">
+      <td>
+        <a href="https://app.notion.com/p/pptx-37951c686dac8143adfffb9ae0f50ae8" target="_blank" rel="noopener">稻盛七個激勵法第三章.pptx</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac816f9bfcdd590c5cd177" target="_blank" rel="noopener">7人中區讀書會</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">失敗</span></td>
+      <td><a href="https://app.notion.com/p/pptx-37951c686dac8143adfffb9ae0f50ae8" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-8143-adff-fb9ae0f50ae8">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔">待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗" selected>失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-814d-9df6-f59e809d3cd5">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/6ca0bbad-cfd8-46b4-ad5b-fdd70c2d134d/%E7%A8%BB%E7%9B%9B%E4%B8%83%E5%80%8B%E6%BF%80%E5%8B%B5%E6%B3%95%E7%AC%AC%E4%B8%89%E7%AB%A0_%E5%B0%8E%E5%9C%96.pptx?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=cccc6d5c14e4157937ba8b42f9841216fc17dc171f1922599cf990dbf99112dd&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">稻盛七個激勵法第三章 導圖.pptx</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac816f9bfcdd590c5cd177" target="_blank" rel="noopener">7人中區讀書會</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/pptx-37951c686dac814d9df6f59e809d3cd5" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-814d-9df6-f59e809d3cd5">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-814f-acf1-e9d556d5de88">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/33583ecc-b23b-43a1-9540-c8e70cff4e36/%E7%A8%BB%E7%9B%9B%E4%B8%83%E5%80%8B%E6%BF%80%E5%8B%B5%E6%B3%95%E7%AC%AC%E4%B8%89%E7%AB%A0_%E8%A3%9C%E5%85%85%E4%BA%AC%E7%93%B7%E4%BA%BA%E9%80%A0%E5%AF%B6%E7%9F%B3%E7%9A%84%E6%88%90%E5%8A%9F.pptx?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=b154c61be5104aa3fe79d1825e5f0a8cc506261929feb62df786c2c3314c479f&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">稻盛七個激勵法第三章 補充京瓷人造寶石的成功.pptx</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac816f9bfcdd590c5cd177" target="_blank" rel="noopener">7人中區讀書會</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/pptx-37951c686dac814facf1e9d556d5de88" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-814f-acf1-e9d556d5de88">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37951c68-6dac-8189-a2a0-c9a5a3ca2eee">
+      <td>
+        <a href="https://app.notion.com/p/pptx-37951c686dac8189a2a0c9a5a3ca2eee" target="_blank" rel="noopener">稻盛七個激勵法第三章.pptx</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/37751c686dac816f9bfcdd590c5cd177" target="_blank" rel="noopener">7人中區讀書會</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">失敗</span></td>
+      <td><a href="https://app.notion.com/p/pptx-37951c686dac8189a2a0c9a5a3ca2eee" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37951c68-6dac-8189-a2a0-c9a5a3ca2eee">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔">待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗" selected>失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37751c68-6dac-812e-b252-c9e7b444f43f">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/49d3d9b6-8661-4b49-8c05-0b8c8ef234c0/sample.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=b9c933b1532042287b3b7decc997054e411369b72613e2408981215b17dac208&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">sample.pdf</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/Seven-37751c686dac813f8ec1f61bd5ee0614" target="_blank" rel="noopener">Seven Junior</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/sample-pdf-37751c686dac812eb252c9e7b444f43f" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37751c68-6dac-812e-b252-c9e7b444f43f">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37751c68-6dac-8161-85f8-d9585faff299">
+      <td>
+        <a href="https://prod-files-secure.s3.us-west-2.amazonaws.com/644c1a65-1fa1-46d3-a784-7d9de4b5af24/836e4ee8-b436-4c76-8c61-2cdb40265fe0/sample.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&amp;X-Amz-Credential=ASIAZI2LB466563H2KFP%2F20260610%2Fus-west-2%2Fs3%2Faws4_request&amp;X-Amz-Date=20260610T170252Z&amp;X-Amz-Expires=3600&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjECEaCXVzLXdlc3QtMiJIMEYCIQD%2B%2FQwjo9NuslAYHwrl%2BnVxjMKCOAATrN7NjZqZAII7AwIhAJQxMu39zRyjmqcD%2B2Cf3%2BycwHFrItE8dQ0RHJTkr1PDKogECOr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQABoMNjM3NDIzMTgzODA1IgzeLsS%2FpAxRC629sfYq3AM%2FeUZRpt7JIjCqel8EBKVnU6BmmsVsstTJjnaBpm%2F7wIUmBaFMq2B88tJo%2FSaK2UdWf8GJ4MkOhNIna1e1K%2FsjI7vimnZEpBpqPoAxm9T%2BWdmXbopo7%2FcqZX92x8V4UIIc5gzkL2EPewdBvLGpSKh4Z5QQ%2Fes4cTjYfEZlb2xRUHicT4MLR%2FXA%2B0lhpyijuPFJOSLMTHIx%2BXr2FvyO5Qv5fs9LD7%2BbJXrXmbEb3a3WyVCGT%2B67G2qmgbgl8%2BOUhJcHxPwv6vGr%2Bl%2F0MQ1Udgi0%2BQ%2F9dzllcqz4amOI%2B2jxqpsqg15fTqlubyJG7zoYZzGokKurjvy8MZD3CFRz1fqIi2C6wyLJ5SK4%2FenKxU%2BfxsCHuEEaYBRMZNU9ZBr3BtoipSFvnI7chWYRv7Ybwlx615bT4%2BAsejozvYsg1JWYvv4wts1lCarbhmQDBSzMiSrAed%2BispZJDPllzqTeO%2BdFPM%2FaF5WonvTjlohtqXjNSvEPsAxiD%2FEUtneSRPAbvGowG7DlTXAxUIS1Z3TlvP09eFRvsSqQSJmZ74DgqnFXzmPWm9SEnzEfBAXld%2FYFL9IDVFOtpu%2BgxqqYJSPz7hp%2FZxmsU%2FfZfHLfGBgyUoE%2BpSP8a3mWza%2F6qE1CIDDhoKbRBjqkAYG1Nb9Xx3yxXbe%2BrWELcdvwLHMbm7SK2rtlRwODPef1o6y1Gpc6z9bkr%2FJo1IPOJzuPaqza%2BZZTqtBmOB%2BGM0C78R6WuvnGAjWa1n0cIluO9ftiN9DE%2BubCVK3J3%2FPSH7LuKzkU4gpwMIddRry3bGWqlzzBtKEUWwx%2BF%2FpnXjYJ%2FUxAJvcOTtnzVNSrhvLE1HjhG7gmccFLTSCIY6CM6hLgIKQj&amp;X-Amz-Signature=02d443fcedda989cb43b8e3e247c318e19f665c1a9e90f3584088f3087e878bc&amp;X-Amz-SignedHeaders=host&amp;x-amz-checksum-mode=ENABLED&amp;x-id=GetObject" target="_blank" rel="noopener">sample.pdf</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/Seven-37751c686dac813f8ec1f61bd5ee0614" target="_blank" rel="noopener">Seven Junior</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/sample-pdf-37751c686dac816185f8d9585faff299" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37751c68-6dac-8161-85f8-d9585faff299">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr>
+    <tr data-attachment-row="37751c68-6dac-81ca-88af-d1d2b623d6e8">
+      <td>
+        <a href="https://app.notion.com/p/sample-pdf-37751c686dac81ca88afd1d2b623d6e8" target="_blank" rel="noopener">sample.pdf</a>
+        <div class="muted">file</div>
+      </td>
+      <td><span class="badge ok">私人事務</span></td>
+      <td><a href="https://app.notion.com/p/Seven-37751c686dac813f8ec1f61bd5ee0614" target="_blank" rel="noopener">Seven Junior</a></td>
+      <td></td>
+      <td></td>
+      <td><span class="badge neutral">待轉檔</span></td>
+      <td><a href="https://app.notion.com/p/sample-pdf-37751c686dac81ca88afd1d2b623d6e8" target="_blank" rel="noopener">附件紀錄</a></td>
+      <td><div class="attachment-actions" data-attachment-id="37751c68-6dac-81ca-88af-d1d2b623d6e8">
+    <input data-attachment-projects value="私人事務" placeholder="關聯專案，多個用逗號分隔">
+    <select data-attachment-status>
+      <option value="待轉檔" selected>待轉檔</option><option value="轉檔中">轉檔中</option><option value="已完成">已完成</option><option value="失敗">失敗</option><option value="不需轉檔">不需轉檔</option>
+    </select>
+    <input data-attachment-note value="" placeholder="本次操作備註">
+    <div class="attachment-buttons">
+      <button type="button" data-attachment-action="save">儲存</button>
+      <button class="secondary" type="button" data-attachment-action="convert">轉檔</button>
+      <button class="danger" type="button" data-attachment-action="archive">不保存</button>
+    </div>
+    <div class="attachment-result" data-attachment-result></div>
+  </div></td>
+    </tr></tbody>
+        </table>
+      </section>
+
+      <section id="meetings" class="section view-panel hidden">
+        <h2>會議紀錄</h2>
+        <div class="cards">
+          <article class="card">
+            <h3><a href="https://app.notion.com/p/2026-06-08-37951c686dac8056866cff4df75de68a" target="_blank" rel="noopener">2026-06-08 讀書會 《激勵之道》第三章：經常預測未來磨練優點</a></h3>
+            <p class="muted"></p>
+            <p><span class="badge neutral">2026-06-08</span> <span class="badge neutral">讀書會, 學術討論, 不產生任務</span></p>
+          </article><article class="card">
+            <h3><a href="https://app.notion.com/p/2026-06-08-37951c686dac8044ba6cd1993e45f7ef" target="_blank" rel="noopener">2026-06-08 讀書會 經營十二條實踐與福岡參訪心得分享會</a></h3>
+            <p class="muted"></p>
+            <p><span class="badge neutral">2026-06-08</span> <span class="badge neutral">讀書會, 學術討論, 不產生任務</span></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="reports" class="section view-panel hidden">
+        <h2>每日報告中心</h2>
+        <p class="muted">這裡只放每天固定節奏的報告：08:30 晨報、10:00 / 13:00 / 17:00 進度檢查、20:00 晚報。</p>
+        <div class="cards">
+          <article class="card">
+      <h3>08:30 晨報</h3>
+      <p class="muted">整理今天的行程、昨日未完成事項、今日優先任務與需要先提醒的風險。</p>
+      <p>
+        <span class="badge neutral">morning</span>
+        <span class="badge neutral">未產生</span>
+      </p>
+      <p><a href="https://line-oa-webhook-nn5j.onrender.com/reports/morning-brief" target="_blank" rel="noopener">Open report</a></p>
+      <p class="muted">尚未找到此時段的最新快照。</p>
+    </article><article class="card">
+      <h3>10:00 進度檢查報告</h3>
+      <p class="muted">檢查上午第一段進度，確認是否有新任務、狀態變更、等待回覆或需要補資料。</p>
+      <p>
+        <span class="badge neutral">followup-morning</span>
+        <span class="badge neutral">未產生</span>
+      </p>
+      <p><a href="https://line-oa-webhook-nn5j.onrender.com/reports/followup-confirmation?slot=10" target="_blank" rel="noopener">Open report</a></p>
+      <p class="muted">尚未找到此時段的最新快照。</p>
+    </article><article class="card">
+      <h3>13:00 進度檢查報告</h3>
+      <p class="muted">午間整理上午處理結果，確認下午要推進的任務與需要追蹤的對象。</p>
+      <p>
+        <span class="badge neutral">followup-midday</span>
+        <span class="badge neutral">未產生</span>
+      </p>
+      <p><a href="https://line-oa-webhook-nn5j.onrender.com/reports/followup-confirmation?slot=13" target="_blank" rel="noopener">Open report</a></p>
+      <p class="muted">尚未找到此時段的最新快照。</p>
+    </article><article class="card">
+      <h3>17:00 進度檢查報告</h3>
+      <p class="muted">下班前檢查當日任務進度，收斂未完成事項、待確認事項與明日銜接。</p>
+      <p>
+        <span class="badge neutral">followup-afternoon</span>
+        <span class="badge neutral">未產生</span>
+      </p>
+      <p><a href="https://line-oa-webhook-nn5j.onrender.com/reports/followup-confirmation?slot=17" target="_blank" rel="noopener">Open report</a></p>
+      <p class="muted">尚未找到此時段的最新快照。</p>
+    </article><article class="card">
+      <h3>20:00 晚報</h3>
+      <p class="muted">整理全天總控狀態，確認已完成、待追蹤、需封存、需明日接續的任務與專案。</p>
+      <p>
+        <span class="badge neutral">daily</span>
+        <span class="badge neutral">已發送</span>
+      </p>
+      <p><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">Open report</a></p>
+      <p class="muted">20:30 每日總控總確認已發送，等待使用者確認寫回。</p>
+    </article>
+        </div>
+        <h3>最近報告快照</h3>
+        <table>
+          <thead><tr><th>報告</th><th>時間</th><th>狀態</th><th>對象</th><th>回覆結果</th><th>摘要</th></tr></thead>
+          <tbody><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-10 每日總控總確認</a></td><td>2026/06/10 20:30</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://app.notion.com/p/daily-2026-06-09-21-52-37a51c686dac816dba3fff29c7396816" target="_blank" rel="noopener">2026-06-09 每日總控總確認</a></td><td>2026/06/09 21:52</td><td><span class="badge ok">已確認</span></td><td>Seven Junior</td><td>任務更新：追蹤台翰營造對工程進度與現場狀況的回覆 -&gt; 等待回覆 (created) 確認 Bonnie 財務資料是否需要寫入 Notion -&gt; 已完成 (created) 測試 #待辦 是否自動進入總控任務庫 -&gt; 已完成 (created)</td><td>每日總控總確認已由使用者確認，確認結果已寫入風險與決策庫。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-08 每日總控總確認</a></td><td>2026/06/08 20:30</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-08 每日總控總確認</a></td><td>2026/06/08 01:06</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-07 每日總控總確認</a></td><td>2026/06/07 22:53</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-07 每日總控總確認</a></td><td>2026/06/07 22:40</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-07 每日總控總確認</a></td><td>2026/06/07 22:29</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report" target="_blank" rel="noopener">2026-06-07 每日總控總確認</a></td><td>2026/06/07 22:03</td><td><span class="badge neutral">已發送</span></td><td>Seven Junior</td><td>尚未收到確認回覆</td><td>20:30 每日總控總確認已發送，等待使用者確認寫回。</td></tr><tr><td><a href="https://app.notion.com/p/daily-2026-06-07-21-34-37851c686dac81debf06f9e64b36a9c4" target="_blank" rel="noopener">2026-06-07 每日總控總確認</a></td><td>2026/06/07 21:34</td><td><span class="badge ok">已確認</span></td><td>Seven 的主要訊息</td><td>任務更新：追蹤台翰營造對工程進度與現場狀況的回覆 -&gt; 進行中 (created) 確認 Bonnie 財務資料是否需要寫入 Notion -&gt; 進行中 (created) 測試 #待辦 是否自動進入總控任務庫 -&gt; 進行中 (created)</td><td>補建 2026-06-07 每日總控總確認快照。</td></tr></tbody>
+        </table>
+      </section>
+
+      <section id="rules" class="section view-panel hidden">
+        <h2>任務判斷規則</h2>
+        <p class="muted">這裡列出 AMCore 共用任務判斷規則，以及目前專案自己的補充規則。校準學到的規則會接在後面，方便使用者理解 AM 為什麼建立、合併、封存或更新任務。</p>
+        
+        <h3>AMCore 共用規則</h3>
+        <table>
+          <thead><tr><th>規則</th><th>應該怎麼判斷</th><th>避免</th><th>原因</th><th>範圍／類別／狀態</th></tr></thead>
+          <tbody><tr>
+            <td>以主題串判斷任務，不以單一訊息判斷</td>
+            <td>先把同一 LINE 群組中的訊息依主題、回覆、時間連續性與明確換題切成主題串，再判斷是否成立任務。</td>
+            <td>不要把每一則訊息直接轉成一筆任務。</td>
+            <td>真實任務的原因、答案、完成證據常常分散在同一段對話中。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Task extraction</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>後續訊息能吸收時，更新既有任務</td>
+            <td>如果後續訊息回答、補資料、確認移交、改負責人、顯示卡點或關閉迴圈，更新既有任務並保存證據。</td>
+            <td>不要為同一件事新增重複任務。</td>
+            <td>AM 是事件控制系統，不是訊息轉任務的堆疊表。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Task reconciliation</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>只有真實行動或控制需求才成立任務</td>
+            <td>任務需包含行動、追蹤、決策、未解問題、交付承諾、阻塞、責任人或完成檢查。</td>
+            <td>不要把背景聊天、寒暄、純知識分享、測試文字、重複內容列為任務。</td>
+            <td>任務清單應該保留需要控制與推進的事項。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Task extraction</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>助理操作指令不是現實任務</td>
+            <td>查待辦、列出今天待辦、打開第幾個任務、開始校準、暫停校準等給 AM/Junior 的操作指令，只記錄為命令或來源訊息。</td>
+            <td>不要建立總控任務，除非同一句同時包含外部承諾、交付、期限或具體現實行動。</td>
+            <td>操作系統的指令和現實世界待辦要分開。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Assistant command</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>任務必須連回專案目標</td>
+            <td>每筆任務都應指向專案目標；若目標不明，標成候選或待釐清，而不是假裝已完整理解。</td>
+            <td>不要只用文字猜測專案歸屬而忽略專案主檔。</td>
+            <td>任務存在的價值來自它服務的較大結果。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Project goal</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>會議 checkbox 是已確認任務</td>
+            <td>會議紀錄中的 checkbox/to-do 項目直接進入專案任務庫，來源為 meeting，確認狀態為已確認。</td>
+            <td>不要再要求額外判斷它是不是任務。</td>
+            <td>會議紀錄已經用 checkbox 表示這是行動項目。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Meeting intake</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>狀態改變必須有來源證據</td>
+            <td>完成、等待、進行中、卡住、改期、改負責人都要記錄來源訊息、會議或報告證據。</td>
+            <td>不要因為沒有新討論就樂觀標成完成。</td>
+            <td>使用者需要能回頭稽核任務狀態為什麼改變。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Status tracking</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>已確認報告時間以收到確認為準</td>
+            <td>每日報告或進度檢查報告若已收到使用者確認，User UI 的時間欄應顯示確認收到或回覆結果寫入的時間；尚未確認時才顯示報告發送時間。</td>
+            <td>不要在已確認報告中仍只顯示原始發送時間，否則使用者會誤以為那是收到回覆的時間。</td>
+            <td>報告中心的時間應對應目前狀態：已確認代表回覆結果已回來，稽核時最重要的是確認發生時間。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Daily report</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>高風險事項需要人工確認</td>
+            <td>財務、契約、法律、人資、稅務、對外承諾等高風險事項可先標示進度，但最終關閉或外部動作要等專案負責人確認。</td>
+            <td>不要自動結案或自動對外承諾。</td>
+            <td>這類事項錯誤成本高，需要人工把關。</td>
+            <td><div class="rule-meta"><span class="badge neutral">AMCore</span><span class="badge neutral">Risk</span><span class="badge ok">Active</span></div></td>
+          </tr></tbody>
+        </table>
+        <h3>SEVEN_AM 專案規則</h3>
+        <table>
+          <thead><tr><th>規則</th><th>應該怎麼判斷</th><th>避免</th><th>原因</th><th>範圍／類別／狀態</th></tr></thead>
+          <tbody><tr>
+            <td>Seven Junior 指令與音譯別名不是任務</td>
+            <td>Seven Junior、7-Jr.、謝孟娟、謝夢娟等在 Seven Junior 對話中視為助理稱呼；查待辦或打開任務是操作指令。</td>
+            <td>不要把稱呼誤判成人名，也不要建立現實任務。</td>
+            <td>Seven Junior 的一對一或小群組對話常用這些稱呼操作系統。</td>
+            <td><div class="rule-meta"><span class="badge neutral">SEVEN_AM</span><span class="badge neutral">Assistant command</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>讀書會相關會議不進任務清單</td>
+            <td>只要是讀書會相關會議產生的任務或待辦，不列入 SevenAM 總控任務清單。</td>
+            <td>不要把讀書會討論、心得、導讀安排或相關會議項目轉成總控任務。</td>
+            <td>SevenAM 總控任務庫目前只追蹤需要營運或私人事務控制的任務。</td>
+            <td><div class="rule-meta"><span class="badge neutral">SEVEN_AM</span><span class="badge neutral">Meeting intake</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>正常回覆是完成證據，不是封存理由</td>
+            <td>若前段對話提出營運檢查，後續回覆正常、不需調整、已處理，應把既有任務推向完成或待確認完成。</td>
+            <td>不要因為不需要再處理就封存。</td>
+            <td>這類對話是有意義的狀態紀錄，應保留完成證據。</td>
+            <td><div class="rule-meta"><span class="badge neutral">SEVEN_AM</span><span class="badge neutral">Status tracking</span><span class="badge ok">Active</span></div></td>
+          </tr><tr>
+            <td>重複個人待辦要合併到主任務</td>
+            <td>例如報稅今天完成這類重複提醒，應合併到既有報稅主任務，並更新主任務優先級、下一步與提醒紀錄。</td>
+            <td>不要另開多筆同一事件的稅務任務。</td>
+            <td>重要性要保留在主任務上，任務清單不能被重複提醒洗版。</td>
+            <td><div class="rule-meta"><span class="badge neutral">SEVEN_AM</span><span class="badge neutral">Task reconciliation</span><span class="badge ok">Active</span></div></td>
+          </tr></tbody>
+        </table>
+        <h3>校準學習規則</h3>
+        <table>
+          <thead><tr><th>規則</th><th>應該怎麼判斷</th><th>避免</th><th>原因</th><th>範圍／類別／狀態</th></tr></thead>
+          <tbody><tr>
+            <td><a href="https://app.notion.com/p/37951c686dac81f58f1cf7720304019e" target="_blank" rel="noopener">以後只要看到讀書會相關會議產生的任何任務，都不用列入任務清單。</a></td>
+            <td>撤任務</td>
+            <td>Use assistant original judgment without controller calibration.</td>
+            <td>這是讀書會的會議記錄；讀書會屬於內部自學，不會有任務產生。</td>
+            <td><div class="rule-meta"><span class="badge neutral">SEVEN_AM</span><span class="badge neutral">Project calibration</span><span class="badge neutral">Needs review</span></div></td>
+          </tr></tbody>
+        </table>
+        
+        <div class="manual-rule-panel">
+          <h3>手動加入任務判斷規則</h3>
+          <form id="manualJudgmentRuleForm" class="manual-rule-form" data-default-applies-to="SEVEN_AM">
+            <div class="manual-rule-grid">
+              <label>規則名稱
+                <input name="name" required placeholder="例如：停班停課回覆正常時標記完成">
+              </label>
+              <label>適用範圍
+                <select name="appliesTo"><option value="AMCore">AMCore</option><option value="SEVEN_AM" selected>SEVEN_AM</option><option value="HOZO_AM">HOZO_AM</option><option value="future AM projects">future AM projects</option></select>
+              </label>
+              <label>類別
+                <select name="category">
+                  <option value="Task extraction">Task extraction</option>
+                  <option value="Task reconciliation">Task reconciliation</option>
+                  <option value="Status update">Status update</option>
+                  <option value="Assistant command">Assistant command</option>
+                  <option value="Project goal">Project goal</option>
+                  <option value="Meeting record">Meeting record</option>
+                </select>
+              </label>
+              <label>狀態
+                <select name="status">
+                  <option value="Needs review">Needs review</option>
+                  <option value="Active">Active</option>
+                </select>
+              </label>
+            </div>
+            <label>觸發條件
+              <textarea name="triggerPattern" rows="2" placeholder="看到什麼訊息、情境或關鍵字時要套用這條規則"></textarea>
+            </label>
+            <label>應該怎麼判斷
+              <textarea name="preferred" rows="3" required placeholder="請寫出正確處理方式"></textarea>
+            </label>
+            <label>避免
+              <textarea name="avoided" rows="2" placeholder="請寫出不該怎麼判斷"></textarea>
+            </label>
+            <label>原因
+              <textarea name="reason" rows="2" placeholder="為什麼這條規則成立"></textarea>
+            </label>
+            <div class="manual-rule-grid">
+              <label>例外
+                <textarea name="exceptions" rows="2" placeholder="哪些情況不適用"></textarea>
+              </label>
+              <label>檢查位置
+                <select name="checklistPlacement">
+                  <option value="Manual task judgment rules">Manual task judgment rules</option>
+                  <option value="Hourly LINE reconciliation">Hourly LINE reconciliation</option>
+                  <option value="Daily report review">Daily report review</option>
+                  <option value="Meeting extraction">Meeting extraction</option>
+                </select>
+              </label>
+            </div>
+            <div class="manual-rule-actions">
+              <button type="submit">儲存任務判斷規則</button>
+              <span id="manualJudgmentRuleResult" class="manual-rule-result"></span>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="env" class="section view-panel hidden">
+        <h2>Environment data</h2>
+        <p class="muted">此表由 AMCore 統一 EnvironmentData 欄位模板產出。標示 <strong>**必填**</strong> 的欄位必須有值；Secret 仍會遮蔽。</p>
+        <table>
+          <thead><tr><th>Type</th><th>Required</th><th>AM field</th><th>Project key</th><th>Status</th><th>Value</th></tr></thead>
+          <tbody><tr><td><span class="badge neutral">Credential</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_USER_UI_USERNAME**</strong></span></td><td><span class="mono">SEVEN_USER_UI_USERNAME</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">Seven</span></td></tr><tr><td><span class="badge neutral">Credential</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_USER_UI_PASSWORD**</strong></span></td><td><span class="mono">SEVEN_USER_UI_PASSWORD</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">••••••••••••••••</span></td></tr><tr><td><span class="badge wait">Secret</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**LINE_CHANNEL_ACCESS_TOKEN**</strong></span></td><td><span class="mono">LINE_CHANNEL_ACCESS_TOKEN</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">••••••••••••••••</span></td></tr><tr><td><span class="badge wait">Secret</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**LINE_CHANNEL_SECRET**</strong></span></td><td><span class="mono">LINE_CHANNEL_SECRET</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">••••••••••••••••</span></td></tr><tr><td><span class="badge wait">Secret</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**NOTION_TOKEN**</strong></span></td><td><span class="mono">NOTION_TOKEN</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">••••••••••••••••</span></td></tr><tr><td><span class="badge wait">Secret</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_CONTROL_API_KEY**</strong></span></td><td><span class="mono">SEVEN_CONTROL_API_KEY</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">••••••••••••••••</span></td></tr><tr><td><span class="badge neutral">Config</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**NOTION_VERSION**</strong></span></td><td><span class="mono">NOTION_VERSION</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">NOTION_CONTAINER_PAGE_ID</span></td><td><span class="mono">NOTION_CONTAINER_PAGE_ID</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_ATTACHMENT_CONVERSIONS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">727d16ff-9ef0-47ed-a83d-bbfd3bf4fb1b</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_ATTACHMENTS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_ATTACHMENTS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">623a3d80-d00c-4076-b3b4-a5ee153641d5</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">PROJECT_AUTOMATION_RUN_LOG_DATA_SOURCE_ID</span></td><td><span class="mono">SEVEN_AUTOMATION_RUN_LOG_DATA_SOURCE_ID</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_CODEX_COMMANDS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">c4eee8de-e596-4d64-906b-1405d79e721c</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_CONVERSATIONS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_CONVERSATIONS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">edd151eb-587d-4b70-a1a9-525e6b9af78d</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">8f7f95a5-7428-4490-9327-7943499a0e22</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">PROJECT_DATA_SOURCE_PARENT_BLOCK_ID</span></td><td><span class="mono">SEVEN_DATA_SOURCE_PARENT_BLOCK_ID</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">PROJECT_DATA_SOURCE_PARENT_PAGE_ID</span></td><td><span class="mono">SEVEN_DATA_SOURCE_PARENT_PAGE_ID</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">9714e599-5677-4071-afe4-3e577e1c412e</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_JUDGMENT_RULES_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">5dc0f7d1-7776-4724-8104-6b3e131dd972</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">PROJECT_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID</span></td><td><span class="mono">SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">d429187b-46b8-4e22-b79e-ed54c44fea04</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_LINE_GROUP_MEMBERS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">979949aa-bac3-45ac-a4cc-a38585addb89</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_LINE_GROUP_OPTIONS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">b6cfffbf-e7b2-4da4-b21d-d055bc68af69</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_MEETINGS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_MEETINGS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">fd551c68-6dac-830d-81bf-879f0a9582ba</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_MESSAGES_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_MESSAGES_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">63758b44-f3c4-4215-8c6e-208f7a492bf0</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_PROGRESS_REPORTS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">fc5e4e21-6af6-4de2-9380-aa95126ee13e</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_PROJECTS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_PROJECTS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">2d4e4e80-09e6-447f-b2e2-36269ff1ac5c</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_RESPONSIBILITY_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_RESPONSIBILITY_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">e8c2f582-edbe-42ab-9d7f-ba063bbf8b99</span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td>選用</td><td><span class="mono">PROJECT_RISK_DECISIONS_DATA_SOURCE_ID</span></td><td><span class="mono">SEVEN_RISK_DECISIONS_DATA_SOURCE_ID</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Notion ID</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_TASKS_DATA_SOURCE_ID**</strong></span></td><td><span class="mono">SEVEN_TASKS_DATA_SOURCE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">0bdc0de5-46ee-482c-b8d7-cdf6ec958467</span></td></tr><tr><td><span class="badge neutral">Database ID</span></td><td>選用</td><td><span class="mono">CONTROL_LINE_EVENTS_DATABASE_ID</span></td><td><span class="mono">CONTROL_LINE_EVENTS_DATABASE_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">d88eaaf7-07af-4370-95e4-17ec45db0baf</span></td></tr><tr><td><span class="badge neutral">LINE</span></td><td>選用</td><td><span class="mono">CONTROL_LINE_PUSH_URL</span></td><td><span class="mono">CONTROL_LINE_PUSH_URL</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">https://line-oa-webhook-nn5j.onrender.com/control/line/push</span></td></tr><tr><td><span class="badge neutral">LINE</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**LINE_CHANNEL_ID**</strong></span></td><td><span class="mono">LINE_CHANNEL_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">2010309641</span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">CRON_JOB_NAME</span></td><td><span class="mono">CRON_JOB_NAME</span></td><td><span class="badge wait">空值</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">DAILY_REPORT_URL</span></td><td><span class="mono">DAILY_REPORT_URL</span></td><td><span class="badge wait">空值</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">FOLLOWUP_CONFIRMATION_URL</span></td><td><span class="mono">FOLLOWUP_CONFIRMATION_URL</span></td><td><span class="badge wait">空值</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">MORNING_BRIEF_URL</span></td><td><span class="mono">MORNING_BRIEF_URL</span></td><td><span class="badge wait">空值</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">PROJECT_CRON_ALERTS_ENABLED</span></td><td><span class="mono">SEVEN_CRON_ALERTS_ENABLED</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">true</span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">PROJECT_REPORT_APPROVAL_KEY</span></td><td><span class="mono">SEVEN_REPORT_APPROVAL_KEY</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td>選用</td><td><span class="mono">PROJECT_REPORT_CC_NAME_KEYWORDS</span></td><td><span class="mono">SEVEN_REPORT_CC_NAME_KEYWORDS</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Report</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_REPORT_TARGET_ID**</strong></span></td><td><span class="mono">SEVEN_REPORT_TARGET_ID</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">U09dc6553016c78d89c515522be9b74f6</span></td></tr><tr><td><span class="badge neutral">Report</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_REPORT_TARGET_NAME_KEYWORD**</strong></span></td><td><span class="mono">SEVEN_REPORT_TARGET_NAME_KEYWORD</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">Seven</span></td></tr><tr><td><span class="badge neutral">Report</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_REPORT_TARGET_TYPE**</strong></span></td><td><span class="mono">SEVEN_REPORT_TARGET_TYPE</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">user</span></td></tr><tr><td><span class="badge neutral">URL</span></td><td>選用</td><td><span class="mono">CONTROL_API_URL</span></td><td><span class="mono">CONTROL_API_URL</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">URL</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_PUBLIC_BASE_URL**</strong></span></td><td><span class="mono">SEVEN_PUBLIC_BASE_URL</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">https://line-oa-webhook-nn5j.onrender.com</span></td></tr><tr><td><span class="badge neutral">Runtime</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PORT**</strong></span></td><td><span class="mono">PORT</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">3002</span></td></tr><tr><td><span class="badge neutral">Config</span></td><td>選用</td><td><span class="mono">PROJECT_CODEX_COMMAND_TRIGGERS</span></td><td><span class="mono">SEVEN_CODEX_COMMAND_TRIGGERS</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr><tr><td><span class="badge neutral">Config</span></td><td><strong>**必填**</strong></td><td><span class="mono"><strong>**PROJECT_JUDGMENT_REVIEW_TARGET_NAME_KEYWORD**</strong></span></td><td><span class="mono">SEVEN_JUDGMENT_REVIEW_TARGET_NAME_KEYWORD</span></td><td><span class="badge ok">有值</span></td><td><span class="mono">Seven 陳聖文</span></td></tr><tr><td><span class="badge neutral">Config</span></td><td>選用</td><td><span class="mono">PROJECT_OUTGOING_ACTOR_NAME</span></td><td><span class="mono">SEVEN_OUTGOING_ACTOR_NAME</span></td><td><span class="badge bad">缺欄位</span></td><td><span class="mono"></span></td></tr></tbody>
+        </table>
+      </section>
+
+      <section id="databases" class="section view-panel hidden">
+        <h2>Database map</h2>
+        <table>
+          <thead><tr><th>Module</th><th>Data source</th><th>Rows loaded</th><th>Properties</th></tr></thead>
+          <tbody><tr><td>projectMaster</td><td><a href="https://app.notion.com/p/2d4e4e8009e6447fb2e236269ff1ac5c" target="_blank" rel="noopener">總控專案庫</a></td><td>9</td><td>啟用:checkbox, 關聯 LINE 對話:url, 目前進度摘要:rich_text, 下一步:rich_text, 關聯既有 Notion 頁面:url, 目標:rich_text, 成功條件:rich_text, 建立來源:select, 主要風險:rich_text, 專案類型:select, 目標完成日:date, 關聯任務:relation, 優先級:select, 開始日期:date, 狀態:select, 負責人:r...</td></tr><tr><td>tasks</td><td><a href="https://app.notion.com/p/0bdc0de546ee482cb8d7cdf6ec958467" target="_blank" rel="noopener">總控任務庫</a></td><td>21</td><td>總控專案:relation, 下一步:rich_text, 逾期狀態:select, 負責人:rich_text, 信心等級:select, 截止日:date, Codex 判斷摘要:rich_text, 母任務:relation, 確認狀態:select, 來源原文:rich_text, 專案:select, 優先級:select, 期限依據:rich_text, 子任務:relation, 最後更新:date, 下次追蹤日:date...</td></tr><tr><td>conversations</td><td><a href="https://app.notion.com/p/edd151eb587d4b70a1a9525e6b9af78d" target="_blank" rel="noopener">Seven LINE 對話主檔</a></td><td>62</td><td>Room ID:rich_text, 最後任務判斷訊息時間:date, User ID:rich_text, 對話統一鍵:rich_text, 備註:rich_text, 總控專案:select, 任務判斷狀態:select, 最新訊息預覽:rich_text, 監控狀態:select, 最後訊息時間:date, 自定義名稱:rich_text, 最後任務判斷時間:date, 訊息數（總）:number, 關聯專案:multi_sele...</td></tr><tr><td>messages</td><td>(not configured)</td><td>304</td><td></td></tr><tr><td>attachments</td><td><a href="https://app.notion.com/p/623a3d80d00c4076b3b4a5ee153641d5" target="_blank" rel="noopener">Seven LINE 附件紀錄</a></td><td>13</td><td>Content-Type:rich_text, 轉檔狀態:select, 關聯轉檔頁:url, 對話主檔:relation, 檔案大小:number, 訊息紀錄:relation, LINE 事件 ID:rich_text, 檔案名稱:rich_text, 關聯專案:multi_select, 附件類型:select, 來源連結:url, 建立時間:date, 附件檔案:files, 來源:select, LINE 訊息 ID:rich...</td></tr><tr><td>meetings</td><td><a href="https://app.notion.com/p/fd551c686dac830d81bf879f0a9582ba" target="_blank" rel="noopener">Seven-AM 會議記錄</a></td><td>2</td><td>部門:select, 影片:url, 建立者:created_by, 日期:date, 類別:multi_select, 摘要:rich_text, 選擇專案:select, 與會者:people, 會議名稱:title, 會議記錄:rich_text</td></tr><tr><td>progressReports</td><td><a href="https://app.notion.com/p/fc5e4e216af64de29380aa95126ee13e" target="_blank" rel="noopener">專案進度報表庫</a></td><td>61</td><td>下一步:rich_text, 專案:select, 負責人:rich_text, 主要卡點:rich_text, 需要 Seven 決策:rich_text, 完成度:number, 報表週期:date, 本週進展:rich_text, 關聯頁面:url, 目前狀態:select, 報表名稱:title</td></tr><tr><td>dailyReportSnapshots</td><td><a href="https://app.notion.com/p/8f7f95a57428449093277943499a0e22" target="_blank" rel="noopener">每日總控報告快照庫</a></td><td>9</td><td>LINE訊息內容:rich_text, 狀態:select, CronJob:rich_text, 發送時間:date, RunID:rich_text, 報告日期:date, 報告類型:select, 確認紀錄連結:url, 目標:rich_text, 摘要:rich_text, 確認時間:date, 報告連結:url, 報告名稱:title</td></tr><tr><td>judgmentRules</td><td><a href="https://app.notion.com/p/5dc0f7d17776472481046b3e131dd972" target="_blank" rel="noopener">Seven 判斷規則庫</a></td><td>1</td><td>Trigger Pattern:rich_text, Source Case Count:number, Reason:rich_text, Preferred Judgment:rich_text, Exceptions:rich_text, Status:select, Avoided Judgment:rich_text, Checklist Placement:select, Last Verified:date, Applie...</td></tr><tr><td>judgmentCases</td><td><a href="https://app.notion.com/p/9714e59956774071afe43e577e1c412e" target="_blank" rel="noopener">Seven 判斷校準案例庫</a></td><td>2</td><td>Controller Replied At:date, Source Task:relation, Rule Link:relation, Controller Judgment:rich_text, Assistant Confidence:select, Case Status:select, Project:select, Data Boundary Check:checkbox, Task Type:select, Contro...</td></tr><tr><td>commands</td><td><a href="https://app.notion.com/p/c4eee8dee5964d64906b1405d79e721c" target="_blank" rel="noopener">Codex Command Queue</a></td><td>25</td><td>Original Text:rich_text, Risk Level:select, User ID:rich_text, Received At:date, LINE Event ID:rich_text, Raw Event:rich_text, Actor Name:rich_text, Source ID:rich_text, Conversation Name:rich_text, Trigger:rich_text, So...</td></tr></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script>
+    const panels = Array.from(document.querySelectorAll('.view-panel'));
+    const navLinks = Array.from(document.querySelectorAll('.nav [data-view]'));
+    const storagePrefix = 'sevenam-user-ui:';
+    let attachmentBasicAuth = sessionStorage.getItem(storagePrefix + 'basicAuth') || '';
+    const viewLabels = {
+      overview: '檔案總覽',
+      projects: '所有專案',
+      tasks: '所有任務',
+      line: 'LINE 群組與訊息',
+      attachments: '附件與檔案',
+      meetings: '會議紀錄',
+      reports: '每日報告中心',
+      rules: '任務判斷規則',
+      env: 'Environment data',
+      databases: 'Database map',
+      'project-detail': '專案詳細'
+    };
+    function viewForHash(hash) {
+      if ((hash || '').startsWith('project-detail-')) return 'project-detail';
+      if ((hash || '').startsWith('line-conversation-')) return 'line';
+      return hash || 'overview';
+    }
+    function updateProjectDetail(hash) {
+      const match = String(hash || '').match(/^project-detail-(\d+)$/);
+      const selected = match ? match[1] : '0';
+      document.querySelectorAll('[data-project-detail-panel]').forEach((panel) => {
+        panel.classList.toggle('hidden', panel.dataset.projectDetailPanel !== selected);
+      });
+    }
+    function showView(view, options = {}) {
+      const nextView = panels.some((panel) => panel.id === view) ? view : 'overview';
+      panels.forEach((panel) => panel.classList.toggle('hidden', panel.id !== nextView));
+      navLinks.forEach((link) => link.classList.toggle('active', link.dataset.view === nextView));
+      document.getElementById('currentViewLabel').textContent = viewLabels[nextView] || nextView;
+      if (!options.keepHash && location.hash !== '#' + nextView) history.replaceState(null, '', '#' + nextView);
+    }
+    function updateTaskFilters() {
+      const activeStatuses = new Set(Array.from(document.querySelectorAll('[data-status-filter].active')).map((button) => button.dataset.statusFilter));
+      const mode = document.querySelector('[data-task-mode].active')?.dataset.taskMode || 'list';
+      let visibleCount = 0;
+      document.querySelectorAll('[data-task-row]').forEach((row) => {
+        const visible = activeStatuses.has(row.dataset.status);
+        row.style.display = visible ? '' : 'none';
+        if (visible) visibleCount += 1;
+      });
+      document.querySelectorAll('[data-task-card]').forEach((card) => {
+        card.style.display = activeStatuses.has(card.dataset.status) ? '' : 'none';
+      });
+      document.querySelectorAll('[data-task-group]').forEach((group) => {
+        const visibleCards = Array.from(group.querySelectorAll('[data-task-card]')).filter((card) => card.style.display !== 'none').length;
+        group.style.display = visibleCards ? '' : 'none';
+        const countNode = group.querySelector('[data-group-count]');
+        if (countNode) countNode.textContent = visibleCards + ' tasks';
+      });
+      document.getElementById('taskTable').classList.toggle('hidden', mode !== 'list');
+      document.getElementById('taskProjectGroups').classList.toggle('hidden', mode !== 'project');
+      const summary = document.getElementById('taskFilterSummary');
+      if (summary) summary.textContent = '目前顯示 ' + visibleCount + ' / ' + document.querySelectorAll('[data-task-row]').length + ' 筆任務。';
+    }
+    document.querySelectorAll('[data-status-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.classList.toggle('active');
+        button.classList.toggle('off', !button.classList.contains('active'));
+        updateTaskFilters();
+      });
+    });
+    document.querySelectorAll('[data-task-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-task-mode]').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        updateTaskFilters();
+      });
+    });
+    const attachmentApiInput = document.getElementById('attachmentApiBaseUrl');
+    const savedAttachmentApiBase = localStorage.getItem(storagePrefix + 'apiBaseUrl');
+    if (attachmentApiInput && location.protocol.startsWith('http') && location.pathname.startsWith('/user-ui')) {
+      attachmentApiInput.value = location.origin;
+    } else if (attachmentApiInput && savedAttachmentApiBase) {
+      attachmentApiInput.value = savedAttachmentApiBase;
+    }
+    document.getElementById('rememberAttachmentApiButton')?.addEventListener('click', () => {
+      const value = attachmentApiInput?.value.trim() || '';
+      if (value) localStorage.setItem(storagePrefix + 'apiBaseUrl', value);
+      const globalResult = document.getElementById('attachmentGlobalResult');
+      if (globalResult) globalResult.textContent = value ? 'API 位置已記住在此瀏覽器。' : '請先填入 API Base URL。';
+    });
+    function currentApiBaseUrl() {
+      if (location.protocol.startsWith('http') && location.pathname.startsWith('/user-ui')) return location.origin;
+      const visibleInputValue = attachmentApiInput?.value.trim();
+      if (visibleInputValue) return visibleInputValue.replace(/\/+$/, '');
+      return (localStorage.getItem(storagePrefix + 'apiBaseUrl') || "https://line-oa-webhook-nn5j.onrender.com").replace(/\/+$/, '');
+    }
+    function getAttachmentAuthHeader() {
+      if (attachmentBasicAuth) return 'Basic ' + attachmentBasicAuth;
+      const username = window.prompt('請輸入 User UI username');
+      if (!username) return '';
+      const password = window.prompt('請輸入 User UI password');
+      if (password === null) return '';
+      attachmentBasicAuth = btoa(username + ':' + password);
+      sessionStorage.setItem(storagePrefix + 'basicAuth', attachmentBasicAuth);
+      return 'Basic ' + attachmentBasicAuth;
+    }
+    async function updateAttachment(control, action) {
+      const apiBaseUrl = currentApiBaseUrl();
+      const resultNode = control.querySelector('[data-attachment-result]');
+      const pageId = control.dataset.attachmentId;
+      const projects = control.querySelector('[data-attachment-projects]')?.value || '';
+      const status = control.querySelector('[data-attachment-status]')?.value || '';
+      const editNote = control.querySelector('[data-attachment-note]')?.value || '';
+      if (!apiBaseUrl) {
+        resultNode.textContent = '請先設定 API Base URL。';
+        return;
+      }
+      if (action === 'archive' && !window.confirm('確定要把這個附件標記為不保存並封存嗎？')) {
+        return;
+      }
+      const authHeader = getAttachmentAuthHeader();
+      if (!authHeader) {
+        resultNode.textContent = '尚未登入，無法儲存。';
+        return;
+      }
+      resultNode.textContent = '正在處理...';
+      control.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+      try {
+        const response = await fetch(apiBaseUrl + '/control/attachments/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader,
+          },
+          body: JSON.stringify({
+            pageId,
+            updates: {
+              action,
+              projects,
+              status,
+              editNote,
+            },
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || '操作失敗');
+        }
+        if (action === 'archive') {
+          control.closest('tr')?.remove();
+          return;
+        }
+        resultNode.textContent = action === 'convert'
+          ? '已建立待轉檔請求。重新產生 User UI 後會看到轉檔頁連結。'
+          : '已儲存到 Notion。重新產生 User UI 後會看到最新資料。';
+      } catch (error) {
+        if (/Unauthorized/i.test(error.message || '')) {
+          attachmentBasicAuth = '';
+          sessionStorage.removeItem(storagePrefix + 'basicAuth');
+        }
+        resultNode.textContent = '操作失敗：' + (error.message || error);
+      } finally {
+        control.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+      }
+    }
+    document.querySelectorAll('[data-attachment-action]').forEach((button) => {
+      button.addEventListener('click', () => updateAttachment(button.closest('[data-attachment-id]'), button.dataset.attachmentAction));
+    });
+    document.getElementById('manualJudgmentRuleForm')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const resultNode = document.getElementById('manualJudgmentRuleResult');
+      const apiBaseUrl = currentApiBaseUrl();
+      if (!apiBaseUrl) {
+        resultNode.textContent = '請先設定 API Base URL。';
+        return;
+      }
+      const authHeader = getAttachmentAuthHeader();
+      if (!authHeader) {
+        resultNode.textContent = '尚未登入，無法儲存。';
+        return;
+      }
+      const formData = new FormData(form);
+      resultNode.textContent = '正在儲存...';
+      form.querySelectorAll('button,input,select,textarea').forEach((node) => { node.disabled = true; });
+      try {
+        const response = await fetch(apiBaseUrl + '/control/judgment-rules/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader,
+          },
+          body: JSON.stringify(Object.fromEntries(formData.entries())),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || '儲存失敗');
+        }
+        form.reset();
+        if (form.dataset.defaultAppliesTo && form.elements.appliesTo) form.elements.appliesTo.value = form.dataset.defaultAppliesTo;
+        resultNode.textContent = '已儲存。重新產生 User UI 後會出現在校準學習規則。';
+      } catch (error) {
+        if (/Unauthorized/i.test(error.message || '')) {
+          attachmentBasicAuth = '';
+          sessionStorage.removeItem(storagePrefix + 'basicAuth');
+        }
+        resultNode.textContent = '儲存失敗：' + (error.message || error);
+      } finally {
+        form.querySelectorAll('button,input,select,textarea').forEach((node) => { node.disabled = false; });
+      }
+    });
+    navLinks.forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        showView(link.dataset.view);
+      });
+    });
+    document.querySelectorAll('[data-project-detail-link]').forEach((link) => {
+      link.addEventListener('click', () => {
+        updateProjectDetail(link.getAttribute('href').slice(1));
+        showView('project-detail', { keepHash: true });
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+      });
+    });
+    window.addEventListener('hashchange', () => {
+      const hash = location.hash.slice(1);
+      if (hash.startsWith('project-detail-')) updateProjectDetail(hash);
+      showView(viewForHash(hash), { keepHash: true });
+      if (!hash.startsWith('project-detail-') && hash) document.getElementById(hash)?.scrollIntoView({ block: 'start' });
+    });
+    const initialHash = location.hash.slice(1);
+    if (initialHash.startsWith('project-detail-')) updateProjectDetail(initialHash);
+    else updateProjectDetail('project-detail-0');
+    showView(viewForHash(initialHash), { keepHash: Boolean(initialHash) });
+    if (initialHash && !initialHash.startsWith('project-detail-')) setTimeout(() => document.getElementById(initialHash)?.scrollIntoView({ block: 'start' }), 0);
+    updateTaskFilters();
+  </script>
+</body>
+</html>

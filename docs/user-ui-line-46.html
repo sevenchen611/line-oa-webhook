@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>會計自動化顧問群組 - AM Project User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .preline { white-space:pre-wrap; }
+    .message-media { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+    .message-media a { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#f8fafc; }
+    .message-media img { display:block; width:180px; max-width:100%; max-height:180px; object-fit:cover; }
+    .message-file { padding:8px 10px; font-weight:800; }
+    .line-archive-message { margin:0 0 14px; }
+    .line-archive-head { color:#1d4ed8; font-weight:800; }
+    .line-archive-head.assistant { color:#c2410c; }
+    .line-archive-body { margin-top:6px; color:var(--ink); white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">AM Project</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#line" data-back-link>← 回到上一頁</a></p>
+      <h1>會計自動化顧問群組</h1>
+      <p>
+        <span class="badge ok">Project: 財務</span>
+        <span class="badge neutral">群組</span>
+        <span class="badge ok">啟用</span>
+        <span class="badge neutral">36 messages</span>
+      </p>
+      <section class="section">
+        <h2>群組資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>最新訊息預覽</th><td>謝謝</td></tr>
+            <tr><th>最後訊息時間</th><td>2026-06-10T11:14:00.000+00:00</td></tr>
+            <tr><th>訊息數</th><td>36</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>對話訊息</h2>
+        <p class="muted">共 17 筆對話主檔訊息。</p>
+        <table>
+          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th></tr></thead>
+          <tbody><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午7:14:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">謝謝</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午5:42:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">有log嗎</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午5:09:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">目前最有可能的原因是籤卡驅動有衝突
+我有改了方法可以降低衝突的可能性
+如果還是會閃退
+那就可能需要提供一下這台電腦的險卡型號
+我再來看針對這台顯卡看要怎麼做調整</div>
+  </div></td></tr><tr><td>李岳軒</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午5:07:00】會計自動化顧問群組 - 李岳軒（圖片訊息）</div>
+    <div class="preline">617822876569698767</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午5:07:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">這版幫我看一下</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:57:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">好</div>
+  </div></td></tr><tr><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:57:00】會計自動化顧問群組 - 葉綠宿財務主管&lt;黃瓊慧&gt;（文字訊息）</div>
+    <div class="preline">另一個夥伴今日請假，要明天測試</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:56:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">有其他夥伴有反映相同的狀況嗎
+還是只有這台</div>
+  </div></td></tr><tr><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:56:00】會計自動化顧問群組 - 葉綠宿財務主管&lt;黃瓊慧&gt;（文字訊息）</div>
+    <div class="preline">了解</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:55:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">我等等在貼一版 如果不行 可能要 當天開會的時候 讓我看一下電腦直接看配置比較清楚了</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:06:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">@葉綠宿財務主管&lt;黃瓊慧&gt; 這版應該可以動了
+如果還是不可以 就在給我一版log
+我有猜測到原因了只是還需要確認看看</div>
+  </div></td></tr><tr><td>李岳軒</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午4:06:00】會計自動化顧問群組 - 李岳軒（圖片訊息）</div>
+    <div class="preline">617816736124895424</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午3:25:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">謝謝</div>
+  </div></td></tr><tr><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午3:24:00】會計自動化顧問群組 - 葉綠宿財務主管&lt;黃瓊慧&gt;（圖片訊息）</div>
+    <div class="preline">617812577723875794</div>
+  </div></td></tr><tr><td>葉綠宿財務主管&lt;黃瓊慧&gt;</td><td>file</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午3:22:00】會計自動化顧問群組 - 葉綠宿財務主管&lt;黃瓊慧&gt;（檔案訊息）</div>
+    <div class="preline">檔案：app.log
+附件資料庫：app.log</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午3:19:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">如果有這個檔案也一起給我</div>
+  </div></td></tr><tr><td>李岳軒</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午3:19:00】會計自動化顧問群組 - 李岳軒（文字訊息）</div>
+    <div class="preline">tartup_hang.txt 這裡有可能會有這個</div>
+  </div></td></tr></tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>附件與檔案</h2>
+        <p class="muted">共 3 個附件。</p>
+        <table>
+          <thead><tr><th>File</th><th>Sender</th><th>Message</th><th>Status</th></tr></thead>
+          <tbody><tr><td><a href="https://app.notion.com/p/app-log-37b51c686dac81b78131c8aebad7373d" target="_blank" rel="noopener">app.log</a></td><td></td><td></td><td><span class="badge neutral">失敗</span></td></tr><tr><td><a href="https://app.notion.com/p/app-log-37b51c686dac81c892c0cdfba8838a6d" target="_blank" rel="noopener">app.log</a></td><td></td><td></td><td><span class="badge neutral">失敗</span></td></tr><tr><td><a href="https://app.notion.com/p/app-log-37b51c686dac817b841fdae0719ae7ff" target="_blank" rel="noopener">app.log</a></td><td></td><td></td><td><span class="badge neutral">失敗</span></td></tr></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.querySelector('[data-back-link]')?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+  </script>
+</body>
+</html>

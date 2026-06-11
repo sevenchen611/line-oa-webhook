@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>財務 - AM Project User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    h3 { margin:18px 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    .edit-grid { display:grid; grid-template-columns:repeat(2,minmax(220px,1fr)); gap:12px; }
+    .field { display:flex; flex-direction:column; gap:6px; }
+    .field.full { grid-column:1 / -1; }
+    label { color:#344253; font-size:13px; font-weight:850; }
+    input,select,textarea { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:9px 10px; font:inherit; font-size:14px; }
+    textarea { min-height:86px; resize:vertical; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:14px; }
+    button { min-height:36px; border:1px solid #1d4ed8; border-radius:6px; background:#2563eb; color:#fff; padding:8px 12px; font-weight:850; cursor:pointer; }
+    button.secondary { background:#fff; color:#1d4ed8; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .save-status { color:var(--muted); font-size:13px; }
+    .project-task-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; margin:12px 0 14px; }
+    .filter-label { color:var(--muted); font-size:13px; font-weight:850; margin-right:2px; }
+    .status-check { display:inline-flex; gap:6px; align-items:center; min-height:32px; cursor:pointer; user-select:none; }
+    .status-check input { width:16px; min-height:16px; accent-color:#2563eb; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; width:140px; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    .link-list { display:flex; flex-direction:column; gap:6px; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">AM Project</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#projects" data-back-link>← 回到上一頁</a></p>
+      <h1>財務</h1>
+      <p>
+        <span class="badge neutral">規劃中</span>
+        <span class="badge neutral">Seven</span>
+      </p>
+      <div class="note">這是單一專案頁。此頁只顯示「財務」的資料，不顯示其他專案。</div>
+      <section class="section">
+        <h2>專案資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>目標</th><td>管理公司財務、報稅、付款、請款、收支與財務決策。</td></tr>
+            <tr><th>目前進度</th><td>尚未正式建立 LINE 對話來源與財務工作流。</td></tr>
+            <tr><th>下一步</th><td>定義財務資料來源與哪些附件需要優先解析。</td></tr>
+            <tr><th>主要風險</th><td>報稅與財務資料具時效與高風險，需要人工確認。</td></tr>
+            <tr><th>成功條件</th><td></td></tr>
+            <tr><th>LINE 對話</th><td><div class="link-list"><a href="user-ui-line-10.html">茲心園幹部群 (51 messages)</a><a href="user-ui-line-12.html">吳碧純 (11 messages)</a><a href="user-ui-line-16.html">葉綠宿房東林董 (1 messages)</a><a href="user-ui-line-17.html">蔡其興借人民幣用 (1 messages)</a><a href="user-ui-line-18.html">漂鳥&lt;投資&gt; (1 messages)</a><a href="user-ui-line-19.html">白代書&lt;原民地買賣&gt; (1 messages)</a><a href="user-ui-line-20.html">財務部&amp;專案部 (1 messages)</a><a href="user-ui-line-21.html">獎金規劃討論 (1 messages)</a><a href="user-ui-line-22.html">蔡董人民幣 (1 messages)</a><a href="user-ui-line-23.html">博旅旅館&lt;投資&gt; (1 messages)</a><a href="user-ui-line-24.html">林順成，原民地 (1 messages)</a><a href="user-ui-line-25.html">吳碧純 (1 messages)</a><a href="user-ui-line-26.html">佪嘉居&lt;投資&gt; (1 messages)</a><a href="user-ui-line-27.html">Charles Lai (1 messages)</a><a href="user-ui-line-28.html">Kevin &amp; Woody (1 messages)</a><a href="user-ui-line-29.html">立鉑國際 &lt;投資&gt; (1 messages)</a><a href="user-ui-line-30.html">葉綠宿房東群組 (1 messages)</a><a href="user-ui-line-31.html">萬鑫-謝會計師 (1 messages)</a><a href="user-ui-line-32.html">一中漫走房東 (1 messages)</a><a href="user-ui-line-33.html">茲心園幹部盜用公款 (1 messages)</a><a href="user-ui-line-34.html">程果科技&lt;投資&gt; (1 messages)</a><a href="user-ui-line-35.html">葉綠宿＆台銀 (1 messages)</a><a href="user-ui-line-36.html">預算會議-光合 (1 messages)</a><a href="user-ui-line-37.html">預算會議-城光 (1 messages)</a><a href="user-ui-line-38.html">預算會議-茲心園 (1 messages)</a><a href="user-ui-line-39.html">預算會議-綠宿 (1 messages)</a><a href="user-ui-line-40.html">預算會議-茶覺旅 (1 messages)</a><a href="user-ui-line-41.html">預算會議-一中 (1 messages)</a><a href="user-ui-line-42.html">預算會議-橙宿 (1 messages)</a><a href="user-ui-line-43.html">葉綠宿採購群 (1 messages)</a><a href="user-ui-line-44.html">葉綠宿_財務部 (2 messages)</a><a href="user-ui-line-45.html">KevinJen, Seven陳聖文, 葉綠宿財務主管&lt;黃瓊慧&gt; (1 messages)</a><a href="user-ui-line-46.html">會計自動化顧問群組 (36 messages)</a><a href="user-ui-line-47.html">Seven &amp; Amber (12 messages)</a><a href="user-ui-line-54.html">用印群組 (1 messages)</a></div></td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>Notion 頁面內容</h2>
+        <div class="card"><p class="muted">No page content loaded.</p></div>
+      </section>
+      <section class="section">
+        <h2>這個專案下面的任務</h2>
+        <p class="muted">共 5 筆任務。</p>
+        <div class="project-task-toolbar" id="projectTaskStatusFilters">
+          <span class="filter-label">Status</span>
+          <label class="status-check">
+      <input type="checkbox" checked data-project-status-checkbox="未開始">
+      <span class="badge wait">未開始 (1)</span>
+    </label><label class="status-check">
+      <input type="checkbox" checked data-project-status-checkbox="等待回覆">
+      <span class="badge wait">待回覆 (2)</span>
+    </label><label class="status-check">
+      <input type="checkbox" checked data-project-status-checkbox="進行中">
+      <span class="badge neutral">進行中 (2)</span>
+    </label>
+        </div>
+        <p id="projectTaskFilterSummary" class="muted"></p>
+        <table>
+          <thead><tr><th>Task</th><th>Status</th><th>Owner</th><th>Next step</th></tr></thead>
+          <tbody>
+    <tr data-project-task-row data-status="進行中">
+      <td><a href="user-ui-task-5.html">追蹤需要補放行的款項</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>Amber / Seven</td>
+      <td>確認需要補放行的款項清單、放行人與完成狀態。</td>
+    </tr>
+  
+    <tr data-project-task-row data-status="進行中">
+      <td><a href="user-ui-task-12.html">排除會計自動化工具打不開問題並完成測試</a></td>
+      <td><span class="badge neutral">進行中</span></td>
+      <td>會計自動化顧問群組</td>
+      <td>請使用者重新安裝版本、提供 LOG 與顯卡型號，必要時會議時直接檢查電腦配置並完成明日測試。</td>
+    </tr>
+  
+    <tr data-project-task-row data-status="未開始">
+      <td><a href="user-ui-task-6.html">通知股權轉換完成</a></td>
+      <td><span class="badge wait">未開始</span></td>
+      <td>Seven / Amber</td>
+      <td>確認通知對象與內容，完成股權轉換完成通知。</td>
+    </tr>
+  
+    <tr data-project-task-row data-status="等待回覆">
+      <td><a href="user-ui-task-15.html">確認兩筆申請是否可送財務</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>陳逸凡</td>
+      <td>請逸凡確認兩筆是否可以申請，確認後回覆財務。</td>
+    </tr>
+  
+    <tr data-project-task-row data-status="等待回覆">
+      <td><a href="user-ui-task-4.html">追蹤吳碧純回國後資訊與詢問回覆</a></td>
+      <td><span class="badge wait">等待回覆</span></td>
+      <td>吳碧純 / Seven</td>
+      <td>等待碧純姐回國後詢問並補回相關資訊。</td>
+    </tr>
+  </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script>
+    function updateProjectTaskFilters() {
+      const checkedStatuses = new Set(Array.from(document.querySelectorAll('[data-project-status-checkbox]:checked')).map((input) => input.dataset.projectStatusCheckbox));
+      let visibleCount = 0;
+      document.querySelectorAll('[data-project-task-row]').forEach((row) => {
+        const visible = checkedStatuses.has(row.dataset.status);
+        row.style.display = visible ? '' : 'none';
+        if (visible) visibleCount += 1;
+      });
+      const summary = document.getElementById('projectTaskFilterSummary');
+      if (summary) summary.textContent = '目前顯示 ' + visibleCount + ' / ' + document.querySelectorAll('[data-project-task-row]').length + ' 筆任務。';
+    }
+    document.querySelectorAll('[data-project-status-checkbox]').forEach((input) => {
+      input.addEventListener('change', updateProjectTaskFilters);
+    });
+    updateProjectTaskFilters();
+    document.querySelector('[data-back-link]')?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+  </script>
+</body>
+</html>

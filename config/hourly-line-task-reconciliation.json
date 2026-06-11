@@ -22,6 +22,111 @@
     "recent meeting records and report decisions when available"
   ],
   "coreQuestion": "Is this new message an extension/status update/evidence for an existing task, or is it a new event that needs a new task?",
+  "masterPromptPolicy": {
+    "name": "Conversation-to-task event-line judgment",
+    "version": "2026-06-10-main-controller-last",
+    "highestPrinciple": "Do not convert messages to tasks one by one. First understand each conversation as an event timeline, then decide whether to create, update, complete, archive, or ignore tasks.",
+    "sourceRules": [
+      "Use only the project-local LINE conversation master as task judgment source.",
+      "Do not use the raw LINE message log as task judgment source.",
+      "Conversation master pages are normally newest-first; reverse them and read old-to-new before judging.",
+      "Private and business items can both become tasks when the AM is a personal assistant, but classify them as private, business, mixed, controller, or unknown."
+    ],
+    "mainControllerConversation": {
+      "purpose": "The main controller conversation is the highest-priority source for user instructions, task results, rule corrections, cross-group answers, and final status overrides.",
+      "projectNameBasedAliases": {
+        "SevenAM": [
+          "Seven Junior",
+          "7Junior",
+          "7 Junior",
+          "Seven Jr.",
+          "7 Jr."
+        ],
+        "HOZO_AM": [
+          "HOZO Junior",
+          "HOZO Jr.",
+          "Hozo Junior",
+          "Hozo Jr."
+        ],
+        "genericPattern": [
+          "{ProjectName} Junior",
+          "{ProjectName} Jr.",
+          "{AssistantName} Junior",
+          "{AssistantName} Jr."
+        ]
+      },
+      "orderingRule": "Always analyze the main controller conversation after all ordinary conversations. Use its decisions and results to revise earlier conversation judgments.",
+      "neverExclude": true,
+      "operationCommandsThatAreNotTasks": [
+        "query current tasks",
+        "list today's tasks",
+        "open task by number",
+        "show current task status",
+        "reload or open User UI",
+        "start, pause, or check calibration status when no separate real-world action is included"
+      ],
+      "controllerSignalsThatMustAffectJudgment": [
+        "new task instructions",
+        "completion reports",
+        "task cancellation or do-not-track decisions",
+        "task judgment rule updates",
+        "cross-conversation task results",
+        "project background supplied by the user",
+        "deadline or schedule instructions",
+        "status corrections for earlier candidates",
+        "daily report decisions and confirmations"
+      ],
+      "overrideRule": "A clear user decision in the main controller conversation may complete, archive, suppress, reclassify, or update a task candidate produced from another conversation."
+    },
+    "eventLineReadingFlow": [
+      "Identify all conversations and the main controller conversation.",
+      "Analyze ordinary conversations first, old-to-new.",
+      "Split each conversation into event lines or topic threads, not single messages.",
+      "For each event line, determine the cause, requester, owner, deadline, replies, blockers, completion evidence, and whether it is only background or system operation.",
+      "Merge multiple messages from the same event into one judgment.",
+      "After ordinary conversations are analyzed, analyze the main controller conversation old-to-new.",
+      "Apply main-controller completion reports, cancellations, rule updates, and cross-group answers back onto the earlier provisional judgments."
+    ],
+    "topicBoundaryRules": [
+      "In the main controller conversation, long notebook-style messages must be split by real subject and project event, not by isolated keywords.",
+      "Numeric business terms such as revenue, cost, rent, price, or annual sales do not imply tax unless the surrounding event is actually about tax filing, tax documents, tax payment, or tax deadlines.",
+      "Investment observations, site visits, operating estimates, rent negotiation, offer letters, checks, and requests for operating reports must be assigned to the relevant investment or project-evaluation task, even when they appear inside the main controller conversation.",
+      "If one main-controller message contains conclusions for another conversation group, attach those conclusions to the target project task and do not leave them inside an unrelated personal or tax task.",
+      "When evidence is attached to a task, verify every evidence paragraph still belongs to that task's subject before creating or updating the formal task."
+    ],
+    "taskCreationConditions": [
+      "clear action required",
+      "someone is asked to handle, confirm, reply, provide data, send, pay, approve, test, or follow up",
+      "deadline or time commitment exists",
+      "waiting for a reply, data, test, approval, or result",
+      "blocker, failure, exception, missing data, or unfinished state exists",
+      "money, contract, tax, HR, legal, customer, operation, or external commitment risk exists",
+      "follow-up is still useful",
+      "completed event still needs historical control record",
+      "task cancellation, rule update, or cross-conversation status update exists"
+    ],
+    "statusRules": {
+      "進行中": "Work started but no completion result is visible.",
+      "等待回覆": "Waiting for a person, test, data, approval, reply, or external result.",
+      "待確認": "May be a task but lacks enough owner, deadline, project goal, or confirmation.",
+      "已完成": "Later evidence says completed, handled, confirmed, released, received, normal, OK, or otherwise closed.",
+      "封存 / 不需追蹤": "The user explicitly cancels it, marks it do-not-track, or the event is no longer a task.",
+      "規則更新": "The user gives a reusable task judgment rule.",
+      "不建立任務": "Background, greeting, pure knowledge, test, pure assistant operation, naturally closed personal chat, or no follow-up need."
+    },
+    "outputRequirements": [
+      "Output by conversation group.",
+      "Include conversation type: private, business, mixed, main-controller, or unknown.",
+      "List tasks to create with status, owner, deadline, project/category, next step, reason, and source evidence.",
+      "List completed tasks with completion evidence and whether a historical record is still useful.",
+      "List in-progress and completed items together when useful for audit.",
+      "List rule updates or task cancellations.",
+      "List no-task content with a short reason.",
+      "List main-controller corrections applied to each ordinary conversation.",
+      "List confidence and human-confirmation needs.",
+      "Do not create formal tasks until the user confirms."
+    ]
+  },
   "decisionFlow": [
     {
       "step": 1,

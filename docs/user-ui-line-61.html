@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seven Junior - AM Project User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .preline { white-space:pre-wrap; }
+    .message-media { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+    .message-media a { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#f8fafc; }
+    .message-media img { display:block; width:180px; max-width:100%; max-height:180px; object-fit:cover; }
+    .message-file { padding:8px 10px; font-weight:800; }
+    .line-archive-message { margin:0 0 14px; }
+    .line-archive-head { color:#1d4ed8; font-weight:800; }
+    .line-archive-head.assistant { color:#c2410c; }
+    .line-archive-body { margin-top:6px; color:var(--ink); white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">AM Project</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#line" data-back-link>← 回到上一頁</a></p>
+      <h1>Seven Junior</h1>
+      <p>
+        <span class="badge ok">Project: 私人事務</span>
+        <span class="badge neutral">個人</span>
+        <span class="badge ok">啟用</span>
+        <span class="badge neutral">156 messages</span>
+      </p>
+      <section class="section">
+        <h2>群組資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>最新訊息預覽</th><td>[image] 617852392054456442</td></tr>
+            <tr><th>最後訊息時間</th><td>2026-06-10T14:00:00.000+00:00</td></tr>
+            <tr><th>訊息數</th><td>156</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>對話訊息</h2>
+        <p class="muted">共 18 筆對話主檔訊息。</p>
+        <table>
+          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th></tr></thead>
+          <tbody><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午10:00:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617852392054456442</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午10:00:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">自己的工作美學，就是雕琢自己獨特心魂的歷程</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:55:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">積極、正向</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:55:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">溫暖、體貼'</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:53:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617851740008219086</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:52:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617851636140474709</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:52:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">江振誠《工作美學》</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:52:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617851544352325888</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:49:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617851338210672709</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:49:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">自己的工作美學，就是自己的心魂目標</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:49:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">雕琢自己獨特心魂的歷程</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:47:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    <div class="preline">自己的工作美學，就是自己的靈魂目標</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:46:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617851022664794301</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:45:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617850880611582022</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午9:43:00】Seven Junior - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617850730455237040</div>
+  </div></td></tr><tr><td>Seven Jr.</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head assistant">【2026/6/10 下午8:30:00】Seven Junior - Seven Jr.（文字訊息）</div>
+    <div class="preline">20:30 每日總控報告
+摘要：已整合 8 件主要事件；每件事以「主題、對象、影響、結論、建議待辦」呈現。
+一、今日主要事件
+1. 吳小姐案件：財務回應速度｜營運 / 財務｜高
+主題：吳小姐案件：財務回應速度
+對象：吳小姐 / 公司財務窗口 / Seven
+影響：財務回應速度太慢會讓對方感覺事情被拖延，影響信任與後續合作關係。
+結論：吳小姐案件需要追蹤的是「財務為什麼反應慢、目前處理到哪裡、何時回覆」。
+建議待辦：向財務窗口確認案件狀態與延遲原因，整理一段清楚回覆給吳小姐。
+解法：建立「對外承諾/財務案件回報節奏」：承辦人、目前狀態、下一步、回覆時間。
+深看：8 則關係/財務回報相關訊息已合併。
+2. 報稅時間點追蹤｜財務｜高
+主題：報稅時間點追蹤
+對象：Seven / 稅務處理窗口
+影響：目前還沒報稅，若繼續延後會有逾期或資料缺漏風險。
+結論：要報稅就要趕快報；目前最重要不是討論方法，而是確認實際報稅時間點。
+建議待辦：確認何時報稅、資料是否齊全、誰負責送出，並追蹤到完成。
+解法：把報稅拆成三個狀態：資料齊全、預計送出時間、已完成送出。
+深看：8 則稅務相關訊息/任務已合併。
+3. 逸凡加入月會｜營運 / 茲心園工程｜中
+主題：逸凡加入月會
+對象：逸凡 / 月會成員 / 茲心園
+影響：茲心園現場資訊會進入固定月會節奏，後續能被總控追蹤。
+結論：逸凡會加入月會，並已向大家同步自己會一起參與。
+建議待辦：確認逸凡知道月會時間、地點與報告重點即可。
+解法：把逸凡視為月會固定成員，後續會議紀錄再轉成任務。
+深看：8 則月會相關訊息已合併。
+4. 包租代管客人問題 SOP｜包租代管｜高
+主題：包租代管客人問題 SOP
+對象：HOZO 房客 / 房務清潔 / 包租代管營運
+影響：若沒有標準，客人可能要求隨意更換設備，清潔疏漏也會反覆變成客訴。
+結論：事件其實只有一個待辦：把 SOP 做出來。燈光太暗要定義標準回覆與不可任意更換原則；可另設移動式燈具租用。廁所發黴要建立清潔檢查 SOP。
+建議待辦：產出兩份 SOP：燈光回覆/租用燈具標準、浴室發黴清潔檢查標準。
+解法：用同一套「客人問題處理 SOP」解決燈光與發黴兩個問題。
+深看：3 則包租代管相關訊息/進度已合併。
+5. 目標追認缺口｜跨專案｜高
+主題：目標追認缺口
+對象：所有新增任務與專案負責人
+影響：沒有完成目標定義，就不能合理判斷完成百分比，也無法知道下一步是否正確。
+結論：目前最重要的管理動作是取得負責人口述，並讓 Codex 確認能否追蹤。
+建議待辦：每個報告時段檢查新增項目：缺目標先問，已口述就上傳給 Codex，確認後才追蹤。
+解法：使用「Codex 目標確認、目標口述原文、對外詢問草稿、下一步給負責人」四個欄位收斂。
+深看：2 則目標追認相關訊號已合併。
+6. Seven Junior：今天去看了溪頭米堤飯店的案件現場，結果是...｜私人事務｜高
+主題：Seven Junior：今天去看了溪頭米堤飯店的案件現場，結果是...
+對象：私人事務
+影響：尚未歸入明確事件，但內容具備高優先或待確認訊號。
+結論：今天去看了溪頭米堤飯店的案件現場，結果是2到8樓總共有50個房間，9樓和10樓有16個房間。9樓可以搭電梯，10樓要走樓梯上去。所以2到8樓的房間是合法的。
+建議待辦：請確認是否成立為正式任務，並補齊負責人與期限。
+解法：先確認是否成立為事件；若成立，再合併同類訊息並產生單一待辦。
+深看：可回任務庫查看原始訊息與判斷摘要。
+二、其他待確認線索
+1. 已確認全數放行，謝謝Seven！｜人資
+2. 謝謝Seven， @佑容 再確認一下唷！｜人資
+3. @All 兩位早，款項都已經放行，請確認，謝謝｜人資
+4. 學姐好，我這邊協助確認一下：茲心園改建案有沒有遇到什麼問題想要理解...｜茲心園工程
+報告頁：https://line-oa-webhook-nn5j.onrender.com/reports/daily-control-report
+提醒：第一層只放事件結論；零散訊息不直接上報，除非能形成待辦或風險。</div>
+  </div></td></tr><tr><td>Seven Jr.</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head assistant">【2026/6/10 下午5:00:00】Seven Junior - Seven Jr.（文字訊息）</div>
+    <div class="preline">下午 5 點目標追認與新任務確認：
+https://line-oa-webhook-nn5j.onrender.com/reports/followup-confirmation?slot=17
+請確認下午要發出的 LINE/Email 追問；如果窗口不知道目標，請她指定真正負責人。Codex 確認完成目標後，下一個時段才告訴負責人後續要做什麼。</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午2:52:00】Seven Junior - Seven陳聖文（文字訊息）</div>
+    
+  </div></td></tr></tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>附件與檔案</h2>
+        <p class="muted">共 3 個附件。</p>
+        <table>
+          <thead><tr><th>File</th><th>Sender</th><th>Message</th><th>Status</th></tr></thead>
+          <tbody><tr><td><a href="https://app.notion.com/p/sample-pdf-37751c686dac812eb252c9e7b444f43f" target="_blank" rel="noopener">sample.pdf</a></td><td></td><td></td><td><span class="badge neutral">待轉檔</span></td></tr><tr><td><a href="https://app.notion.com/p/sample-pdf-37751c686dac816185f8d9585faff299" target="_blank" rel="noopener">sample.pdf</a></td><td></td><td></td><td><span class="badge neutral">待轉檔</span></td></tr><tr><td><a href="https://app.notion.com/p/sample-pdf-37751c686dac81ca88afd1d2b623d6e8" target="_blank" rel="noopener">sample.pdf</a></td><td></td><td></td><td><span class="badge neutral">待轉檔</span></td></tr></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.querySelector('[data-back-link]')?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
+import { createEventQueue } from './event-queue.js';
 
 loadDotenv();
 
@@ -8,7 +9,9 @@ const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
 const notionToken = process.env.NOTION_TOKEN;
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID;
+// Raw LINE event log only. Hourly task judgement reads the conversation master.
 const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID;
+const lineGroupMemberIndexDataSourceId = process.env.SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID || '';
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID;
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const codexCommandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || 'c4eee8de-e596-4d64-906b-1405d79e721c';
@@ -23,6 +26,11 @@ const verifiedSevenDataSources = new Map();
 const recentTaskListsByConversation = new Map();
 
 const notionConfigured = Boolean(notionToken && conversationsDataSourceId && messagesDataSourceId);
+const eventQueue = createEventQueue({
+  databaseUrl: process.env.DATABASE_URL || '',
+  processEvent: (event, rawBody) => handleEvent(event, rawBody),
+  onDeadEvent: notifyDeadQueueEvent,
+});
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
 const reportCommands = new Set(['#報告', '報告', '#每日報告', '每日報告']);
 const morningBriefCommands = new Set(['#早報', '早報', '#今日早報', '今日早報', '#行程', '行程']);
@@ -43,7 +51,9 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, {
       ok: true,
       notionConfigured,
+      eventQueue: await eventQueue.stats(),
       attachmentsConfigured: Boolean(attachmentsDataSourceId),
+      lineGroupMemberIndexConfigured: Boolean(lineGroupMemberIndexDataSourceId),
       codexCommandQueueConfigured: Boolean(codexCommandsDataSourceId),
       codexCommandTriggers: ['Eleven Junior', 'Eleven Jr.', 'Elven Jr.', 'Seven Junior', '7 Junior', '11 Jr.'],
       autoReplyEnabled: false,
@@ -77,7 +87,18 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const body = JSON.parse(rawBody);
-    await Promise.all((body.events || []).map((event) => handleEvent(event, rawBody)));
+    const events = body.events || [];
+
+    if (eventQueue.enabled) {
+      try {
+        await eventQueue.enqueue(events, rawBody);
+        return sendText(res, 200, 'OK');
+      } catch (error) {
+        console.error('Event queue enqueue failed; falling back to direct processing.', error);
+      }
+    }
+
+    await Promise.all(events.map((event) => handleEvent(event, rawBody)));
     return sendText(res, 200, 'OK');
   } catch (error) {
     console.error(error);
@@ -92,10 +113,52 @@ async function handleEvent(event, rawBody) {
 
   const commandReply = await buildCommandReply(event);
   if (commandReply && event.replyToken) {
-    await replyLineMessage(event.replyToken, commandReply);
+    try {
+      await replyLineMessage(event.replyToken, commandReply);
+    } catch (error) {
+      // Reply tokens are one-time and short-lived; a failed reply must not
+      // requeue the event after the raw message was already stored.
+      console.error(`LINE reply failed for event ${event.webhookEventId || ''}: ${error instanceof Error ? error.message : error}`);
+      return;
+    }
     if (notionConfigured) {
       await storeOutgoingReplyInNotion(event, commandReply);
     }
+  }
+}
+
+async function notifyDeadQueueEvent({ eventKey, attempts, lastError }) {
+  const target = process.env.SEVEN_ALERT_TARGET_ID || '';
+  if (!target) {
+    return;
+  }
+  await pushLineMessage(target, {
+    type: 'text',
+    text: [
+      `${outgoingActorName} 訊息佇列警告`,
+      `事件 ${eventKey} 重試 ${attempts} 次後仍寫入失敗，已移入待人工處理區。`,
+      `錯誤：${clampText(String(lastError || ''), 600)}`,
+      '原始訊息仍保存在佇列資料庫，修復後可重新處理。',
+    ].join('\n'),
+  });
+}
+
+async function pushLineMessage(to, message) {
+  if (!channelAccessToken) {
+    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
+  }
+
+  const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${channelAccessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ to, messages: [message] }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`LINE push failed: ${response.status} ${await response.text()}`);
   }
 }
 
@@ -991,7 +1054,6 @@ async function createOutgoingReplyMessagePage({ conversationId, event, message, 
         '發話者類型': select('oa'),
         '群組標記': checkbox(Boolean(source.groupId || source.roomId)),
         '排序時間': date(sentAt),
-        '已進入判斷層': checkbox(false),
       },
       children: [
         paragraph(`來源：${outgoingActorName} 指令回覆`),
@@ -1028,6 +1090,7 @@ async function storeLineEventInNotion(event, rawBody) {
 
   const display = await resolveDisplayNames(source, context);
   const conversation = await findOrCreateConversation(context, display, eventTime, text);
+  await maybeUpsertLineGroupMemberIndex({ source, context, display, conversation, eventTime });
   const uploadedContent = await maybeUploadLineContent(message, messageType, messageId);
   const messagePage = await createMessagePage({ conversationId: conversation.id, event, rawBody, messageId, messageType, text, eventTime, display, context });
 
@@ -1257,6 +1320,77 @@ async function findConversationPage(context) {
   return result.results?.[0] || null;
 }
 
+async function maybeUpsertLineGroupMemberIndex({ source, context, display, conversation, eventTime }) {
+  if (!lineGroupMemberIndexDataSourceId || !source?.userId || !['group', 'room'].includes(source.type)) {
+    return null;
+  }
+
+  try {
+    return await upsertLineGroupMemberIndex({ source, context, display, conversation, eventTime });
+  } catch (error) {
+    console.warn(`Unable to sync LINE group member index: ${error.message}`);
+    return null;
+  }
+}
+
+async function upsertLineGroupMemberIndex({ source, context, display, conversation, eventTime }) {
+  const targetType = source.roomId ? 'room' : 'group';
+  const targetId = source.roomId || source.groupId || '';
+  if (!targetId) return null;
+
+  const existing = await findLineGroupMemberIndexPage({ targetType, targetId, userId: source.userId });
+  const properties = {
+    對象類型: select(targetType),
+    GroupID: richText(targetType === 'group' ? targetId : ''),
+    RoomID: richText(targetType === 'room' ? targetId : ''),
+    群組顯示名稱: richText(display.conversationName || context.entityType || ''),
+    UserID: richText(source.userId),
+    成員顯示名稱: richText(display.actorName || source.userId),
+    成員狀態: select('active'),
+    來源: select('Webhook'),
+    LINE對話主檔: relation(conversation.id),
+    最後同步時間: date(eventTime),
+    最後出現時間: date(eventTime),
+    同步訊息: richText('Captured from incoming LINE webhook event.'),
+  };
+
+  if (existing) {
+    return notionRequest(`/v1/pages/${existing.id}`, {
+      method: 'PATCH',
+      body: { properties },
+    });
+  }
+
+  return notionRequest('/v1/pages', {
+    method: 'POST',
+    body: {
+      parent: { type: 'data_source_id', data_source_id: lineGroupMemberIndexDataSourceId },
+      properties: {
+        成員索引名稱: title(`${display.conversationName || targetId} / ${display.actorName || source.userId}`),
+        ...properties,
+      },
+    },
+  });
+}
+
+async function findLineGroupMemberIndexPage({ targetType, targetId, userId }) {
+  const targetProperty = targetType === 'room' ? 'RoomID' : 'GroupID';
+  const result = await notionRequest(`/v1/data_sources/${lineGroupMemberIndexDataSourceId}/query`, {
+    method: 'POST',
+    body: {
+      page_size: 1,
+      filter: {
+        and: [
+          { property: '對象類型', select: { equals: targetType } },
+          { property: targetProperty, rich_text: { equals: targetId } },
+          { property: 'UserID', rich_text: { equals: userId } },
+        ],
+      },
+    },
+  });
+  return result.results?.[0] || null;
+}
+
 async function findMessagePage(messageId) {
   const result = await notionRequest(`/v1/data_sources/${messagesDataSourceId}/query`, {
     method: 'POST',
@@ -1290,7 +1424,6 @@ async function createMessagePage({ conversationId, event, rawBody, messageId, me
         '發話者類型': select('user'),
         '群組標記': checkbox(Boolean(source.groupId || source.roomId)),
         '排序時間': date(eventTime),
-        '已進入判斷層': checkbox(false),
       },
       children: [paragraph(`來源：LINE / ${context.entityType}`), paragraph(`內容：${text || '(非文字訊息)'}`)],
     },
@@ -1832,6 +1965,15 @@ function loadDotenv() {
 }
 
 const port = Number(process.env.PORT || 3000);
+
+if (eventQueue.enabled) {
+  eventQueue.init().catch((error) => {
+    console.error('Event queue init failed; webhook falls back to direct Notion writes.', error);
+  });
+} else {
+  console.warn('DATABASE_URL is not set. Webhook events are written to Notion synchronously without a durable queue.');
+}
+
 server.listen(port, () => {
   console.log(`LINE webhook server is listening on port ${port}`);
 });

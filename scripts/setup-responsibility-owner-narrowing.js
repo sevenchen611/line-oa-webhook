@@ -7,7 +7,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const parentPageId = normalizeId(process.env.SEVEN_DATA_SOURCE_PARENT_BLOCK_ID || '');
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
-const messagesDataSourceId = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
+const memberIndexDataSourceId = process.env.SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID || '';
 
 const command = String(process.argv[2] || 'create').trim().toLowerCase();
 const args = parseArgs(process.argv.slice(3));
@@ -16,7 +16,6 @@ let resolvedParentPageId = normalizeId(args.parent || process.env.SEVEN_RESPONSI
 if (!notionToken) fail('NOTION_TOKEN is not set.');
 if (!resolvedParentPageId) fail('SEVEN_DATA_SOURCE_PARENT_BLOCK_ID is not set.');
 if (!conversationsDataSourceId) fail('SEVEN_CONVERSATIONS_DATA_SOURCE_ID is not set.');
-if (!messagesDataSourceId) fail('SEVEN_MESSAGES_DATA_SOURCE_ID is not set.');
 
 if (command === 'create') {
   const result = await createResponsibilityOwnerNarrowingDatabases();
@@ -26,11 +25,12 @@ if (command === 'create') {
     responsibilityDataSourceId: requiredArg('responsibility', process.env.SEVEN_RESPONSIBILITY_DATA_SOURCE_ID),
     groupOptionsDataSourceId: requiredArg('groups', process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID),
     groupMembersDataSourceId: requiredArg('members', process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID),
+    memberIndexDataSourceId: requiredArg('member-index', memberIndexDataSourceId),
     limit: clampNumber(Number(args.limit || 100), 1, 100),
   });
   console.log(JSON.stringify(result, null, 2));
 } else {
-  fail('Usage: npm run setup:responsibility -- create OR npm run setup:responsibility -- seed --responsibility <id> --groups <id> --members <id> [--limit 100]');
+  fail('Usage: npm run setup:responsibility -- create OR npm run setup:responsibility -- seed --responsibility <id> --groups <id> --members <id> --member-index <id> [--limit 100]');
 }
 
 async function createResponsibilityOwnerNarrowingDatabases() {
@@ -88,10 +88,11 @@ async function createResponsibilityOwnerNarrowingDatabases() {
   };
 }
 
-async function seedResponsibilityOwnerNarrowingData({ responsibilityDataSourceId, groupOptionsDataSourceId, groupMembersDataSourceId, limit }) {
+async function seedResponsibilityOwnerNarrowingData({ responsibilityDataSourceId, groupOptionsDataSourceId, groupMembersDataSourceId, memberIndexDataSourceId, limit }) {
   await assertSevenDataSource(responsibilityDataSourceId);
   await assertSevenDataSource(groupOptionsDataSourceId);
   await assertSevenDataSource(groupMembersDataSourceId);
+  await assertSevenDataSource(memberIndexDataSourceId);
 
   const conversations = await queryAllPages(conversationsDataSourceId, {
     page_size: limit,
@@ -124,38 +125,25 @@ async function seedResponsibilityOwnerNarrowingData({ responsibilityDataSourceId
     groupOptions.push({ ...option, pageId: page.id, conversationPageId: conversation.id });
   }
 
-  const messages = await queryAllPages(messagesDataSourceId, {
-    page_size: limit,
-    filter: { property: '發話者 ID', rich_text: { is_not_empty: true } },
-    sorts: [{ property: '排序時間', direction: 'descending' }],
-  });
-
   const memberMap = new Map();
-  for (const message of messages) {
-    const relationIds = pageRelationIds(message, '對話主檔');
-    const groupOption = groupOptions.find((option) => relationIds.includes(option.conversationPageId));
-    if (!groupOption) continue;
-    const userId = pageText(message, '發話者 ID');
-    if (!userId || userId === groupOption.targetId) continue;
-    const key = `${groupOption.pageId}:${userId}`;
-    const existing = memberMap.get(key);
-    const seenAt = pageDate(message, '排序時間');
-    if (existing) {
-      existing.count += 1;
-      if (seenAt && (!existing.lastSeenAt || new Date(seenAt) > new Date(existing.lastSeenAt))) {
-        existing.lastSeenAt = seenAt;
-      }
-      continue;
+  const memberIndexRows = await queryAllPages(memberIndexDataSourceId, { page_size: 100 });
+  const memberIndex = memberIndexRows.map(normalizeMemberIndexRow).filter((member) => member.userId && member.status !== 'left');
+  for (const groupOption of groupOptions) {
+    const groupMembers = memberIndex.filter((member) => member.targetKey === groupOption.targetKey);
+    for (const member of groupMembers) {
+      if (!member.displayName || member.displayName === groupOption.displayName) continue;
+      const key = `${groupOption.pageId}:${member.userId}`;
+      if (memberMap.has(key)) continue;
+      memberMap.set(key, {
+        userId: member.userId,
+        displayName: member.displayName,
+        groupPageId: groupOption.pageId,
+        groupId: groupOption.targetId,
+        groupName: groupOption.displayName,
+        lastSeenAt: member.lastSeenAt || member.syncedAt || groupOption.lastMessageAt,
+        count: 1,
+      });
     }
-    memberMap.set(key, {
-      userId,
-      displayName: pageText(message, '發話者名稱') || '未命名成員',
-      groupPageId: groupOption.pageId,
-      groupId: groupOption.targetId,
-      groupName: groupOption.displayName,
-      lastSeenAt: seenAt,
-      count: 1,
-    });
   }
 
   const members = [];
@@ -167,7 +155,7 @@ async function seedResponsibilityOwnerNarrowingData({ responsibilityDataSourceId
       GroupID: richTextProperty(member.groupId),
       群組顯示名稱: richTextProperty(member.groupName),
       LINE群組: relationProperty([member.groupPageId]),
-      來源: richTextProperty('Seven LINE 訊息紀錄'),
+      來源: richTextProperty('Seven LINE 對話主檔'),
       最後出現時間: member.lastSeenAt ? dateProperty(member.lastSeenAt) : undefined,
       出現次數: numberProperty(member.count),
       同步狀態: selectProperty('自動建立'),
@@ -406,9 +394,25 @@ function normalizeConversationOption(page) {
     customName,
     displayName,
     targetId,
+    targetKey: `${targetType}:${targetId}`,
     project: inferProject(haystack),
     messageCount: pageNumber(page, '訊息數（總）'),
     lastMessageAt: pageDate(page, '最後訊息時間'),
+  };
+}
+
+function normalizeMemberIndexRow(page) {
+  const targetType = pageSelect(page, '對象類型') || 'group';
+  const targetId = targetType === 'room' ? pageText(page, 'RoomID') : pageText(page, 'GroupID');
+  return {
+    userId: pageText(page, 'UserID'),
+    displayName: pageText(page, '成員顯示名稱') || pageTitle(page, '成員索引名稱'),
+    targetType,
+    targetId,
+    targetKey: `${targetType}:${targetId}`,
+    status: pageSelect(page, '成員狀態') || 'unknown',
+    syncedAt: pageDate(page, '最後同步時間'),
+    lastSeenAt: pageDate(page, '最後出現時間'),
   };
 }
 
@@ -482,6 +486,11 @@ function urlProperty(value) {
   return value ? { url: value } : undefined;
 }
 
+function pageTitle(page, propertyName) {
+  const property = page?.properties?.[propertyName];
+  return plainText(property?.title || []);
+}
+
 function pageText(page, propertyName) {
   const property = page?.properties?.[propertyName];
   return plainText(property?.title || property?.rich_text || []);
@@ -500,10 +509,6 @@ function pageDate(page, propertyName) {
 function pageNumber(page, propertyName) {
   const property = page?.properties?.[propertyName];
   return Number(property?.number || 0);
-}
-
-function pageRelationIds(page, propertyName) {
-  return (page?.properties?.[propertyName]?.relation || []).map((item) => item.id).filter(Boolean);
 }
 
 function plainText(items) {

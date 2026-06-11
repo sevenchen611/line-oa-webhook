@@ -54,6 +54,11 @@ $env:SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID="..."
 $env:SEVEN_CONTROL_API_KEY="..."
 ```
 
+`SEVEN_CONVERSATIONS_DATA_SOURCE_ID` is the source used by hourly LINE task
+judgement. `SEVEN_MESSAGES_DATA_SOURCE_ID` is still required for raw LINE event
+logging, outgoing message logs, attachment relations, and debugging, but it is
+not the task judgement input.
+
 Use the separate secrets package as the source of the real values. Do not paste secrets into chat, commits, screenshots, or public docs.
 
 ## Run Locally

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>每日定時報告與更新說明 - SevenAM User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    h3 { margin:18px 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .mono { font-family:Consolas,"SFMono-Regular",Menlo,monospace; font-size:13px; word-break:break-all; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">SevenAM</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#scheduled-jobs">← 自動定時執行任務</a>
+        <a href="user-ui-scheduled-hourly-checks.html">每小時檢查程式</a>
+        <a href="user-ui-scheduled-command-checks.html">每 15 分鐘檢查命令</a>
+        <a href="user-ui-connected-preview.html#reports">每日/進度報告</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#scheduled-jobs">← 回到自動定時執行任務</a></p>
+      <h1>每日定時報告與更新說明</h1>
+      <p class="muted">SevenAM 每天固定推送早報、追蹤更新與每日總控報告，讓任務、決策與進度能被定時校準。</p>
+      <p><span class="badge ok">Daily reports</span> <span class="badge neutral">LINE + Notion</span></p>
+
+      <section class="section">
+        <h2>排程總覽</h2>
+        <table>
+          <thead><tr><th>時間</th><th>報告名稱</th><th>程式名稱</th><th>具體執行內容</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>08:00</td>
+              <td>早上 8 點報告</td>
+              <td><span class="mono">npm run cron:report -- morning</span></td>
+              <td>產生早晨總控報告，提醒今日行程、優先工作、未完成事項、需要決策的項目，以及新增或尚未確認任務是否需要先做目標追認。</td>
+            </tr>
+            <tr>
+              <td>10:00</td>
+              <td>上午追蹤更新</td>
+              <td><span class="mono">npm run cron:report -- followup-morning</span></td>
+              <td>檢查上午新增任務、專案與目標定義缺口。若任務沒有完成目標、驗收方式或負責人口述，提醒先補目標再列入真實進度。</td>
+            </tr>
+            <tr>
+              <td>13:00</td>
+              <td>午間追蹤更新</td>
+              <td><span class="mono">npm run cron:report -- followup-midday</span></td>
+              <td>整理午間前新增的待確認任務、追蹤訊息、需要退回修改的項目，以及上午未處理完的確認事項。</td>
+            </tr>
+            <tr>
+              <td>17:00</td>
+              <td>下午追蹤更新</td>
+              <td><span class="mono">npm run cron:report -- followup-afternoon</span></td>
+              <td>確認下午前的任務變動、卡點、等待回覆、需要 Seven 決策或需要外部提醒的事項，準備晚間總控報告的材料。</td>
+            </tr>
+            <tr>
+              <td>20:30</td>
+              <td>晚上 8 點半每日總控報告</td>
+              <td><span class="mono">npm run cron:report -- daily</span></td>
+              <td>彙整當日主要事件、LINE 原始訊息、判斷產生的任務、專案進度報告與需要追蹤的風險，形成每日收斂報告。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>早上 8 點報告內容</h2>
+        <table>
+          <tbody>
+            <tr><th>今日焦點</th><td>列出今天最需要 Seven 注意的任務、會議、決策與未完成事項。</td></tr>
+            <tr><th>目標追認</th><td>對新增或尚未確認的任務，要求先問清楚完成目標、怎樣叫完成、由誰驗收。</td></tr>
+            <tr><th>任務整理</th><td>提示待確認、待回覆、待完成、可能需要退回的任務。</td></tr>
+            <tr><th>後續動作</th><td>將使用者確認結果寫入 Notion，作為後續每小時檢查與日報判斷的依據。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>10 點、13 點、17 點更新內容</h2>
+        <table>
+          <thead><tr><th>時段</th><th>處理重點</th><th>輸出結果</th></tr></thead>
+          <tbody>
+            <tr><td>10:00</td><td>上午新增任務、尚未確認目標、需要先問負責人的項目。</td><td>產出追蹤確認頁，讓 Seven 決定哪些提醒可送出、哪些任務要退回或修改。</td></tr>
+            <tr><td>13:00</td><td>午間前新訊息與上午未閉環事項。</td><td>整理待確認任務、追蹤訊息、需要修改或停止的項目。</td></tr>
+            <tr><td>17:00</td><td>下午累積的任務變更、卡點、等待回覆與晚報素材。</td><td>把日間任務進度收斂，提供 20:30 每日總控報告使用。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>20:30 每日總控報告格式</h2>
+        <table>
+          <tbody>
+            <tr><th>摘要</th><td>列出今日整合幾件主要事件，並說明報告範圍。</td></tr>
+            <tr><th>主要事件</th><td>每件事以「主題、對象、影響、結論、建議待辦」呈現。</td></tr>
+            <tr><th>解法</th><td>對高風險或高影響事件，提出下一步做法或管理機制。</td></tr>
+            <tr><th>深看</th><td>標示此事件由幾則 LINE 訊息、任務或進度紀錄合併而來。</td></tr>
+            <tr><th>待確認</th><td>列出需要 Seven 判斷是否成立、是否完成、是否要退回或是否要外部回覆的事項。</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

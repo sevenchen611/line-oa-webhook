@@ -15,6 +15,7 @@ const DAILY_REPORT_SNAPSHOTS_DATA_SOURCE_ID = process.env.SEVEN_DAILY_REPORT_SNA
 const PROGRESS_REPORTS_DATA_SOURCE_ID = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || 'fc5e4e21-6af6-4de2-9380-aa95126ee13e';
 const JUDGMENT_RULES_DATA_SOURCE_ID = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
 const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
+// Raw/outgoing LINE event log only. Hourly task judgement reads the conversation master.
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const LINE_GROUP_OPTIONS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID || '';
 const LINE_GROUP_MEMBERS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
@@ -23,7 +24,6 @@ const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
 const SEVEN_DATA_SOURCE_PARENT_BLOCK_ID = normalizeId(process.env.SEVEN_DATA_SOURCE_PARENT_BLOCK_ID || '');
 const PUBLIC_BASE_URL = (process.env.SEVEN_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://line-oa-webhook-nn5j.onrender.com').replace(/\/+$/, '');
-const dailyConversationProjectCache = new Map();
 const verifiedSevenDataSources = new Map();
 const REPORT_ROUTES = new Map([
   ['/reports/morning-brief', '../reports/morning-brief-prototype.html'],
@@ -1657,7 +1657,7 @@ async function buildReportMessage(reportType, customText) {
 }
 
 async function buildDynamicDailyReportText(dailyReportUrl) {
-  if (!process.env.NOTION_TOKEN || !TASKS_DATA_SOURCE_ID || !MESSAGES_DATA_SOURCE_ID) {
+  if (!process.env.NOTION_TOKEN || !TASKS_DATA_SOURCE_ID || !CONVERSATIONS_DATA_SOURCE_ID) {
     return '';
   }
 
@@ -1727,68 +1727,46 @@ async function listRecentTasksForDailyReport() {
 }
 
 async function listImportantMessagesForDailyReport() {
-  if (!MESSAGES_DATA_SOURCE_ID) return [];
+  if (!CONVERSATIONS_DATA_SOURCE_ID) return [];
 
   const since = taipeiStartOfDayIso(new Date());
-  const [lineResult, outgoingGroupResult] = await Promise.all([
-    queryMessagesForDailyReport([
-      { property: '排序時間', date: { on_or_after: since } },
-      { property: '訊息來源', select: { equals: 'line' } },
-    ]),
-    queryMessagesForDailyReport([
-      { property: '排序時間', date: { on_or_after: since } },
-      { property: '訊息來源', select: { equals: 'ai-engine' } },
-      { property: '群組標記', checkbox: { equals: true } },
-    ]),
-  ]);
-
-  return [...lineResult, ...outgoingGroupResult]
-    .sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0))
-    .filter((item) => item.score > 0)
-    .slice(0, 30);
-}
-
-async function queryMessagesForDailyReport(filters) {
-  const result = await notionRequest(`/v1/data_sources/${MESSAGES_DATA_SOURCE_ID}/query`, {
+  const result = await notionRequest(`/v1/data_sources/${CONVERSATIONS_DATA_SOURCE_ID}/query`, {
     method: 'POST',
     body: {
       page_size: 80,
-      filter: { and: filters },
-      sorts: [{ property: '排序時間', direction: 'ascending' }],
+      filter: { property: '最後訊息時間', date: { on_or_after: since } },
+      sorts: [{ property: '最後訊息時間', direction: 'ascending' }],
     },
   });
 
   const items = [];
   for (const page of result.results || []) {
-    const text = pageTextProperty(page, '文字內容') || pageTextProperty(page, '原始內容');
+    const lines = (await getBlockChildren(page.id)).map(plainBlockText).filter(Boolean);
+    const messages = parseConversationMasterMessagesForDailyReport(lines).slice(0, 10);
+    const text = messages.map((message) => `${message.speaker ? `${message.speaker}: ` : ''}${message.content}`).join('\n')
+      || pageTextProperty(page, '最新訊息預覽')
+      || pageTextProperty(page, 'LINE 對話名稱');
+    if (!text || isAssistantOperationConversationForDailyReport(page, text)) continue;
     const score = scoreDailyMessageImportance(text);
-    const conversation = await getDailyMessageConversationProject(pageRelationId(page, '對話主檔'));
     items.push({
-      source: 'message',
+      source: 'conversation',
       title: buildMessageReportTitle(text),
-      project: conversation.project || inferDailyMessageProject(text),
+      project: pageSelectProperty(page, '總控專案') || inferDailyMessageProject(text),
       priority: score >= 5 ? '高' : score >= 3 ? '中' : '低',
-      status: pageTextProperty(page, '發話者名稱'),
+      status: pageTextProperty(page, 'LINE 對話名稱') || pageTextProperty(page, '自定義名稱'),
       summary: text,
       nextStep: inferMessageNextStep(text),
-      updatedAt: pageDateProperty(page, '排序時間'),
+      updatedAt: pageDateProperty(page, '最後訊息時間') || page.last_edited_time,
       url: page.url,
       tags: dailyMessageTags(text),
       score,
     });
   }
 
-  return items.filter((item) => item.score > 0);
-}
-
-async function getDailyMessageConversationProject(pageId) {
-  if (!pageId) return { project: '' };
-  if (dailyConversationProjectCache.has(pageId)) return dailyConversationProjectCache.get(pageId);
-
-  const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
-  const value = { project: pageSelectProperty(page, '總控專案') };
-  dailyConversationProjectCache.set(pageId, value);
-  return value;
+  return items
+    .sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0))
+    .filter((item) => item.score > 0)
+    .slice(0, 30);
 }
 
 async function listRecentProgressReportsForDailyReport() {
@@ -2052,6 +2030,53 @@ function buildCompactDailySection(title, items, limit) {
     title,
     ...uniqueItems.map((item, index) => `${index + 1}. ${readableReportTitle(item)}${item.project && item.project !== '未分類' ? `｜${item.project}` : ''}`),
   ].join('\n');
+}
+
+function parseConversationMasterMessagesForDailyReport(lines) {
+  const messages = [];
+  let current = null;
+
+  for (const rawLine of lines || []) {
+    const line = String(rawLine || '').trim();
+    if (!line || line.includes(CONVERSATION_ANCHOR_TEXT)) continue;
+    const parsed = parseConversationLineForDailyReport(line);
+    if (parsed) {
+      if (current) messages.push(current);
+      current = parsed;
+      continue;
+    }
+    if (current) {
+      current.content = `${current.content}\n${line}`.trim();
+    }
+  }
+  if (current) messages.push(current);
+  return messages.filter((message) => message.content);
+}
+
+function parseConversationLineForDailyReport(line) {
+  const match = line.match(/^【(?<time>[^】]+)】(?:(?<conversation>.*?)\s+-\s+)?(?<speaker>[^（:：\n]+)(?:（(?<type>[^）]+)）)?[:：]?\s*(?<content>.*)$/u)
+    || line.match(/^\[(?<time>[^\]]+)\]\s*(?<speaker>[^:：\n]{1,80})[:：]\s*(?<content>.*)$/u)
+    || line.match(/^(?<speaker>[^:：\n]{1,80})[:：]\s*(?<content>.+)$/u);
+  if (!match?.groups?.speaker) return null;
+  const speaker = String(match.groups.speaker || '').trim();
+  const content = String(match.groups.content || '').trim();
+  const typeLabel = String(match.groups.type || '').trim();
+  if (!speaker || /^(LINE|對話|訊息|原始|摘要|主檔|來源)$/i.test(speaker)) return null;
+  return {
+    time: String(match.groups.time || '').trim(),
+    speaker,
+    type: typeLabel,
+    content: content || typeLabel || '',
+  };
+}
+
+function isAssistantOperationConversationForDailyReport(page, text) {
+  const name = `${pageTextProperty(page, 'LINE 對話名稱')} ${pageTextProperty(page, '自定義名稱')}`;
+  const value = String(text || '');
+  const assistantAddressed = /(Seven\s*Jr\.?|Seven\s*Junior|謝孟娟|謝夢娟)/i.test(`${name}\n${value}`);
+  if (!assistantAddressed) return false;
+
+  return /查待辦|列出.*待辦|打開.*任務|看一下.*任務|任務校準|每日總控報告|追蹤確認|新任務確認|followup-confirmation|daily-control-report|排程警告|Cron logs|已收到你送出的/.test(value);
 }
 
 function filterActionableRemainders(items, usedKeys) {
@@ -2609,7 +2634,6 @@ async function createOutgoingMessagePage({ conversationId, messageId, message, m
         發話者類型: selectProperty('oa'),
         群組標記: checkboxProperty(['群組', '聊天室'].includes(context.entityType)),
         排序時間: dateProperty(sentAt),
-        已進入判斷層: checkboxProperty(false),
       },
       children: [
         paragraphProperty(`來源：${OUTGOING_ACTOR_NAME} 主動發送`),

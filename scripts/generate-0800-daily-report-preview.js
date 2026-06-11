@@ -8,7 +8,6 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const dataSources = {
   tasks: process.env.SEVEN_TASKS_DATA_SOURCE_ID,
-  messages: process.env.SEVEN_MESSAGES_DATA_SOURCE_ID,
   progress: process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID,
   conversations: process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID,
   responsibilities: process.env.SEVEN_RESPONSIBILITY_DATA_SOURCE_ID,
@@ -23,7 +22,7 @@ const reportPath = path.join(root, 'reports', `sevenam-0800-daily-report-${today
 
 const [tasks, messages, progressReports, responsibilities, calendar] = await Promise.all([
   listTasks(),
-  listMessages(),
+  listConversationClues(),
   listProgressReports(),
   listResponsibilities(),
   loadCalendarSchedule(today),
@@ -96,28 +95,35 @@ async function listTasks() {
   }));
 }
 
-async function listMessages() {
-  if (!dataSources.messages) return [];
+async function listConversationClues() {
+  if (!dataSources.conversations) return [];
   const since = `${today}T00:00:00+08:00`;
-  const result = await queryDataSource(dataSources.messages, {
+  const result = await queryDataSource(dataSources.conversations, {
     page_size: 80,
-    filter: { property: '排序時間', date: { on_or_after: since } },
-    sorts: [{ property: '排序時間', direction: 'descending' }],
+    filter: { property: '最後訊息時間', date: { on_or_after: since } },
+    sorts: [{ property: '最後訊息時間', direction: 'descending' }],
   });
 
   const messages = [];
   for (const page of result.results || []) {
-    const text = textProp(page, '文字內容') || textProp(page, '原始內容') || '';
+    const contentLines = await pageContentLines(page.id, 80);
+    const parsedMessages = parseConversationMasterMessages(contentLines);
+    const latestMessages = parsedMessages.slice(-8);
+    const text = latestMessages.map((item) => `${item.speaker ? `${item.speaker}: ` : ''}${item.content}`).join('\n')
+      || textProp(page, '最新訊息預覽')
+      || textProp(page, '對話摘要')
+      || textProp(page, 'LINE 對話名稱')
+      || '';
+    if (isAssistantOperationConversation(page, text)) continue;
     const score = scoreMessage(text);
-    const conversation = await getConversation(pageRelationId(page, '對話主檔'));
     messages.push({
       id: page.id,
       title: messageTitle(text),
-      project: conversation.project || inferProject(text),
-      speaker: textProp(page, '發話者名稱') || selectProp(page, '發話者類型') || '',
-      source: selectProp(page, '訊息來源') || '',
-      type: selectProp(page, '訊息類型') || '',
-      time: dateProp(page, '排序時間') || page.created_time || '',
+      project: selectProp(page, '總控專案') || inferProject(text),
+      speaker: latestMessages.map((item) => item.speaker).filter(Boolean).slice(-3).join(', ') || textProp(page, 'LINE 對話名稱') || '',
+      source: 'LINE 對話主檔',
+      type: selectProp(page, '對象類型') || '',
+      time: dateProp(page, '最後訊息時間') || page.last_edited_time || '',
       summary: text,
       nextStep: inferNextStep(text),
       score,
@@ -209,7 +215,7 @@ function buildCandidates({ goalGapTasks, highPriorityTasks, importantMessages, r
   importantMessages.slice(0, 4).forEach((message) => add({
     sourceId: message.id,
     title: message.title,
-    sourceType: 'LINE_MESSAGE_SIGNAL',
+    sourceType: 'LINE_CONVERSATION_SIGNAL',
     project: message.project,
     risk: message.score >= 5 ? '高' : '一般',
     confidence: message.project === '未分類' ? '低' : '中',
@@ -283,7 +289,7 @@ function buildHtml(data) {
         <div class="metric"><span>總控任務</span><strong>${data.tasks.length}</strong></div>
         <div class="metric"><span>未完成任務</span><strong>${data.openTasks.length}</strong></div>
         <div class="metric"><span>待補目標</span><strong>${data.goalGapTasks.length}</strong></div>
-        <div class="metric"><span>今日訊息線索</span><strong>${data.messages.length}</strong></div>
+        <div class="metric"><span>今日對話線索</span><strong>${data.messages.length}</strong></div>
         <div class="metric"><span>今日行程</span><strong>${calendarBusyCount}</strong></div>
       </div>
       <section id="summary"><div class="section-head"><h2>今日開局摘要</h2><span>先定方向，再處理候選項</span></div><div class="summary-grid">
@@ -294,7 +300,7 @@ function buildHtml(data) {
         <article class="summary-card"><h3>權責缺口</h3><p>${data.responsibilities.length ? `有 ${data.responsibilities.length} 筆權責定義仍待補齊。` : '目前沒有讀到待補權責項目。'}</p></article>
       </div></section>
       <section id="calendar"><div class="section-head"><h2>今天的行程安排</h2><span>${escapeHtml(data.calendar.sourceLabel)}</span></div>${calendarSectionHtml(data.calendar)}</section>
-      <section id="projects"><div class="section-head"><h2>專案狀態掃描</h2><span>依任務、訊息、進度報表彙整</span></div><div class="summary-grid">
+      <section id="projects"><div class="section-head"><h2>專案狀態掃描</h2><span>依任務、對話、進度報表彙整</span></div><div class="summary-grid">
         ${data.projectSummary.map(projectSummaryCardHtml).join('') || '<article class="summary-card"><h3>沒有專案項目</h3><p>目前沒有足夠資料可彙整。</p></article>'}
       </div></section>
       <section id="candidates"><div class="section-head"><h2>候選項目介入</h2><span>每一筆可原地決策並暫存</span></div><div class="candidate-list" id="candidateList"></div></section>
@@ -444,14 +450,74 @@ async function queryDataSource(id, body) {
   return notionRequest(`/v1/data_sources/${id}/query`, { method: 'POST', body });
 }
 
-async function getConversation(pageId) {
-  if (!pageId || !dataSources.conversations) return { project: '' };
-  try {
-    const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
-    return { project: selectProp(page, '總控專案') || '' };
-  } catch {
-    return { project: '' };
+async function pageContentLines(pageId, limit = 80) {
+  const lines = [];
+  let cursor = undefined;
+  do {
+    const query = new URLSearchParams({ page_size: '100' });
+    if (cursor) query.set('start_cursor', cursor);
+    const result = await notionRequest(`/v1/blocks/${pageId}/children?${query.toString()}`, { method: 'GET' });
+    for (const block of result.results || []) {
+      const line = blockToText(block);
+      if (line) lines.push(line);
+      if (lines.length >= limit) return lines;
+    }
+    cursor = result.has_more ? result.next_cursor : undefined;
+  } while (cursor);
+  return lines;
+}
+
+function blockToText(block) {
+  if (!block || !block.type) return '';
+  const value = block[block.type];
+  if (!value) return '';
+  if (Array.isArray(value.rich_text)) return richText(value.rich_text);
+  if (Array.isArray(value.text)) return richText(value.text);
+  return '';
+}
+
+function parseConversationMasterMessages(lines) {
+  const messages = [];
+  let current = null;
+
+  for (const rawLine of lines || []) {
+    const line = String(rawLine || '').trim();
+    if (!line) continue;
+    const parsed = parseConversationLine(line);
+    if (parsed) {
+      if (current) messages.push(current);
+      current = parsed;
+      continue;
+    }
+    if (current) {
+      current.content = `${current.content}\n${line}`.trim();
+    }
   }
+  if (current) messages.push(current);
+  return messages.filter((item) => item.content);
+}
+
+function parseConversationLine(line) {
+  const patterns = [
+    /^(?<time>\d{4}[/-]\d{1,2}[/-]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s+(?<speaker>[^:：]{1,40})[:：]\s*(?<content>.+)$/u,
+    /^\[(?<time>[^\]]+)\]\s*(?<speaker>[^:：]{1,40})[:：]\s*(?<content>.+)$/u,
+    /^(?<speaker>[^:：]{1,40})[:：]\s*(?<content>.+)$/u,
+  ];
+
+  for (const pattern of patterns) {
+    const match = line.match(pattern);
+    if (!match?.groups) continue;
+    const speaker = String(match.groups.speaker || '').trim();
+    const content = String(match.groups.content || '').trim();
+    if (!content) return null;
+    if (/^(LINE|對話|訊息|原始|摘要|主檔|來源)$/i.test(speaker)) return null;
+    return {
+      time: String(match.groups.time || '').trim(),
+      speaker,
+      content,
+    };
+  }
+  return null;
 }
 
 async function notionRequest(endpoint, { method = 'GET', body } = {}) {
@@ -525,11 +591,6 @@ function numberProp(page, name) {
   return null;
 }
 
-function pageRelationId(page, name) {
-  const prop = page.properties?.[name];
-  return prop?.type === 'relation' ? prop.relation?.[0]?.id || '' : '';
-}
-
 function formulaText(formula) {
   if (!formula) return '';
   if (formula.type === 'string') return formula.string || '';
@@ -556,6 +617,15 @@ function scoreMessage(text) {
   if (/Codex|Notion|LINE|Render|資料庫|群組|專案|總控/.test(value)) score += 1;
   if (value.length > 260) score += 1;
   return score;
+}
+
+function isAssistantOperationConversation(page, text) {
+  const name = `${textProp(page, 'LINE 對話名稱')} ${textProp(page, '自定義名稱')}`;
+  const value = String(text || '');
+  const assistantAddressed = /(Seven\s*Jr\.?|Seven\s*Junior|謝孟娟|謝夢娟)/i.test(`${name}\n${value}`);
+  if (!assistantAddressed) return false;
+
+  return /查待辦|列出.*待辦|打開.*任務|看一下.*任務|任務校準|每日總控報告|追蹤確認|新任務確認|followup-confirmation|daily-control-report|排程警告|Cron logs|已收到你送出的/.test(value);
 }
 
 function messageTitle(text) {

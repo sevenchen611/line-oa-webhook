@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>包租代管：處理房客/客戶問題 - 請評估「設備租用服務」的可行性。我們可以採購一些立燈或檯燈，當房客有 - SevenAM User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    h3 { margin:18px 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; width:150px; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    .preline { white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">SevenAM</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日/進度報告</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">判斷規則</a>
+        <a href="user-ui-connected-preview.html#calibration" data-view="calibration">任務校準案例</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-project-1.html" data-back-link>← 回到上一頁</a></p>
+      <h1>包租代管：處理房客/客戶問題 - 請評估「設備租用服務」的可行性。我們可以採購一些立燈或檯燈，當房客有</h1>
+      <p>
+        <span class="badge bad">封存</span>
+        <span class="badge neutral">合併到既有任務</span>
+        <span class="badge neutral">Seven陳聖文</span>
+      </p>
+      <div class="note">這是單一任務頁。此頁只顯示「包租代管：處理房客/客戶問題 - 請評估「設備租用服務」的可行性。我們可以採購一些立燈或檯燈，當房客有」的資料，不顯示其他任務。</div>
+      <section class="section">
+        <h2>編輯任務</h2>
+        <div class="note">儲存會透過 SevenAM 後端寫回 Notion。請從 /user-ui 網址登入後使用；系統會記錄編輯者與編輯內容。</div>
+        <form id="taskEditForm">
+          <div class="edit-grid">
+            <div class="field">
+              <label for="apiBaseUrl">API Base URL</label>
+              <input id="apiBaseUrl" name="apiBaseUrl" value="https://line-oa-webhook-nn5j.onrender.com" autocomplete="url">
+            </div>
+            <div class="field">
+              <label for="editedBy">編輯者</label>
+              <input id="editedBy" name="editedBy" value="" placeholder="例如：Seven">
+            </div>
+            <div class="field">
+              <label for="taskStatus">狀態</label>
+              <select id="taskStatus" name="status">
+                <option value="待確認">待確認</option><option value="未開始">未開始</option><option value="進行中">進行中</option><option value="等待回覆">等待回覆</option><option value="待確認完成">待確認完成</option><option value="已完成">已完成</option><option value="封存" selected>封存</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskConfirmation">確認狀態</label>
+              <input id="taskConfirmation" name="confirmation" value="合併到既有任務">
+            </div>
+            <div class="field">
+              <label for="taskOwner">負責人</label>
+              <input id="taskOwner" name="owner" value="Seven陳聖文">
+            </div>
+            <div class="field">
+              <label for="taskPriority">優先順序</label>
+              <input id="taskPriority" name="priority" value="高">
+            </div>
+            <div class="field full">
+              <label for="taskNext">下一步</label>
+              <textarea id="taskNext" name="next">已整併到「包租代管：確認房客燈光與浴室發黴處理口徑」與「包租代管：建置客人問題回報體系」。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskJudgment">Codex 判斷摘要</label>
+              <textarea id="taskJudgment" name="judgment">助理經理判斷：房客/客戶問題
+重要原因：customer-or-tenant-issue、follow-up、substantial-message
+重要分數：22
+建議處理：整理房客/客戶問題、回覆口徑、修繕責任與下一步，待 Seven 確認。
+校正：此任務屬於包租代管，並非 Andy &amp; Seven 溪頭案，已從錯誤合併中還原。
+
+整併更新：已整併到「包租代管：確認房客燈光與浴室發黴處理口徑」與「包租代管：建置客人問題回報體系」。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskRawSource">來源原文</label>
+              <textarea id="taskRawSource" name="rawSource">LINE 訊息：https://app.notion.com/p/617346930976751860-37851c686dac819b888dce22be75f42c
+對話：37751c68-6dac-813f-8ec1-f61bd5ee0614
+發話者：Seven陳聖文
+同步識別碼：line:37851c68-6dac-819b-888d-ce22be75f42c:8b90f52b3362
+1. 房間燈光亮度問題
+(a) 亮度是主觀感受，設計師與房客的需求往往不同。由於這受制於個人感覺，原則上我們不予調整。
+(b) 回覆房客時語氣要委婉，建議房客若覺得亮度不足，可自行採購立燈輔助，以達到個人需求。
+(c) 另外請評估「設備租用服務」的可行性。我們可以採購一些立燈或檯燈，當房客有需求時提供租用，租金設定在每月 100 至 200 元左右。
+(d) 透過「使用者付費」的概念，既能解決房客問題，也能減少我們為了微調亮度而跑現場的服務成本。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskEditNote">本次編輯備註</label>
+              <textarea id="taskEditNote" name="editNote" placeholder="例如：由 User UI 手動確認狀態，下一步改為..."></textarea>
+            </div>
+            <div class="field full">
+              <label for="taskPageContent">Notion 頁面內容更新</label>
+              <textarea id="taskPageContent" name="pageContent" placeholder="在這裡填入要新增到 Notion 任務頁正文的內容。"></textarea>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="saveTaskButton" type="submit">儲存到 Notion</button>
+            <button class="secondary" type="button" id="rememberApiButton">記住設定</button>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </form>
+      </section>
+      <section class="section">
+        <h2>任務資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>所屬專案</th><td><a href="user-ui-project-1.html">包租代管</a></td></tr>
+            <tr><th>負責人</th><td>Seven陳聖文</td></tr>
+            <tr><th>確認狀態</th><td>合併到既有任務</td></tr>
+            <tr><th>來源</th><td>LINE</td></tr>
+            <tr><th>優先順序</th><td>高</td></tr>
+            <tr><th>判斷信心</th><td></td></tr>
+            <tr><th>下一步</th><td>已整併到「包租代管：確認房客燈光與浴室發黴處理口徑」與「包租代管：建置客人問題回報體系」。</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>AM 判斷與來源</h2>
+        <table>
+          <tbody>
+            <tr><th>Codex 判斷摘要</th><td class="preline">助理經理判斷：房客/客戶問題
+重要原因：customer-or-tenant-issue、follow-up、substantial-message
+重要分數：22
+建議處理：整理房客/客戶問題、回覆口徑、修繕責任與下一步，待 Seven 確認。
+校正：此任務屬於包租代管，並非 Andy &amp; Seven 溪頭案，已從錯誤合併中還原。
+
+整併更新：已整併到「包租代管：確認房客燈光與浴室發黴處理口徑」與「包租代管：建置客人問題回報體系」。</td></tr>
+            <tr><th>來源原文</th><td class="preline">LINE 訊息：https://app.notion.com/p/617346930976751860-37851c686dac819b888dce22be75f42c
+對話：37751c68-6dac-813f-8ec1-f61bd5ee0614
+發話者：Seven陳聖文
+同步識別碼：line:37851c68-6dac-819b-888d-ce22be75f42c:8b90f52b3362
+1. 房間燈光亮度問題
+(a) 亮度是主觀感受，設計師與房客的需求往往不同。由於這受制於個人感覺，原則上我們不予調整。
+(b) 回覆房客時語氣要委婉，建議房客若覺得亮度不足，可自行採購立燈輔助，以達到個人需求。
+(c) 另外請評估「設備租用服務」的可行性。我們可以採購一些立燈或檯燈，當房客有需求時提供租用，租金設定在每月 100 至 200 元左右。
+(d) 透過「使用者付費」的概念，既能解決房客問題，也能減少我們為了微調亮度而跑現場的服務成本。</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>Notion 頁面內容</h2>
+        <div class="card"><p class="muted">No page content loaded.</p></div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const taskPageId = "37851c68-6dac-8177-8d90-c6b9e17084d4";
+    const backLink = document.querySelector('[data-back-link]');
+    const storagePrefix = 'sevenam-user-ui:';
+    const apiInput = document.getElementById('apiBaseUrl');
+    const editorInput = document.getElementById('editedBy');
+    const statusNode = document.getElementById('saveStatus');
+    const saveButton = document.getElementById('saveTaskButton');
+    const savedApiBase = localStorage.getItem(storagePrefix + 'apiBaseUrl');
+    const savedEditor = localStorage.getItem(storagePrefix + 'editedBy');
+    if (location.protocol.startsWith('http') && location.pathname.startsWith('/user-ui')) {
+      apiInput.value = location.origin;
+    }
+    if (savedApiBase) apiInput.value = savedApiBase;
+    if (savedEditor) editorInput.value = savedEditor;
+    backLink?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+    document.getElementById('rememberApiButton').addEventListener('click', () => {
+      localStorage.setItem(storagePrefix + 'apiBaseUrl', apiInput.value.trim());
+      localStorage.setItem(storagePrefix + 'editedBy', editorInput.value.trim());
+      statusNode.textContent = '設定已記住在此瀏覽器。';
+    });
+    document.getElementById('taskEditForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const apiBaseUrl = apiInput.value.trim().replace(/\/+$/, '');
+      if (!apiBaseUrl) {
+        statusNode.textContent = '請先填 API Base URL。';
+        return;
+      }
+      const form = new FormData(event.currentTarget);
+      const updates = Object.fromEntries(['status', 'confirmation', 'owner', 'priority', 'next', 'judgment', 'rawSource', 'editNote', 'pageContent', 'editedBy'].map((key) => [key, String(form.get(key) || '').trim()]));
+      saveButton.disabled = true;
+      statusNode.textContent = '正在儲存...';
+      try {
+        const response = await fetch(apiBaseUrl + '/control/tasks/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ pageId: taskPageId, updates }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || '儲存失敗');
+        }
+        localStorage.setItem(storagePrefix + 'apiBaseUrl', apiBaseUrl);
+        localStorage.setItem(storagePrefix + 'editedBy', updates.editedBy);
+        statusNode.textContent = '已儲存到 Notion。重新產生 User UI 後會看到最新資料。';
+      } catch (error) {
+        statusNode.textContent = '儲存失敗：' + (error.message || error);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

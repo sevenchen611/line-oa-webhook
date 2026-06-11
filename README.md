@@ -43,6 +43,10 @@ Web Service 必要設定：
 - `SEVEN_ATTACHMENTS_DATA_SOURCE_ID`
 - `SEVEN_CONTROL_API_KEY`: 控制 API 密鑰，請使用一組夠長的隨機字串。
 
+任務判斷來源使用 `SEVEN_CONVERSATIONS_DATA_SOURCE_ID`。`SEVEN_MESSAGES_DATA_SOURCE_ID`
+仍保留給 LINE webhook 原始訊息儲存、附件關聯與舊資料相容使用，不作為 hourly
+LINE 任務判斷的輸入來源。
+
 可選設定：
 
 - `SEVEN_REPORT_TARGET_ID`: 早報/晚報備用推送對象，可以是 userId、groupId 或 roomId。若不設定，系統會自動從 Seven LINE 對話主檔尋找最近的一對一個人對話，優先找名稱含 Seven 的對話。
@@ -61,6 +65,7 @@ Web Service 必要設定：
 - `SEVEN_RESPONSIBILITY_DATA_SOURCE_ID`: 權責定義表，預設為 `e8c2f582-edbe-42ab-9d7f-ba063bbf8b99`。
 - `SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID`: LINE 群組選項表，預設為 `b6cfffbf-e7b2-4da4-b21d-d055bc68af69`。
 - `SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID`: LINE 群組成員選項表，預設為 `979949aa-bac3-45ac-a4cc-a38585addb89`。
+- `SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID`: LINE 群組成員索引表，保存 Group ID / Room ID 與 User ID 的對應。權責與群組同步流程應從此表讀取成員資料，不再讀取 LINE 訊息紀錄。
 
 LINE 即時指令：
 
@@ -84,6 +89,10 @@ LINE 即時指令：
 刷新權責候選清單：
 
 ```powershell
+npm run line:group-members -- --dry-run
+npm run line:group-members
+npm run line:groups -- --dry-run
+npm run line:groups
 npm run responsibility:sync
 ```
 
@@ -95,7 +104,7 @@ Cron Jobs 會透過 Blueprint 從 `line-oa-webhook` Web Service 讀取同一組 
 
 | Render Cron Job | 台北時間 | UTC cron | reportType |
 | --- | --- | --- | --- |
-| `seven-jr-line-message-judgement-sync` | 08:10-22:10 每小時 | `10 0-14 * * *` | LINE 訊息判斷同步 |
+| `seven-jr-line-message-judgement-sync` | 08:10-22:10 每小時 | `10 0-14 * * *` | LINE 對話判斷同步 |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 每小時 | `0 0-14 * * *` | 會議紀錄同步 |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 每小時 | `15 0-14 * * *` | 權責候選清單同步 |
 | `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
@@ -122,18 +131,18 @@ POST https://line-oa-webhook-nn5j.onrender.com/control/reports/send
 npm run meetings:sync -- --limit 50
 ```
 
-LINE 訊息判斷同步 Cron Job 執行：
+LINE 對話判斷同步 Cron Job 執行：
 
 ```powershell
-npm run line:judgements -- --include-outgoing-groups --limit 50
+npm run line:conversation-judgements -- --include-outgoing-groups --limit 50
 ```
 
 每小時判斷採雙軌：
 
 - `seven-jr-meeting-action-sync` 在整點掃描新的會議紀錄，萃取行動項目與專案進度。
-- `seven-jr-line-message-judgement-sync` 在 10 分掃描新的 LINE 原始訊息，萃取待確認任務、決策、健康/家庭提醒、財務/保險、房客/客戶問題與進度更新。
+- `seven-jr-line-message-judgement-sync` 在 10 分掃描更新過的 LINE 對話主檔，讀取每個對話最新 20 則內容，萃取待確認任務、決策、健康/家庭提醒、財務/保險、房客/客戶問題與進度更新。
 
-LINE 判斷現在採 Assistant Manager 模式：只要訊息可能需要 Seven 留意、追蹤、關心、決策或負責處理，就會建立候選任務。低訊號訊息才只標記為已判斷，不建立任務。
+LINE 判斷現在採 Assistant Manager 模式：只要對話片段可能需要 Seven 留意、追蹤、關心、決策或負責處理，就會建立候選任務。低訊號對話片段會在對話主檔更新判斷狀態，但不建立任務。
 
 若要本機一次跑完整小時判斷，可執行：
 
@@ -326,35 +335,37 @@ npm run meetings:sync -- --limit 50
 - 可判斷專案時，同步建立一筆專案層級進度報表。
 - 合約、付款、法律、人資、稅務等敏感內容維持待確認。
 
-## LINE 訊息判斷同步
+## LINE 對話判斷同步
 
 本機乾跑，不寫入 Notion：
 
 ```powershell
-npm run line:judgements -- --dry-run --limit 20
+npm run line:conversation-judgements -- --dry-run --limit 20
 ```
 
 正式同步：
 
 ```powershell
-npm run line:judgements -- --limit 50
+npm run line:conversation-judgements -- --limit 50
 ```
 
-重新判斷最近訊息，適合規則更新後補漏：
+重新判斷最近對話，適合規則更新後補漏：
 
 ```powershell
-npm run line:judgements -- --reprocess --since-hours 24 --limit 100
+npm run line:conversation-judgements -- --reprocess --since-hours 24 --limit 100
 ```
 
 同步邏輯：
 
-- 預設排程處理 `訊息來源 = line`，以及 Seven Jr. 透過正式管道送到群組/聊天室的 `ai-engine` 訊息；發給 Seven 個人的系統報告不進入任務判斷。
+- 預設排程讀取 `Seven LINE 對話主檔`，不是 `Seven LINE 訊息紀錄`；任務判斷資料來源為 `SEVEN_CONVERSATIONS_DATA_SOURCE_ID`。
+- 每個更新過的對話主檔預設取最新 20 則對話內容，送進判斷前會依時間由舊到新排序。
+- 預設納入一般 LINE 對話，以及 Seven Jr. 透過正式管道送到群組/聊天室的 `ai-engine` 訊息；發給 Seven 個人的系統報告不進入任務判斷。
 - 若 LINE 對話主檔已填 `總控專案`，任務、進度與日報分類會優先採用該專案，不再只靠文字猜測。
-- 加上 `--reprocess` 時，會重新掃描已判斷過的近期訊息，並用任務名稱去重避免重複建立。
-- 預設只掃最近 36 小時，可用 `--since-hours 72` 調整。
-- 低訊號訊息，例如簡短寒暄、貼圖、純圖片紀錄，不建立任務。
+- 加上 `--reprocess` 時，會重新掃描近期對話，並用任務名稱與來源脈絡去重避免重複建立。
+- 預設只掃最近 36 小時內有新訊息的對話主檔，可用 `--since-hours 72` 調整。
+- 低訊號對話片段，例如簡短寒暄、貼圖、純圖片紀錄，不建立任務。
 - 明確含 `#待辦`、`#追蹤`、`#決策`、`#卡點`，或文字中有請求、交辦、健康、家庭、財務、保險、房客/客戶問題、關係/客訴事件、追蹤、決策、卡點、會議或進度訊號時，會建立候選任務或進度報表。
-- 處理後會把原訊息改為 `已進入判斷層 = true`，並盡量把 `關聯總控事件` 指到新建任務或進度報表。
+- 處理後會在 LINE 對話主檔更新 `最後任務判斷時間`、`最後任務判斷訊息時間`、`任務判斷狀態`。不再使用訊息紀錄的 `已進入判斷層` 作為 hourly LINE 任務判斷狀態。
 
 ## Report Preview
 

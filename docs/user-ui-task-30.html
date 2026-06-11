@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>溪頭案：6/9 15:00 夏緹飯店現場看件 - SevenAM User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    h3 { margin:18px 0 8px; font-size:16px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; width:150px; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    .preline { white-space:pre-wrap; }
+    .message-media { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+    .message-media a { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#f8fafc; }
+    .message-media img { display:block; width:180px; max-width:100%; max-height:180px; object-fit:cover; }
+    .message-file { padding:8px 10px; font-weight:800; }
+    .line-archive-message { margin:0 0 14px; }
+    .line-archive-head { color:#1d4ed8; font-weight:800; }
+    .line-archive-head.assistant { color:#c2410c; }
+    .line-archive-body { margin-top:6px; color:var(--ink); white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">SevenAM</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-project-0.html" data-back-link>← 回到上一頁</a></p>
+      <h1>溪頭案：6/9 15:00 夏緹飯店現場看件</h1>
+      <p>
+        <span class="badge neutral">進行中</span>
+        <span class="badge neutral">已確認</span>
+        <span class="badge neutral">Seven陳聖文</span>
+      </p>
+      <div class="note">這是單一任務頁。此頁只顯示「溪頭案：6/9 15:00 夏緹飯店現場看件」的資料，不顯示其他任務。</div>
+      <section class="section">
+        <h2>編輯任務</h2>
+        <div class="note">儲存會透過 SevenAM 後端寫回 Notion。請從 /user-ui 網址登入後使用；系統會記錄編輯者與編輯內容。</div>
+        <form id="taskEditForm">
+          <div class="edit-grid">
+            <div class="field">
+              <label for="apiBaseUrl">API Base URL</label>
+              <input id="apiBaseUrl" name="apiBaseUrl" value="https://line-oa-webhook-nn5j.onrender.com" autocomplete="url">
+            </div>
+            <div class="field">
+              <label for="editedBy">編輯者</label>
+              <input id="editedBy" name="editedBy" value="" placeholder="例如：Seven">
+            </div>
+            <div class="field">
+              <label for="taskStatus">狀態</label>
+              <select id="taskStatus" name="status">
+                <option value="待確認">待確認</option><option value="未開始">未開始</option><option value="進行中" selected>進行中</option><option value="等待回覆">等待回覆</option><option value="待確認完成">待確認完成</option><option value="已完成">已完成</option><option value="封存">封存</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskConfirmation">確認狀態</label>
+              <input id="taskConfirmation" name="confirmation" value="已確認">
+            </div>
+            <div class="field">
+              <label for="taskOwner">負責人</label>
+              <input id="taskOwner" name="owner" value="Seven陳聖文">
+            </div>
+            <div class="field">
+              <label for="taskPriority">優先順序</label>
+              <input id="taskPriority" name="priority" value="中">
+            </div>
+            <div class="field">
+              <label for="taskDueDate">截止日</label>
+              <input id="taskDueDate" name="dueDate" type="date" value="2026-06-12">
+            </div>
+            <div class="field">
+              <label for="taskNextFollowupDate">下次追蹤日</label>
+              <input id="taskNextFollowupDate" name="nextFollowupDate" type="date" value="2026-06-10">
+            </div>
+            <div class="field">
+              <label for="taskOverdueStatus">逾期狀態</label>
+              <select id="taskOverdueStatus" name="overdueStatus">
+                <option value="需補期限">需補期限</option><option value="未逾期" selected>未逾期</option><option value="今天到期">今天到期</option><option value="已逾期">已逾期</option><option value="已完成">已完成</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="taskDeadlineBasis">期限依據</label>
+              <input id="taskDeadlineBasis" name="deadlineBasis" value="系統預設：一般進行中任務應在 3 天內完成或重新確認期限。">
+            </div>
+            <div class="field full">
+              <label for="taskNext">下一步</label>
+              <textarea id="taskNext" name="next">確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskJudgment">Codex 判斷摘要</label>
+              <textarea id="taskJudgment" name="judgment">已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。</textarea>
+            </div>
+            <div class="field full">
+              <label for="taskEditNote">本次編輯備註</label>
+              <textarea id="taskEditNote" name="editNote" placeholder="例如：由 User UI 手動確認狀態，下一步改為..."></textarea>
+            </div>
+            <div class="field full">
+              <label for="taskPageContent">Notion 頁面內容更新</label>
+              <textarea id="taskPageContent" name="pageContent" placeholder="在這裡填入要新增到 Notion 任務頁正文的內容。">## 任務控制紀錄
+## 目前任務摘要
+- 任務：溪頭案：6/9 15:00 夏緹飯店現場看件
+- 專案目標：溪頭 / 南投鹿谷旅館投資評估案
+- 目前狀態：進行中
+- 負責人：Seven陳聖文
+- 下一步：確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。
+- 需要確認：目前確認狀態為已確認；後續依任務狀態與下一步追蹤。
+## 最新判斷
+- 判斷時間：2026/06/10（批次套用 AM-IMP-2026.0610.03）
+- 判斷來源：Codex 手動整理
+- 判斷結果：已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。
+- 判斷理由：本次批次套用先保留既有任務欄位、來源原文與舊內文，讓後續 AM 判斷可以在同一份任務控制紀錄中接續追加。
+- 信心程度：高
+- 是否需要人工確認：否，除非後續證據改變任務狀態。
+## 證據與處理紀錄
+## 紀錄 1
+- 擷取時間：2026/06/10（批次套用新版格式）
+- 來源類型：Codex 手動整理
+- 來源位置：Codex 手動整理 / 關聯 Notion 頁面
+- 來源時間：2026-06-09T02:12:00.000+00:00
+- 來源對象：Seven陳聖文
+來源原文
+完整來源原文已依 AM-IMP-2026.0610.03 寫入內文各筆「證據與處理紀錄」中的「來源原文」區塊；此欄位僅保留為相容提示。
+證據摘要
+本紀錄由原任務的「來源原文」欄位搬入，並與既有任務欄位合併成新版任務控制紀錄。
+AM 判斷
+已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。
+處理結果
+已將任務頁套用 AM-IMP-2026.0610.03 新版「任務控制紀錄」格式，並將舊內文封存於本紀錄下方。
+狀態變更
+維持既有狀態：進行中
+下一步
+確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。
+關聯規則
+AM-IMP-2026.0610.03：任務內文必須以追加式「證據與處理紀錄」保存來源原文、證據摘要、AM 判斷、處理結果與下一步。來源位置在可用時應連回專案本地來源頁。</textarea>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="saveTaskButton" type="submit">儲存到 Notion</button>
+            <button class="secondary" type="button" id="rememberApiButton">記住設定</button>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </form>
+      </section>
+      <section class="section">
+        <h2>任務資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>所屬專案</th><td><a href="user-ui-project-0.html">溪頭 / 南投鹿谷旅館投資評估案</a></td></tr>
+            <tr><th>負責人</th><td>Seven陳聖文</td></tr>
+            <tr><th>確認狀態</th><td>已確認</td></tr>
+            <tr><th>來源</th><td>Codex 手動整理</td></tr>
+            <tr><th>優先順序</th><td>中</td></tr>
+            <tr><th>截止日</th><td>2026-06-12</td></tr>
+            <tr><th>期限依據</th><td>系統預設：一般進行中任務應在 3 天內完成或重新確認期限。</td></tr>
+            <tr><th>下次追蹤日</th><td>2026-06-10</td></tr>
+            <tr><th>逾期狀態</th><td><span class="badge neutral">未逾期</span></td></tr>
+            <tr><th>判斷信心</th><td></td></tr>
+            <tr><th>下一步</th><td>確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>AM 判斷</h2>
+        <table>
+          <tbody>
+            <tr><th>Codex 判斷摘要</th><td class="preline">已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>原始來源證據</h2>
+        <div class="evidence-list"><article class="evidence-card">
+    <div class="evidence-meta"><span class="badge neutral">來源摘要補充</span></div>
+    <div class="preline">完整來源原文已依 AM-IMP-2026.0610.03 寫入內文各筆「證據與處理紀錄」中的「來源原文」區塊；此欄位僅保留為相容提示。</div>
+  </article></div>
+      </section>
+      <section class="section">
+        <h2>Notion 頁面內容（工作卷宗/摘要）</h2>
+        <div class="card"><h3>任務控制紀錄</h3><h3>目前任務摘要</h3><p>• 任務：溪頭案：6/9 15:00 夏緹飯店現場看件</p><p>• 專案目標：溪頭 / 南投鹿谷旅館投資評估案</p><p>• 目前狀態：進行中</p><p>• 負責人：Seven陳聖文</p><p>• 下一步：確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。</p><p>• 需要確認：目前確認狀態為已確認；後續依任務狀態與下一步追蹤。</p><h3>最新判斷</h3><p>• 判斷時間：2026/06/10（批次套用 AM-IMP-2026.0610.03）</p><p>• 判斷來源：Codex 手動整理</p><p>• 判斷結果：已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。</p><p>• 判斷理由：本次批次套用先保留既有任務欄位、來源原文與舊內文，讓後續 AM 判斷可以在同一份任務控制紀錄中接續追加。</p><p>• 信心程度：高</p><p>• 是否需要人工確認：否，除非後續證據改變任務狀態。</p><h3>證據與處理紀錄</h3><h3>紀錄 1</h3><p>• 擷取時間：2026/06/10（批次套用新版格式）</p><p>• 來源類型：Codex 手動整理</p><p>• 來源位置：Codex 手動整理 / 關聯 Notion 頁面</p><p>• 來源時間：2026-06-09T02:12:00.000+00:00</p><p>• 來源對象：Seven陳聖文</p><p>來源原文</p><p>完整來源原文已依 AM-IMP-2026.0610.03 寫入內文各筆「證據與處理紀錄」中的「來源原文」區塊；此欄位僅保留為相容提示。</p><p>證據摘要</p><p>本紀錄由原任務的「來源原文」欄位搬入，並與既有任務欄位合併成新版任務控制紀錄。</p><p>AM 判斷</p><p>已依 AM-IMP-2026.0610.03 改成新版任務控制紀錄格式；每一筆處理紀錄都包含對應 LINE 來源原文、證據摘要、AM 判斷、處理結果與下一步。此任務目前應確認 2026/06/09 15:00 看件是否完成，以及是否產生斡旋或後續評估事項。</p><p>處理結果</p><p>已將任務頁套用 AM-IMP-2026.0610.03 新版「任務控制紀錄」格式，並將舊內文封存於本紀錄下方。</p><p>狀態變更</p><p>維持既有狀態：進行中</p><p>下一步</p><p>確認 2026/06/09 15:00 夏緹飯店現場看件是否完成；若已完成，補記看件結果、是否進入斡旋、是否需要下一階段評估任務。</p><p>關聯規則</p><p>AM-IMP-2026.0610.03：任務內文必須以追加式「證據與處理紀錄」保存來源原文、證據摘要、AM 判斷、處理結果與下一步。來源位置在可用時應連回專案本地來源頁。</p></div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const taskPageId = "37951c68-6dac-819e-a452-f71b9b7584bc";
+    const backLink = document.querySelector('[data-back-link]');
+    const storagePrefix = 'sevenam-user-ui:';
+    const apiInput = document.getElementById('apiBaseUrl');
+    const editorInput = document.getElementById('editedBy');
+    const statusNode = document.getElementById('saveStatus');
+    const saveButton = document.getElementById('saveTaskButton');
+    const savedApiBase = localStorage.getItem(storagePrefix + 'apiBaseUrl');
+    const savedEditor = localStorage.getItem(storagePrefix + 'editedBy');
+    if (location.protocol.startsWith('http') && location.pathname.startsWith('/user-ui')) {
+      apiInput.value = location.origin;
+    }
+    if (savedApiBase) apiInput.value = savedApiBase;
+    if (savedEditor) editorInput.value = savedEditor;
+    backLink?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+    document.getElementById('rememberApiButton').addEventListener('click', () => {
+      localStorage.setItem(storagePrefix + 'apiBaseUrl', apiInput.value.trim());
+      localStorage.setItem(storagePrefix + 'editedBy', editorInput.value.trim());
+      statusNode.textContent = '設定已記住在此瀏覽器。';
+    });
+    document.getElementById('taskEditForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const apiBaseUrl = apiInput.value.trim().replace(/\/+$/, '');
+      if (!apiBaseUrl) {
+        statusNode.textContent = '請先填 API Base URL。';
+        return;
+      }
+      const form = new FormData(event.currentTarget);
+      const updates = Object.fromEntries(['status', 'confirmation', 'owner', 'priority', 'dueDate', 'deadlineBasis', 'nextFollowupDate', 'overdueStatus', 'next', 'judgment', 'editNote', 'pageContent', 'editedBy'].map((key) => [key, String(form.get(key) || '').trim()]));
+      saveButton.disabled = true;
+      statusNode.textContent = '正在儲存...';
+      try {
+        const response = await fetch(apiBaseUrl + '/control/tasks/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ pageId: taskPageId, updates }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || '儲存失敗');
+        }
+        localStorage.setItem(storagePrefix + 'apiBaseUrl', apiBaseUrl);
+        localStorage.setItem(storagePrefix + 'editedBy', updates.editedBy);
+        statusNode.textContent = '已儲存到 Notion。重新產生 User UI 後會看到最新資料。';
+      } catch (error) {
+        statusNode.textContent = '儲存失敗：' + (error.message || error);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

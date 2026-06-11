@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>每 15 分鐘檢查命令 - SevenAM User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    .card { padding:14px; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .note { padding:12px 14px; border:1px solid #bdd4ff; border-left:5px solid var(--blue); border-radius:6px; background:#f1f6ff; color:#173d7a; margin:12px 0; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .mono { font-family:Consolas,"SFMono-Regular",Menlo,monospace; font-size:13px; word-break:break-all; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">SevenAM</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#scheduled-jobs">← 自動定時執行任務</a>
+        <a href="user-ui-scheduled-hourly-checks.html">每小時檢查程式</a>
+        <a href="user-ui-scheduled-daily-reports.html">每日定時報告</a>
+        <a href="user-ui-connected-preview.html#tasks">所有任務</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#scheduled-jobs">← 回到自動定時執行任務</a></p>
+      <h1>每 15 分鐘檢查命令</h1>
+      <p class="muted">這個檢查負責處理從 LINE 進來、需要 Codex 或後端接手的即時指令。</p>
+      <p><span class="badge wait">15 min</span> <span class="badge neutral">Codex Command Queue</span></p>
+
+      <section class="section">
+        <h2>檢查項目</h2>
+        <table>
+          <thead><tr><th>項目</th><th>檢查內容</th><th>具體做法</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>命令佇列</td>
+              <td>檢查 Codex Command Queue 中是否有新的 LINE 指令。</td>
+              <td>LINE webhook 收到「Seven Junior，我們來做任務校準」或其他非即時可處理指令時，會建立命令佇列項目，等待 Codex 或指定流程接手。</td>
+            </tr>
+            <tr>
+              <td>即時可處理命令</td>
+              <td>辨識可以立即回覆的查詢。</td>
+              <td>目前即時處理以「查待辦」與「打開第幾個任務」為主，會直接回 LINE；這類操作指令保留為命令紀錄，不建立總控任務。</td>
+            </tr>
+            <tr>
+              <td>需 Codex 接手命令</td>
+              <td>辨識需要開發、資料庫修改、任務校準或人工判斷的指令。</td>
+              <td>將指令、來源群組、發話者、LINE 訊息 ID、風險等級與原文寫進命令佇列，供 Codex 後續執行。</td>
+            </tr>
+            <tr>
+              <td>處理狀態</td>
+              <td>確認命令是否仍待處理、已處理、失敗或需要人工確認。</td>
+              <td>命令處理流程可讀取佇列並更新狀態，避免同一個指令被重複處理，也讓 Seven 可以知道哪些指令還在等 Codex。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>命令與任務的邊界</h2>
+        <table>
+          <tbody>
+            <tr><th>查詢命令</th><td>例如查待辦、列出今天待辦、打開第 2 個任務。這是系統操作，不是現實世界待辦。</td></tr>
+            <tr><th>校準命令</th><td>例如「我們來做任務校準」。這是要求 Codex 開始一個操作流程，應進入命令佇列，不直接變成總控任務。</td></tr>
+            <tr><th>真實任務</th><td>若同一則訊息除了命令之外，還包含對外承諾、負責人、交付物、截止日或風險事件，才需要另依任務規則判斷是否建立任務。</td></tr>
+            <tr><th>紀錄位置</th><td>命令保存在 Codex Command Queue 或 LINE 訊息紀錄；真實任務才進入總控任務庫。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <div class="note">這個 15 分鐘檢查的價值，是讓「操作 Seven Jr.」和「建立真實待辦」分開處理。這樣任務庫不會被查詢指令污染，但 Codex 仍能接到需要處理的工作。</div>
+    </main>
+  </div>
+</body>
+</html>

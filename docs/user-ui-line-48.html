@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>謝明錩老師 - AM Project User UI</title>
+  <style>
+    :root { --bg:#f6f8fb; --panel:#fff; --ink:#17202a; --muted:#617080; --line:#d8dee8; --blue:#2563eb; --green:#12805c; --amber:#a15c00; --red:#b42318; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Segoe UI","Noto Sans TC",Arial,sans-serif; letter-spacing:0; }
+    a { color:#1d4ed8; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    aside { background:#fff; border-right:1px solid var(--line); padding:22px 18px; position:sticky; top:0; height:100vh; overflow:auto; }
+    main { padding:26px 30px 48px; min-width:0; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { margin:22px 0 10px; font-size:21px; }
+    p { margin:0 0 10px; }
+    .muted { color:var(--muted); }
+    .brand { font-weight:850; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+    .nav a { display:block; padding:9px 10px; border-radius:6px; color:#2f3a48; margin-bottom:4px; }
+    .nav a:hover { background:#e8f0ff; text-decoration:none; }
+    .badge { display:inline-flex; min-height:24px; align-items:center; padding:3px 8px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:800; white-space:nowrap; }
+    .ok { color:var(--green); background:#e8f6ef; border-color:#b9d5c4; }
+    .wait { color:var(--amber); background:#fff2d8; border-color:#f4d49d; }
+    .bad { color:var(--red); background:#fff0ee; border-color:#f0c5bd; }
+    .neutral { color:#334155; background:#f8fafc; }
+    .section,.card { background:#fff; border:1px solid var(--line); border-radius:8px; }
+    .section { padding:18px; margin:18px 0; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th,td { padding:10px 9px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f9fbfd; color:#344253; font-size:13px; font-weight:850; }
+    .preline { white-space:pre-wrap; }
+    .message-media { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+    .message-media a { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#f8fafc; }
+    .message-media img { display:block; width:180px; max-width:100%; max-height:180px; object-fit:cover; }
+    .message-file { padding:8px 10px; font-weight:800; }
+    .line-archive-message { margin:0 0 14px; }
+    .line-archive-head { color:#1d4ed8; font-weight:800; }
+    .line-archive-head.assistant { color:#c2410c; }
+    .line-archive-body { margin-top:6px; color:var(--ink); white-space:pre-wrap; }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:static; height:auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">AM User UI<br><span class="muted">AM Project</span></div>
+      <nav class="nav">
+        <a href="user-ui-connected-preview.html#overview" data-view="overview">檔案總覽</a>
+        <a href="user-ui-connected-preview.html#projects" data-view="projects">所有專案</a>
+        <a href="user-ui-connected-preview.html#tasks" data-view="tasks">所有任務</a>
+        <a href="user-ui-connected-preview.html#line" data-view="line">LINE 群組與訊息</a>
+        <a href="user-ui-connected-preview.html#attachments" data-view="attachments">附件與檔案</a>
+        <a href="user-ui-connected-preview.html#meetings" data-view="meetings">會議紀錄</a>
+        <a href="user-ui-connected-preview.html#reports" data-view="reports">每日報告中心</a>
+        <a href="user-ui-connected-preview.html#rules" data-view="rules">任務判斷規則</a>
+        <a href="user-ui-connected-preview.html#env" data-view="env">Environment data</a>
+        <a href="user-ui-connected-preview.html#databases" data-view="databases">Database map</a>
+      </nav>
+    </aside>
+    <main>
+      <p><a href="user-ui-connected-preview.html#line" data-back-link>← 回到上一頁</a></p>
+      <h1>謝明錩老師</h1>
+      <p>
+        <span class="badge ok">Project: 私人事務</span>
+        <span class="badge neutral">群組</span>
+        <span class="badge ok">啟用</span>
+        <span class="badge neutral">25 messages</span>
+      </p>
+      <section class="section">
+        <h2>群組資訊</h2>
+        <table>
+          <tbody>
+            <tr><th>最新訊息預覽</th><td>老師，今天回來已經有收到您寄來的包裹了，裡面有三本非常棒的畫冊：
+1. 《水彩畫法的奧秘》
+2. 《臺灣名家美術 100 年》
+3. 《意蘊與意念》
+
+哇，非常棒的三本書！我會好好地學習、拜讀，然後會把這些書帶到茲心園，給更多的客人能夠看到這麼棒的書。</td></tr>
+            <tr><th>最後訊息時間</th><td>2026-06-10T16:08:00.000+00:00</td></tr>
+            <tr><th>訊息數</th><td>25</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>對話訊息</h2>
+        <p class="muted">共 18 筆對話主檔訊息。</p>
+        <table>
+          <thead><tr><th>Speaker</th><th>Type</th><th>Content</th></tr></thead>
+          <tbody><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/11 上午12:08:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">老師，今天回來已經有收到您寄來的包裹了，裡面有三本非常棒的畫冊：
+1. 《水彩畫法的奧秘》
+2. 《臺灣名家美術 100 年》
+3. 《意蘊與意念》
+哇，非常棒的三本書！我會好好地學習、拜讀，然後會把這些書帶到茲心園，給更多的客人能夠看到這麼棒的書。</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/11 上午12:07:00】謝明錩老師 - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617865162686464069</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/11 上午12:07:00】謝明錩老師 - Seven陳聖文（圖片訊息）</div>
+    <div class="preline">617865161595945420</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:45:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">美珍姐，住宿券背面有蓋藍色的章，有藍色的章就表示這個館是可以使用的；那沒有藍色的章，這張住宿券就不能使用那個館。</div>
+  </div></td></tr><tr><td>謝陳美珍</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:31:00】謝明錩老師 - 謝陳美珍（文字訊息）</div>
+    <div class="preline">住宿券的反面有 八九間旅館他說有蓋章就是有有福福水印補骨起來那種不是藍色的章 印章的章不是</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:28:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">老師午安，看到您有收到住宿券了，謝謝。
+關於住宿券，因為我們有很多位股東，每一組股東擁有的旅館不同，所以住宿券背面會根據不同的旅館蓋章；也就是說，不同的股東群會有不同的住宿券，只要是有蓋章的館別就可以使用。
+另外，老師，因為我最近晚上都工作到很晚才回家，所以一直沒去管理室領包裹。雖然管理室有通知包裹到了，但我還沒時間去領，我今天下班回家時會特別過去領一下。
+謝謝老師！</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:03:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">不知道您收到我寄去的三本書了嗎？ 如果還沒收到，應該也快了。</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:03:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">收到可貴的住宿券了，太感謝你了。</div>
+  </div></td></tr><tr><td>謝明錩</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/10 下午12:01:00】謝明錩老師 - 謝明錩（圖片訊息）</div>
+    <div class="preline">617792075345953231</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/8 上午11:50:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">(非 message 事件)</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/8 上午11:50:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">這是我在一本書前面寫的，基本上，螢光筆黑線紅線或者紅線加螢光筆，或者單獨只有螢光筆，代表的意義是不一樣的。所以我是讀第一遍的時候就加上這些不同的標記，
+只是第二次再讀的時候，有時還會拿筆再畫它一下，或是再寫一點眉批
+我年輕時很感性，年老以後變成無可救藥的理性，一切都講求秩序。
+後來我發現只有感性加理性才有可能畫好畫</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/8 上午11:48:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">這時我在一本書前面寫的，基本上，螢光筆黑線紅線或者紅線加銀光筆，或者單獨只有螢光筆，代表的意義是不一樣的。所以我是獨一變的時候就有所分別了
+只是第二次再讀的時候，有時還會拿筆再畫它一下，或是再寫一點眉批
+我年輕時很感性，年老以後變成無可救藥的理性，一切都講求秩序。
+後來我發現只有感性加理性才有可能畫好畫</div>
+  </div></td></tr><tr><td>謝明錩</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/8 上午11:46:00】謝明錩老師 - 謝明錩（圖片訊息）</div>
+    <div class="preline">617500628880720383</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/7 上午11:04:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">美珍姐，我怎麼覺得這個 YouTube 的主角跟你長得很像？你真的很像外國美女，有外國人的輪廓的感覺。也祝福你慢慢來，活得好！(joy)(joy)(joy)</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/7 上午11:03:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">這些真的好美，跟山上一樣美。
+這裡有綠地、有小河小溪，還有樹林。老師，你真幸福啊！每天住在這種地方，看書、泡茶、運動，這真的實在是太完美了，真是個好地方。</div>
+  </div></td></tr><tr><td>Seven陳聖文</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/7 上午11:01:00】謝明錩老師 - Seven陳聖文（文字訊息）</div>
+    <div class="preline">老師，這是一次完成，還是分多次慢慢做呢？
+1. 第一次先畫螢光筆
+2. 第二次畫紅線
+3. 第三次再寫眉批
+還是您一次就全部完成了？滿好奇的</div>
+  </div></td></tr><tr><td>謝明錩</td><td>text</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/6 下午6:58:00】謝明錩老師 - 謝明錩（文字訊息）</div>
+    <div class="preline">這些都是我讀書的地方，好幾個秘密基地，都沒有別人</div>
+  </div></td></tr><tr><td>謝明錩</td><td>image</td><td><div class="line-archive-message">
+    <div class="line-archive-head">【2026/6/6 下午6:58:00】謝明錩老師 - 謝明錩（圖片訊息）</div>
+    
+  </div></td></tr></tbody>
+        </table>
+      </section>
+      <section class="section">
+        <h2>附件與檔案</h2>
+        <p class="muted">目前沒有找到這個群組的附件。</p>
+        <table>
+          <thead><tr><th>File</th><th>Sender</th><th>Message</th><th>Status</th></tr></thead>
+          <tbody><tr><td colspan="8" class="muted">No records.</td></tr></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.querySelector('[data-back-link]')?.addEventListener('click', (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+  </script>
+</body>
+</html>
