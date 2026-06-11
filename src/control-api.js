@@ -726,6 +726,21 @@ async function approveReport(req, body) {
     taskResults.push(await applyTaskApproval(item, { reportType, approvedBy, submittedAt }));
   }
 
+  const snoozeResults = [];
+  for (const item of normalizeApprovalList(body.snoozes)) {
+    snoozeResults.push(await applyTaskSnooze(item, { reportType, approvedBy, submittedAt }));
+  }
+
+  const noteResults = [];
+  for (const item of normalizeApprovalList(body.taskNotes)) {
+    noteResults.push(await applyTaskNote(item, { reportType, approvedBy, submittedAt }));
+  }
+
+  const followupSendResults = [];
+  for (const item of normalizeApprovalList(body.followupSends)) {
+    followupSendResults.push(await applyFollowupSend(item, { reportType, approvedBy, submittedAt }));
+  }
+
   const attachmentResults = [];
   for (const item of attachments) {
     attachmentResults.push(await createAttachmentConversionApproval(item, { reportType, approvedBy, submittedAt }));
@@ -758,6 +773,9 @@ async function approveReport(req, body) {
     followups,
     followupDispatch,
     decisionPage,
+    snoozeResults,
+    noteResults,
+    followupSendResults,
   });
 
   return {
@@ -772,6 +790,9 @@ async function approveReport(req, body) {
     followupDispatch,
     taskResults,
     attachmentResults,
+    snoozeResults,
+    noteResults,
+    followupSendResults,
   };
 }
 
@@ -813,7 +834,7 @@ async function resolveAcknowledgementTargets(body) {
   });
 }
 
-function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage }) {
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [] }) {
   const label = reportTypeLabel(reportType);
   const lines = [
     `Seven Jr. 已收到你送出的${label}確認。`,
@@ -829,6 +850,12 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   if (followupDispatch?.sent) summary.push(`已發送追蹤 ${followupDispatch.sent} 則`);
   if (followupDispatch?.dryRunResolved) summary.push(`可發送待確認 ${followupDispatch.dryRunResolved} 則`);
   if (followupDispatch?.pending) summary.push(`待補對象 ${followupDispatch.pending} 則`);
+  const sentFollowups = followupSendResults.filter((item) => item.ok);
+  const failedFollowups = followupSendResults.filter((item) => !item.ok);
+  if (sentFollowups.length) summary.push(`追問訊息已發送 ${sentFollowups.length} 則`);
+  if (failedFollowups.length) summary.push(`追問發送失敗 ${failedFollowups.length} 則`);
+  if (snoozeResults.length) summary.push(`暫緩追蹤 ${snoozeResults.length} 項`);
+  if (noteResults.length) summary.push(`補充備註 ${noteResults.length} 項`);
 
   lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
 
@@ -1255,6 +1282,180 @@ async function findTaskByName(taskName) {
   });
 
   return result.results?.[0] || null;
+}
+
+let taskReviewPropertiesEnsured = false;
+
+async function ensureTaskReviewProperties() {
+  if (taskReviewPropertiesEnsured) return;
+  try {
+    await notionRequest(`/v1/data_sources/${TASKS_DATA_SOURCE_ID}`, {
+      method: 'PATCH',
+      body: {
+        properties: {
+          追蹤暫緩至: { date: {} },
+          最新備註: { rich_text: {} },
+        },
+      },
+    });
+    taskReviewPropertiesEnsured = true;
+  } catch (error) {
+    console.warn(`Unable to ensure task review properties (追蹤暫緩至/最新備註): ${error.message}`);
+  }
+}
+
+async function applyTaskSnooze(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  const days = Math.min(Math.max(Number(item.days) || 1, 1), 30);
+  if (!taskName) {
+    return { ok: false, task: taskName, error: 'missing task name' };
+  }
+
+  try {
+    const page = await findTaskByName(taskName);
+    if (!page) {
+      return { ok: false, task: taskName, error: 'task not found' };
+    }
+
+    await ensureTaskReviewProperties();
+    const snoozeUntil = new Date(context.submittedAt.getTime() + days * 24 * 60 * 60 * 1000);
+    await notionRequest(`/v1/pages/${page.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          追蹤暫緩至: dateProperty(snoozeUntil),
+          最後更新: dateProperty(context.submittedAt),
+        }),
+      },
+    });
+
+    return { ok: true, task: taskName, days, snoozeUntil: snoozeUntil.toISOString() };
+  } catch (error) {
+    return { ok: false, task: taskName, error: error.message };
+  }
+}
+
+async function applyTaskNote(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  const note = String(item.note || '').trim();
+  if (!taskName || !note) {
+    return { ok: false, task: taskName, error: 'missing task name or note' };
+  }
+
+  try {
+    const page = await findTaskByName(taskName);
+    if (!page) {
+      return { ok: false, task: taskName, error: 'task not found' };
+    }
+
+    const timestamp = formatTaipeiDateTime(context.submittedAt);
+    const sourceLabel = `來源：${reportTypeLabel(context.reportType)}，由 ${context.approvedBy} 於 ${timestamp} 提供`;
+
+    await notionRequest(`/v1/blocks/${page.id}/children`, {
+      method: 'PATCH',
+      body: {
+        children: [
+          { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `補充備註（${timestamp}）` } }] } },
+          { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(note) } }] } },
+          { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: sourceLabel } }], color: 'gray' } },
+        ],
+      },
+    });
+
+    await ensureTaskReviewProperties();
+    await notionRequest(`/v1/pages/${page.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          最新備註: richTextProperty(`[${timestamp}] ${note}`),
+          最後更新: dateProperty(context.submittedAt),
+        }),
+      },
+    });
+
+    return { ok: true, task: taskName };
+  } catch (error) {
+    return { ok: false, task: taskName, error: error.message };
+  }
+}
+
+async function applyFollowupSend(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  const message = clampLineText(String(item.message || '').trim());
+  const conversationUrl = String(item.conversationUrl || '').trim();
+  if (!taskName || !message) {
+    return { ok: false, task: taskName, error: 'missing task name or message' };
+  }
+
+  try {
+    const target = await resolveTaskFollowupTarget(conversationUrl);
+    if (!target) {
+      return { ok: false, task: taskName, error: '無法從來源對話解析發送對象（缺少 Group ID / User ID）' };
+    }
+
+    const pushResult = await pushToTargets([target], [{ type: 'text', text: message }]);
+
+    const page = await findTaskByName(taskName);
+    if (page) {
+      const timestamp = formatTaipeiDateTime(context.submittedAt);
+      await notionRequest(`/v1/blocks/${page.id}/children`, {
+        method: 'PATCH',
+        body: {
+          children: [
+            { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `追問已發送（${timestamp}）` } }] } },
+            { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(message) } }] } },
+            { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `發送對象：${target.name || target.id}（${target.type}）；由 ${context.approvedBy} 從 ${reportTypeLabel(context.reportType)} 核准發送。` } }], color: 'gray' } },
+          ],
+        },
+      });
+
+      // Auto-snooze so tomorrow's report doesn't immediately re-ask about the same task.
+      await ensureTaskReviewProperties();
+      const snoozeUntil = new Date(context.submittedAt.getTime() + 2 * 24 * 60 * 60 * 1000);
+      await notionRequest(`/v1/pages/${page.id}`, {
+        method: 'PATCH',
+        body: {
+          properties: compactProperties({
+            追蹤暫緩至: dateProperty(snoozeUntil),
+            最後更新: dateProperty(context.submittedAt),
+          }),
+        },
+      });
+    }
+
+    return { ok: true, task: taskName, target: { id: target.id, type: target.type, name: target.name || '' }, pushResult: pushResult.results || [] };
+  } catch (error) {
+    return { ok: false, task: taskName, error: error.message };
+  }
+}
+
+async function resolveTaskFollowupTarget(conversationUrl) {
+  const pageId = extractNotionPageId(conversationUrl);
+  if (!pageId) return null;
+
+  const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
+  const properties = page.properties || {};
+  const targetType = properties['對象類型']?.select?.name || '';
+  const groupId = plainRichText(properties['Group ID']);
+  const roomId = plainRichText(properties['Room ID']);
+  const userId = plainRichText(properties['User ID']);
+  const name = plainRichText(properties['自定義名稱'])
+    || (properties['LINE 對話名稱']?.title || []).map((item) => item.plain_text || '').join('');
+
+  if (targetType === '群組' && groupId) return { id: groupId, type: 'group', name, source: 'task-followup' };
+  if (targetType === '聊天室' && roomId) return { id: roomId, type: 'room', name, source: 'task-followup' };
+  if (userId) return { id: userId, type: 'user', name, source: 'task-followup' };
+  if (groupId) return { id: groupId, type: 'group', name, source: 'task-followup' };
+  return null;
+}
+
+function plainRichText(property) {
+  return (property?.rich_text || []).map((item) => item.plain_text || item.text?.content || '').join('').trim();
+}
+
+function extractNotionPageId(url) {
+  const match = String(url || '').match(/([0-9a-f]{32})(?:\?|$)/i) || String(url || '').match(/([0-9a-f]{32})/i);
+  return match ? match[1] : '';
 }
 
 async function createAttachmentConversionApproval(item, context) {
