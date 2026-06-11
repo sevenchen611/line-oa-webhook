@@ -1019,6 +1019,22 @@ calibration loop automatically:
 This pipeline coexists with the manual LINE calibration flow
 (`開始做任務校準` commands); both write to the same case and rule databases.
 
+### Project governance baseline (2026-06-12)
+
+- **Controlled project vocabulary (R1)**: the extraction service loads the
+  official project list from `總控專案庫`
+  (`SEVEN_PROJECTS_DATA_SOURCE_ID`, default `2d4e4e80-09e6-447f-b2e2-36269ff1ac5c`)
+  on every run, injects it into the system prompt, and enforces it through the
+  JSON schema enum (`project` must be an official name or `未分類`). The AI can
+  never invent a project name. Projects are born only by the user (or, later,
+  through the approved proposal flow).
+- **Unclassified hygiene (R4)**: review pages have a fourth section
+  「未分類任務待歸屬」 listing confirmed tasks whose 專案 is 未分類/empty, with
+  a project picker fed from the official list. Submissions use the
+  `projectAssigns` list (`{task, project}`) on `/control/reports/approve`.
+- Tasks never require a project to be created — 未分類 is the intake area.
+- `查待辦` LINE replies now read 截止日 (falling back to 期限/Due Date).
+
 ### Trustworthiness instruments (2026-06-11)
 
 Three additional instruments make extraction quality measurable and
