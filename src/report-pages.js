@@ -23,6 +23,7 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
     queryOfficialProjects(),
   ]);
   const pendingAttachments = await queryPendingAttachments();
+  const projectProposals = await queryProjectProposals();
 
   const now = new Date();
   const activeWaiting = waitingTasks.filter((task) => !task.snoozedUntil || new Date(task.snoozedUntil) <= now);
@@ -46,7 +47,34 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
     mergeTargets,
     officialProjects,
     pendingAttachments,
+    projectProposals,
   });
+}
+
+async function queryProjectProposals() {
+  const projectsDataSourceId = process.env.SEVEN_PROJECTS_DATA_SOURCE_ID || '2d4e4e80-09e6-447f-b2e2-36269ff1ac5c';
+  try {
+    const result = await notionRequest(`/v1/data_sources/${projectsDataSourceId}/query`, {
+      method: 'POST',
+      body: {
+        page_size: 20,
+        filter: { property: '狀態', select: { equals: '候選' } },
+      },
+    });
+    return (result.results || []).map((page) => {
+      const properties = page.properties || {};
+      return {
+        pageId: page.id,
+        url: page.url,
+        name: textProperty(properties['專案名稱']),
+        projectType: properties['專案類型']?.select?.name || '',
+        goal: textProperty(properties['目標']),
+        reason: textProperty(properties['目前進度摘要']),
+      };
+    }).filter((proposal) => proposal.name);
+  } catch {
+    return [];
+  }
 }
 
 async function queryPendingAttachments() {
@@ -86,6 +114,7 @@ async function queryOfficialProjects() {
       body: { page_size: 100 },
     });
     return (result.results || [])
+      .filter((page) => !['候選', '封存'].includes(page.properties?.['狀態']?.select?.name || ''))
       .map((page) => {
         const titleProperty = Object.values(page.properties || {}).find((property) => property.type === 'title');
         return (titleProperty?.title || []).map((item) => item.plain_text || '').join('').trim();
@@ -160,7 +189,7 @@ function buildDraftFollowupMessage(task) {
   return `${ownerPart}想跟您確認一下「${task.title}」目前的進度${stepPart}，方便的時候再麻煩回覆，謝謝！`;
 }
 
-function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, unclassifiedTasks, mergeTargets, officialProjects, pendingAttachments = [] }) {
+function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, unclassifiedTasks, mergeTargets, officialProjects, pendingAttachments = [], projectProposals = [] }) {
   const generatedAt = formatTaipeiDateTime(new Date());
 
   const pendingSections = groupByProject(pendingTasks)
@@ -180,7 +209,8 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
 
   const unclassifiedCards = unclassifiedTasks.map((task) => unclassifiedCard(task, officialProjects)).join('\n');
   const attachmentCards = pendingAttachments.map((attachment) => attachmentCard(attachment)).join('\n');
-  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length + unclassifiedTasks.length + pendingAttachments.length;
+  const proposalCards = projectProposals.map((proposal) => proposalCard(proposal)).join('\n');
+  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length + unclassifiedTasks.length + pendingAttachments.length + projectProposals.length;
 
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -202,6 +232,7 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   .section-title.progress { background: #2b8a3e; }
   .section-title.unclassified { background: #845ef7; }
   .section-title.attachments { background: #0b7285; }
+  .section-title.proposals { background: #d6336c; }
   .section-hint { font-size: 12px; color: #52606d; margin: 4px 0 10px; }
   .project-group h2 { font-size: 15px; margin: 16px 0 8px; color: #334e68; border-left: 4px solid #9aa5b1; padding-left: 8px; }
   .card { background: #fff; border: 1px solid #e0e4e8; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
@@ -258,6 +289,10 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   <div class="section-title attachments">五、附件解析確認（${pendingAttachments.length}）</div>
   <div class="section-hint">超過大小上限或來自私人對話的附件，確認後才會解析。</div>
   ${pendingAttachments.length === 0 ? '<div class="empty">沒有等待確認的附件。</div>' : attachmentCards}
+
+  <div class="section-title proposals">六、專案提案（${projectProposals.length}）</div>
+  <div class="section-hint">AI 從未分類任務、無歸屬群組與大型母任務中發現的新工作流。核准後成為正式專案，AI 判讀才能使用。</div>
+  ${projectProposals.length === 0 ? '<div class="empty">沒有等待核准的專案提案。</div>' : proposalCards}
 
   <datalist id="merge-targets">
     ${mergeTargets.map((name) => `<option value="${escapeHtml(name)}"></option>`).join('\n')}
@@ -348,13 +383,19 @@ if (submitButton) submitButton.addEventListener('click', async () => {
     if (select && select.value !== 'keep') attachmentDecisions.push({ pageId: card.dataset.page, decision: select.value });
   });
 
+  const projectProposalDecisions = [];
+  document.querySelectorAll('.card.proposal-card').forEach((card) => {
+    const select = card.querySelector('select.proposal-decision');
+    if (select && select.value !== 'keep') projectProposalDecisions.push({ pageId: card.dataset.page, decision: select.value });
+  });
+
   if (invalid) {
     banner.className = 'banner err';
     banner.textContent = '「' + invalid + '」缺少必要內容（合併目標或追問訊息）。';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length + attachmentDecisions.length;
+  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length + attachmentDecisions.length + projectProposalDecisions.length;
   if (total === 0) {
     banner.className = 'banner err';
     banner.textContent = '還沒有任何處理（全部都維持原狀）。';
@@ -382,6 +423,7 @@ if (submitButton) submitButton.addEventListener('click', async () => {
         taskNotes,
         projectAssigns,
         attachmentDecisions,
+        projectProposalDecisions,
         notes: (document.getElementById('notes') || {}).value || '',
       }),
     });
@@ -496,6 +538,23 @@ function attachmentCard(attachment) {
         <option value="keep" selected>暫不決定</option>
         <option value="已核准解析">✅ 核准解析（下一輪自動處理）</option>
         <option value="確定不解析">❌ 不需要解析</option>
+      </select>
+    </div>
+  </div>`;
+}
+
+function proposalCard(proposal) {
+  return `
+  <div class="card proposal-card" data-page="${escapeHtml(proposal.pageId)}">
+    <h3><a href="${escapeHtml(proposal.url)}" target="_blank" rel="noopener">📁 ${escapeHtml(proposal.name)}</a></h3>
+    <div class="badges">${proposal.projectType ? `<span class="badge">${escapeHtml(proposal.projectType)}</span>` : ''}</div>
+    ${proposal.goal ? `<div class="latest-note">🎯 ${escapeHtml(proposal.goal)}</div>` : ''}
+    ${proposal.reason ? `<details><summary>提案理由</summary><pre>${escapeHtml(proposal.reason)}</pre></details>` : ''}
+    <div class="controls">
+      <select class="proposal-decision">
+        <option value="keep" selected>暫不決定</option>
+        <option value="approve">✅ 核准成立（成為正式專案）</option>
+        <option value="reject">❌ 退回提案</option>
       </select>
     </div>
   </div>`;
