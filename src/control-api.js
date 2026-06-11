@@ -751,6 +751,11 @@ async function approveReport(req, body) {
     attachmentDecisionResults.push(await applyAttachmentDecision(item, { reportType, approvedBy, submittedAt }));
   }
 
+  const projectProposalResults = [];
+  for (const item of normalizeApprovalList(body.projectProposalDecisions)) {
+    projectProposalResults.push(await applyProjectProposalDecision(item, { reportType, approvedBy, submittedAt }));
+  }
+
   const attachmentResults = [];
   for (const item of attachments) {
     attachmentResults.push(await createAttachmentConversionApproval(item, { reportType, approvedBy, submittedAt }));
@@ -788,6 +793,7 @@ async function approveReport(req, body) {
     followupSendResults,
     projectAssignResults,
     attachmentDecisionResults,
+    projectProposalResults,
   });
 
   return {
@@ -807,6 +813,7 @@ async function approveReport(req, body) {
     followupSendResults,
     projectAssignResults,
     attachmentDecisionResults,
+    projectProposalResults,
   };
 }
 
@@ -848,7 +855,7 @@ async function resolveAcknowledgementTargets(body) {
   });
 }
 
-function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [], projectAssignResults = [], attachmentDecisionResults = [] }) {
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [], projectAssignResults = [], attachmentDecisionResults = [], projectProposalResults = [] }) {
   const label = reportTypeLabel(reportType);
   const lines = [
     `Seven Jr. 已收到你送出的${label}確認。`,
@@ -872,6 +879,12 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   if (noteResults.length) summary.push(`補充備註 ${noteResults.length} 項`);
   if (projectAssignResults.length) summary.push(`專案歸屬 ${projectAssignResults.filter((item) => item.ok).length} 項`);
   if (attachmentDecisionResults.length) summary.push(`附件解析決定 ${attachmentDecisionResults.filter((item) => item.ok).length} 項`);
+  if (projectProposalResults.length) {
+    const approved = projectProposalResults.filter((item) => item.decision === 'approved').length;
+    const rejected = projectProposalResults.filter((item) => item.decision === 'rejected').length;
+    if (approved) summary.push(`核准新專案 ${approved} 個`);
+    if (rejected) summary.push(`退回專案提案 ${rejected} 個`);
+  }
 
   lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
 
@@ -1317,6 +1330,31 @@ async function ensureTaskReviewProperties() {
     taskReviewPropertiesEnsured = true;
   } catch (error) {
     console.warn(`Unable to ensure task review properties (追蹤暫緩至/最新備註): ${error.message}`);
+  }
+}
+
+async function applyProjectProposalDecision(item, context) {
+  const pageId = String(item.pageId || '').trim();
+  const decision = String(item.decision || '').trim();
+  if (!pageId || !['approve', 'reject'].includes(decision)) {
+    return { ok: false, pageId, error: 'invalid proposal decision' };
+  }
+
+  try {
+    const approve = decision === 'approve';
+    await notionRequest(`/v1/pages/${pageId}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          狀態: selectProperty(approve ? '規劃中' : '封存'),
+          啟用: { checkbox: approve },
+          開始日期: approve ? dateProperty(context.submittedAt) : undefined,
+        }),
+      },
+    });
+    return { ok: true, pageId, decision: approve ? 'approved' : 'rejected' };
+  } catch (error) {
+    return { ok: false, pageId, error: error.message };
   }
 }
 
