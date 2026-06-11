@@ -11,6 +11,7 @@ const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
 const judgmentRulesDataSourceId = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
 const calibrationCasesDataSourceId = process.env.SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID || '';
+const projectsDataSourceId = process.env.SEVEN_PROJECTS_DATA_SOURCE_ID || '2d4e4e80-09e6-447f-b2e2-36269ff1ac5c';
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
 const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
@@ -41,7 +42,8 @@ async function main() {
   const startedAt = new Date();
   const activeRules = await loadActiveJudgmentRules();
   const calibrationStats = await loadConfidenceCalibrationStats();
-  const systemPrompt = buildSystemPrompt(activeRules, calibrationStats);
+  const officialProjects = await loadOfficialProjects();
+  const systemPrompt = buildSystemPrompt(activeRules, calibrationStats, officialProjects);
 
   if (args['print-system-prompt']) {
     console.log(systemPrompt);
@@ -55,7 +57,7 @@ async function main() {
 
   for (const conversation of conversations) {
     try {
-      results.push(await processConversation(anthropic, conversation, createdTaskNames, systemPrompt));
+      results.push(await processConversation(anthropic, conversation, createdTaskNames, systemPrompt, officialProjects));
     } catch (error) {
       fatalCount += 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -89,7 +91,7 @@ async function main() {
   }
 }
 
-async function processConversation(anthropic, conversation, createdTaskNames, systemPrompt) {
+async function processConversation(anthropic, conversation, createdTaskNames, systemPrompt, officialProjects) {
   const timeline = await loadConversationTimeline(conversation);
   if (timeline.length === 0) {
     if (!dryRun) await markConversationJudged(conversation);
@@ -97,7 +99,7 @@ async function processConversation(anthropic, conversation, createdTaskNames, sy
   }
 
   const activeTasks = await queryActiveTasks(conversation.project);
-  const extraction = await runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt);
+  const extraction = await runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt, officialProjects);
 
   const createdTasks = [];
   const createdThisConversation = new Map();
@@ -234,7 +236,7 @@ async function recordBorderlineSuppressions(conversation, suppressedItems) {
   return borderline.length;
 }
 
-async function runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt) {
+async function runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt, officialProjects) {
   const lastJudged = conversation.lastJudgementMessageTime || '';
   const timelineText = timeline
     .map((message) => {
@@ -294,7 +296,7 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks, sys
     output_config: {
       format: {
         type: 'json_schema',
-        schema: extractionSchema(),
+        schema: extractionSchema(officialProjects),
       },
     },
   });
@@ -304,6 +306,25 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks, sys
     throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
   }
   return JSON.parse(textBlock.text);
+}
+
+async function loadOfficialProjects() {
+  if (!projectsDataSourceId) return [];
+  try {
+    const result = await notionRequest(`/v1/data_sources/${projectsDataSourceId}/query`, {
+      method: 'POST',
+      body: { page_size: 100 },
+    });
+    return (result.results || [])
+      .map((page) => {
+        const titleProperty = Object.values(page.properties || {}).find((property) => property.type === 'title');
+        return (titleProperty?.title || []).map((item) => item.plain_text || '').join('').trim();
+      })
+      .filter(Boolean);
+  } catch (error) {
+    console.warn(`Failed to load official projects; project vocabulary is unconstrained this run: ${error.message}`);
+    return [];
+  }
 }
 
 async function loadActiveJudgmentRules() {
@@ -368,7 +389,13 @@ async function loadConfidenceCalibrationStats() {
   }
 }
 
-function buildSystemPrompt(activeRules = [], calibrationStats = null) {
+function buildSystemPrompt(activeRules = [], calibrationStats = null, officialProjects = []) {
+  const projectSection = officialProjects.length === 0 ? '' : [
+    '',
+    '## 專案清單（受控詞彙）',
+    `project 欄位只能從以下正式專案擇一，或填「未分類」。禁止發明、縮寫或改寫專案名稱：`,
+    ...officialProjects.map((name) => `- ${name}`),
+  ].join('\n');
   const masterPrompt = (hierarchyPrompt.masterPrompt || []).join('\n');
   const safetyRules = (hierarchyContract.safetyRules || []).map((rule) => `- ${rule}`).join('\n');
   const confidenceLabels = { high: '高', medium: '中', low: '低' };
@@ -427,7 +454,8 @@ function buildSystemPrompt(activeRules = [], calibrationStats = null) {
     '- taskUpdates 只能引用「目前進行中的相關任務」清單裡既有的 taskPageId，不要編造。',
     '- 訊息只是補充既有任務的進度、證據或回覆時，使用 taskUpdates 而不是 newTasks。',
     '- 涉及金錢、投資、合約、法律、稅務、人資、對外承諾的項目，sensitive 設為 true。',
-    '- 看不出明確專案時 project 填「未分類」。',
+    '- 看不出明確專案時 project 填「未分類」，由使用者後續歸屬。',
+    projectSection,
     '- 沒有明確資訊的欄位填空字串，不要猜測負責人或截止日。',
     '- dueDate 格式為 YYYY-MM-DD；相對日期（「明天」「下週五」）以「該訊息的發話時間」為基準換算，不是以今天為基準。換算後已過期的日期照實填寫，讓系統呈現逾期。',
     '',
@@ -442,7 +470,10 @@ function buildSystemPrompt(activeRules = [], calibrationStats = null) {
   ].filter(Boolean).join('\n');
 }
 
-function extractionSchema() {
+function extractionSchema(officialProjects = []) {
+  const projectField = officialProjects.length > 0
+    ? { type: 'string', enum: [...officialProjects, '未分類'], description: '所屬專案，只能從清單擇一或填「未分類」。' }
+    : { type: 'string', description: '所屬專案名稱，無法判斷填「未分類」。' };
   return {
     type: 'object',
     additionalProperties: false,
@@ -463,7 +494,7 @@ function extractionSchema() {
             title: { type: 'string', description: '任務名稱，動詞開頭的繁體中文。' },
             taskLevel: { type: 'string', enum: ['parent_task', 'child_task', 'side_task'] },
             parentTaskTitle: { type: 'string', description: 'child_task 所屬的母任務名稱，沒有就填空字串。' },
-            project: { type: 'string', description: '所屬專案名稱，無法判斷填「未分類」。' },
+            project: projectField,
             owner: { type: 'string', description: '負責人姓名，不確定填空字串。' },
             dueDate: { type: 'string', description: 'YYYY-MM-DD，沒有明確日期填空字串。' },
             priority: { type: 'string', enum: ['高', '中', '低'] },
