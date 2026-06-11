@@ -701,6 +701,31 @@ Render has already been confirmed to build these jobs through Blueprint, and the
 
 Production report links should be served by the Render web service, not by GitHub HTML preview.
 
+### Dynamic task review pages (2026-06-11)
+
+`GET /reports/daily-control-report` and `GET /reports/followup-confirmation?slot=10|13|17`
+are now **server-rendered from live Notion data** (`src/report-pages.js`), not
+static prototypes. Each page lists every task with `確認狀態 = 未確認`
+(excluding 封存/已完成), grouped by project, with a per-task verdict dropdown:
+
+- 保留未確認（下次再裁決）
+- 確認成立：未開始 / 進行中 / 等待回覆（writes 確認狀態=已確認 + 狀態）
+- 已做完：待確認完成
+- 合併到既有任務（MERGE_INTO_EXISTING；target picked from an active-task datalist）
+- 不成立（誤判）：封存（writes 狀態=封存 and **leaves 確認狀態=未確認** so the
+  calibration feedback correctly records a rejection）
+
+Submissions POST to `/control/reports/approve`; after success the page reloads
+and decided tasks disappear. The static prototypes remain available at the
+`-prototype.html` paths and serve as automatic fallback if Notion rendering
+fails. `?key=<approval key>` on the page URL is stored to localStorage and sent
+with every submission.
+
+Approval write-back fix (2026-06-11): dismissals (狀態=封存) from report pages
+no longer set 確認狀態=已確認 (previously they did, which made the feedback
+loop record rejections as confirmations), and dismissing a task name that no
+longer exists does not create a new task page.
+
 Default public routes:
 
 - `GET /reports/morning-brief`
