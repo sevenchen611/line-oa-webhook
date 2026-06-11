@@ -721,6 +721,32 @@ and decided tasks disappear. The static prototypes remain available at the
 fails. `?key=<approval key>` on the page URL is stored to localStorage and sent
 with every submission.
 
+### Waiting-reply chase and in-progress sections (2026-06-11)
+
+The review pages have three sections:
+
+1. **新任務裁決** — extraction verdicts as above (tasks with 狀態=等待回覆 are
+   excluded here; they live in section 2).
+2. **等待回覆：要不要追問？** — every task with `狀態 = 等待回覆` whose
+   `追蹤暫緩至` is empty or past. Per task: send a system-drafted chase message
+   (editable textarea; browser confirm before sending), snooze 1/3/5/7 days,
+   mark 待確認完成 / 進行中, or archive. Sending pushes the message to the
+   task's source conversation (resolved from `關聯 Notion 頁面` → conversation
+   master Group ID/Room ID/User ID), logs the outgoing message, appends a
+   「追問已發送」 record to the task body, and auto-snoozes the task 2 days.
+3. **進行中／未開始提醒** — tasks with `狀態 ∈ {進行中, 未開始}` and
+   `確認狀態 ≠ 未確認`. Per task: status change select and a note textarea.
+   Notes are appended to the task body as 「補充備註（time）」 with a source
+   label naming the report and submitter, and copied into the `最新備註`
+   property. The hourly extraction includes `下一步` and `最新備註` in the
+   active-task context, so user notes directly inform AI judgment.
+
+`/control/reports/approve` accepts three additional lists: `followupSends`
+(`{task, message, conversationUrl}`), `snoozes` (`{task, days}` 1–30), and
+`taskNotes` (`{task, note}`). Two task-database properties are auto-created on
+first use: `追蹤暫緩至` (date) and `最新備註` (rich_text). The LINE
+acknowledgement reports sent/failed chase messages, snoozes, and notes.
+
 Approval write-back fix (2026-06-11): dismissals (狀態=封存) from report pages
 no longer set 確認狀態=已確認 (previously they did, which made the feedback
 loop record rejections as confirmations), and dismissing a task name that no
