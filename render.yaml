@@ -84,6 +84,10 @@ services:
     startCommand: node scripts/run-cron-with-alert.js -- node scripts/llm-task-extraction.js --include-outgoing-groups --limit 20
     schedule: "10 0-14 * * *"
     envVars:
+      - key: AM_SKIP_IF_WORKER_ACTIVE
+        value: "true"
+      - key: AM_WORKER_STATUS_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/worker/status
       - key: CRON_JOB_NAME
         value: seven-jr-line-message-judgement-sync
       - key: ANTHROPIC_API_KEY
@@ -203,6 +207,10 @@ services:
     startCommand: node scripts/run-cron-with-alert.js -- node scripts/llm-codex-command-triage.js --limit 10
     schedule: "*/15 * * * *"
     envVars:
+      - key: AM_SKIP_IF_WORKER_ACTIVE
+        value: "true"
+      - key: AM_WORKER_STATUS_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/worker/status
       - key: CRON_JOB_NAME
         value: seven-jr-codex-command-triage
       - key: CONTROL_LINE_PUSH_URL
