@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
+import { renderTaskReviewPage } from './report-pages.js';
 
 loadDotenv();
 
@@ -40,6 +41,10 @@ http.createServer = function createServerWithControlApi(listener) {
 
     if (req.method === 'GET' && pathname === '/reports/followup-recipient-candidates') {
       return serveFollowupRecipientCandidates(req, res);
+    }
+
+    if (req.method === 'GET' && (pathname === '/reports/daily-control-report' || pathname === '/reports/followup-confirmation')) {
+      return serveDynamicTaskReview(req, res, pathname);
     }
 
     if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
@@ -1126,7 +1131,13 @@ async function applyTaskApproval(item, context) {
 
   const status = normalizeTaskStatus(item.status);
   const existingPage = await findTaskByName(taskName);
-  const summary = `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認。`;
+  // 封存 from a report means the user judged the extraction wrong. Setting
+  // 確認狀態=已確認 here would make the calibration feedback read it as a
+  // confirmed extraction, so dismissals must leave the confirmation untouched.
+  const isDismissal = status === '封存';
+  const summary = isDismissal
+    ? `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告判定不成立並封存。`
+    : `由 ${context.approvedBy} 於 ${formatTaipeiDateTime(context.submittedAt)} 從 ${context.reportType} 報告確認。`;
 
   if (existingPage) {
     await notionRequest(`/v1/pages/${existingPage.id}`, {
@@ -1134,14 +1145,18 @@ async function applyTaskApproval(item, context) {
       body: {
         properties: compactProperties({
           狀態: selectProperty(status),
-          確認狀態: selectProperty('已確認'),
+          確認狀態: isDismissal ? undefined : selectProperty('已確認'),
           最後更新: dateProperty(context.submittedAt),
           'Codex 判斷摘要': richTextProperty(summary),
         }),
       },
     });
 
-    return { task: taskName, status, action: 'updated', pageId: existingPage.id };
+    return { task: taskName, status, action: isDismissal ? 'dismissed' : 'updated', pageId: existingPage.id };
+  }
+
+  if (isDismissal) {
+    return { task: taskName, status, action: 'dismiss-target-not-found', pageId: null };
   }
 
   const created = await notionRequest('/v1/pages', {
@@ -3168,6 +3183,34 @@ function serveReportPage(res, pathname) {
     'Cache-Control': 'no-store',
   });
   res.end(html);
+}
+
+async function serveDynamicTaskReview(req, res, pathname) {
+  const query = new URL(req.url ?? '/', 'http://localhost').searchParams;
+
+  let reportType = 'daily';
+  let title = '每日總控報告：任務裁決';
+  let subtitle = '20:30 每日總控確認';
+  if (pathname === '/reports/followup-confirmation') {
+    const slot = String(query.get('slot') || '').trim();
+    reportType = ['10', '13', '17'].includes(slot) ? `followup-${slot}` : 'followup-morning';
+    title = `${slot || '10'}:00 追蹤確認與新任務裁決`;
+    subtitle = '追蹤確認時段';
+  }
+
+  try {
+    const html = await renderTaskReviewPage({ reportType, title, subtitle });
+    res.writeHead(200, {
+      ...corsHeaders(),
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(html);
+  } catch (error) {
+    // Dynamic rendering needs Notion; fall back to the static prototype rather than a blank error.
+    console.warn(`Dynamic report rendering failed (${pathname}): ${error.message}`);
+    return serveReportPage(res, `${pathname}-prototype.html`);
+  }
 }
 
 function serveUserUiPage(req, res, pathname) {
