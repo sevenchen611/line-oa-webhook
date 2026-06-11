@@ -74,6 +74,39 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (req.method === 'GET' && pathname === '/worker/status') {
+    if (!eventQueue.enabled) {
+      return sendJson(res, 200, { workerActive: false, reason: 'queue-disabled' });
+    }
+    try {
+      const heartbeat = await eventQueue.getLatestWorkerHeartbeat();
+      const maxAgeSeconds = Number(process.env.SEVEN_WORKER_HEARTBEAT_MAX_AGE_SECONDS || 600);
+      const workerActive = Boolean(heartbeat && heartbeat.ageSeconds <= maxAgeSeconds);
+      return sendJson(res, 200, { workerActive, heartbeat, maxAgeSeconds });
+    } catch (error) {
+      return sendJson(res, 200, { workerActive: false, error: error.message });
+    }
+  }
+
+  if (req.method === 'POST' && pathname === '/worker/heartbeat') {
+    const controlKey = process.env.SEVEN_CONTROL_API_KEY || '';
+    const providedKey = req.headers['x-seven-control-key'] || '';
+    if (!controlKey || providedKey !== controlKey) {
+      return sendJson(res, 401, { error: 'Unauthorized' });
+    }
+    if (!eventQueue.enabled) {
+      return sendJson(res, 503, { error: 'Queue is disabled; heartbeat storage unavailable.' });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const workerId = String(body.workerId || 'local-worker').slice(0, 100);
+      await eventQueue.setWorkerHeartbeat(workerId, body.meta || {});
+      return sendJson(res, 200, { ok: true, workerId });
+    } catch (error) {
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
   if (req.method !== 'POST' || pathname !== '/webhook/line') {
     return sendJson(res, 404, { error: 'Not found' });
   }
