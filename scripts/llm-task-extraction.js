@@ -9,6 +9,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
+const judgmentRulesDataSourceId = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
 const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
@@ -37,6 +38,8 @@ async function main() {
 
   const anthropic = new Anthropic({ apiKey: anthropicApiKey });
   const startedAt = new Date();
+  const activeRules = await loadActiveJudgmentRules();
+  const systemPrompt = buildSystemPrompt(activeRules);
   const conversations = await listConversationsForJudgement();
   const createdTaskNames = new Set();
   const results = [];
@@ -44,7 +47,7 @@ async function main() {
 
   for (const conversation of conversations) {
     try {
-      results.push(await processConversation(anthropic, conversation, createdTaskNames));
+      results.push(await processConversation(anthropic, conversation, createdTaskNames, systemPrompt));
     } catch (error) {
       fatalCount += 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -61,6 +64,7 @@ async function main() {
     since: `${sinceHours}h`,
     hierarchyPromptVersion: hierarchyPrompt.version || '',
     hierarchyContractVersion: hierarchyContract.version || '',
+    activeJudgmentRules: activeRules.length,
     scannedConversations: conversations.length,
     failedConversations: fatalCount,
     createdTasks: results.reduce((count, item) => count + (item.createdTasks?.length || 0), 0),
@@ -76,7 +80,7 @@ async function main() {
   }
 }
 
-async function processConversation(anthropic, conversation, createdTaskNames) {
+async function processConversation(anthropic, conversation, createdTaskNames, systemPrompt) {
   const timeline = await loadConversationTimeline(conversation);
   if (timeline.length === 0) {
     await markConversationJudged(conversation);
@@ -84,7 +88,7 @@ async function processConversation(anthropic, conversation, createdTaskNames) {
   }
 
   const activeTasks = await queryActiveTasks(conversation.project);
-  const extraction = await runExtraction(anthropic, conversation, timeline, activeTasks);
+  const extraction = await runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt);
 
   const createdTasks = [];
   for (const candidate of extraction.newTasks || []) {
@@ -139,7 +143,7 @@ async function processConversation(anthropic, conversation, createdTaskNames) {
   };
 }
 
-async function runExtraction(anthropic, conversation, timeline, activeTasks) {
+async function runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt) {
   const timelineText = timeline
     .map((message) => `【${message.timeText || '時間未知'}】${message.actor || '未知'}（${message.source === 'ai-engine' ? '助理' : 'LINE'}）：\n${message.text || '（無文字內容）'}`)
     .join('\n\n');
@@ -157,7 +161,7 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks) {
     system: [
       {
         type: 'text',
-        text: buildSystemPrompt(),
+        text: systemPrompt,
         cache_control: { type: 'ephemeral' },
       },
     ],
@@ -194,9 +198,51 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks) {
   return JSON.parse(textBlock.text);
 }
 
-function buildSystemPrompt() {
+async function loadActiveJudgmentRules() {
+  if (!judgmentRulesDataSourceId) return [];
+  try {
+    const result = await notionRequest(`/v1/data_sources/${judgmentRulesDataSourceId}/query`, {
+      method: 'POST',
+      body: {
+        page_size: 20,
+        filter: {
+          and: [
+            { property: 'Status', select: { equals: 'Active' } },
+            { property: 'Applies To', multi_select: { contains: 'SEVEN_AM' } },
+          ],
+        },
+        sorts: [{ property: 'Last Verified', direction: 'descending' }],
+      },
+    });
+
+    return (result.results || []).map((page) => ({
+      name: textProperty(page.properties?.['Rule Name']),
+      trigger: textProperty(page.properties?.['Trigger Pattern']),
+      preferred: textProperty(page.properties?.['Preferred Judgment']),
+      avoided: textProperty(page.properties?.['Avoided Judgment']),
+      reason: textProperty(page.properties?.Reason),
+      exceptions: textProperty(page.properties?.Exceptions),
+    })).filter((rule) => rule.name && (rule.trigger || rule.preferred));
+  } catch (error) {
+    console.warn(`Failed to load judgment rules; continuing without them: ${error.message}`);
+    return [];
+  }
+}
+
+function buildSystemPrompt(activeRules = []) {
   const masterPrompt = (hierarchyPrompt.masterPrompt || []).join('\n');
   const safetyRules = (hierarchyContract.safetyRules || []).map((rule) => `- ${rule}`).join('\n');
+  const calibrationRules = activeRules.length === 0 ? '' : [
+    '',
+    '## 校準規則（來自使用者的歷史修正，優先遵守）',
+    ...activeRules.map((rule) => [
+      `- ${rule.name}：${rule.trigger}`,
+      `  正確判斷：${rule.preferred}`,
+      rule.avoided ? `  避免：${rule.avoided}` : '',
+      rule.exceptions ? `  例外：${rule.exceptions}` : '',
+    ].filter(Boolean).join('\n')),
+  ].join('\n');
+
   return [
     masterPrompt,
     '',
@@ -213,7 +259,8 @@ function buildSystemPrompt() {
     '- 看不出明確專案時 project 填「未分類」。',
     '- 沒有明確資訊的欄位填空字串，不要猜測負責人或截止日。',
     '- dueDate 格式為 YYYY-MM-DD，沒有明確日期就填空字串。',
-  ].join('\n');
+    calibrationRules,
+  ].filter(Boolean).join('\n');
 }
 
 function extractionSchema() {
