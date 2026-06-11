@@ -1,0 +1,113 @@
+{
+  "id": "amcore.task-hierarchy-judgment-contract",
+  "version": "2026-06-11-task-hierarchy-promotion",
+  "appliesTo": [
+    "conversation_to_task_extraction",
+    "hourly_line_reconciliation",
+    "meeting_checkbox_task_sync",
+    "report_task_update",
+    "controller_instruction_processing"
+  ],
+  "dependsOn": [
+    "AM-IMP-2026.0608.17",
+    "AM-IMP-2026.0609.01",
+    "AM-IMP-2026.0610.05"
+  ],
+  "dataSources": {
+    "requiredConversationSource": "PROJECT_CONVERSATIONS_DATA_SOURCE_ID",
+    "forbiddenTaskJudgmentSource": "PROJECT_MESSAGES_DATA_SOURCE_ID",
+    "taskDatabase": "PROJECT_TOTAL_CONTROL_TASK_DATA_SOURCE_ID",
+    "projectDatabase": "PROJECT_TOTAL_CONTROL_PROJECT_DATA_SOURCE_ID"
+  },
+  "taskControlTypes": [
+    "parent_task",
+    "child_task",
+    "side_task",
+    "evidence_only_update",
+    "promotion_candidate",
+    "promoted_parent_task",
+    "update_existing_task",
+    "suppress_no_task"
+  ],
+  "requiredRuntimePhases": [
+    {
+      "phase": "load_rules",
+      "required": true,
+      "description": "Load AMCore shared prompt, project-local judgment rules, learned calibration rules, and active manual rules before judging."
+    },
+    {
+      "phase": "load_conversation_timeline",
+      "required": true,
+      "description": "Load project-local conversation master records and read each timeline old-to-new."
+    },
+    {
+      "phase": "ordinary_conversations_first",
+      "required": true,
+      "description": "Analyze ordinary conversations before the main controller conversation."
+    },
+    {
+      "phase": "main_controller_last",
+      "required": true,
+      "description": "Analyze the main controller conversation last and apply its corrections to prior provisional judgments."
+    },
+    {
+      "phase": "active_task_search",
+      "required": true,
+      "description": "Search active parent tasks, child tasks, side tasks, and promoted-source tasks before creating new tasks."
+    },
+    {
+      "phase": "hierarchy_decision",
+      "required": true,
+      "description": "Classify each candidate as parent, child, side, evidence-only, promotion, update, or suppressed."
+    },
+    {
+      "phase": "source_evidence_gate",
+      "required": true,
+      "description": "Require source evidence before creating or updating formal tasks."
+    }
+  ],
+  "notionFieldContract": {
+    "existingRequiredFields": [
+      "母任務",
+      "子任務"
+    ],
+    "newRequiredFields": [
+      "任務層級",
+      "阻擋母任務完成",
+      "階層判斷狀態",
+      "升級來源任務",
+      "升級後主任務",
+      "升級原因",
+      "事件線識別",
+      "完成門檻"
+    ],
+    "recommendedFields": [
+      "相關任務",
+      "副任務類型",
+      "階層判斷時間"
+    ]
+  },
+  "statusBehavior": {
+    "parentCompletionGate": "A parent task cannot close while blocking child tasks are active unless the child tasks are completed, cancelled, transferred, or explicitly no longer needed.",
+    "childPromotionTrace": "Promotion creates a new parent task and preserves the original child task as a promoted-source record.",
+    "sideTaskRule": "Side tasks stay related to the same project or event line but do not block parent completion.",
+    "evidenceOnlyRule": "Evidence-only updates append evidence and may update status, but do not create new tasks."
+  },
+  "safetyRules": [
+    "Do not auto-finalize sensitive promotions involving money, investment, contract, legal, tax, HR, customer, public commitment, or sensitive personal matters.",
+    "Do not delete or overwrite the original child task during promotion.",
+    "Do not create task hierarchy without source evidence.",
+    "Do not add User UI manual organization controls in this version.",
+    "Do not copy project-local task data, conversation data, tokens, or database IDs into AMCore."
+  ],
+  "expectedOutputKeys": [
+    "parentTasks",
+    "childTasks",
+    "sideTasks",
+    "promotionCandidates",
+    "evidenceOnlyUpdates",
+    "updatedExistingTasks",
+    "suppressedItems",
+    "warnings"
+  ]
+}

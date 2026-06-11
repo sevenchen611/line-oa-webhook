@@ -9,6 +9,8 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const meetingsDataSourceId = process.env.SEVEN_MEETINGS_DATA_SOURCE_ID || 'fd551c68-6dac-830d-81bf-879f0a9582ba';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '0bdc0de5-46ee-482c-b8d7-cdf6ec958467';
 const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID || 'fc5e4e21-6af6-4de2-9380-aa95126ee13e';
+const hierarchyPrompt = loadJsonFile(new URL('../config/conversation-task-hierarchy-prompt.json', import.meta.url));
+const hierarchyContract = loadJsonFile(new URL('../config/task-hierarchy-judgment-contract.json', import.meta.url));
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
@@ -33,6 +35,8 @@ try {
   console.log(JSON.stringify({
     ok: true,
     dryRun,
+    hierarchyPromptVersion: hierarchyPrompt.version || '',
+    hierarchyContractVersion: hierarchyContract.version || '',
     scannedMeetings: meetings.length,
     createdTasks: results.reduce((count, item) => count + item.createdTasks.length, 0),
     skippedTasks: results.reduce((count, item) => count + item.skippedTasks.length, 0),
@@ -727,6 +731,16 @@ function loadEnvFile(pathname) {
       continue;
     }
     process.env[match[1]] = match[2].replace(/^["']|["']$/g, '');
+  }
+}
+
+function loadJsonFile(pathname) {
+  if (!existsSync(pathname)) return {};
+  try {
+    return JSON.parse(readFileSync(pathname, 'utf8'));
+  } catch (error) {
+    console.warn(`Could not load JSON policy ${pathname}: ${error.message}`);
+    return {};
   }
 }
 

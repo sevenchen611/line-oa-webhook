@@ -12,6 +12,10 @@ const progressReportsDataSourceId = process.env.SEVEN_PROGRESS_REPORTS_DATA_SOUR
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const conversationProjectCache = new Map();
 const inRunCreatedTasks = new Map();
+const taskReconciliationPolicy = loadJsonFile(new URL('../config/hourly-line-task-reconciliation.json', import.meta.url));
+const hierarchyPrompt = loadJsonFile(new URL('../config/conversation-task-hierarchy-prompt.json', import.meta.url));
+const hierarchyContract = loadJsonFile(new URL('../config/task-hierarchy-judgment-contract.json', import.meta.url));
+const masterPromptPolicy = taskReconciliationPolicy.masterPromptPolicy || {};
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
@@ -34,7 +38,10 @@ if (!progressReportsDataSourceId) fail('SEVEN_PROGRESS_REPORTS_DATA_SOURCE_ID is
 try {
   const startedAt = new Date();
   const messages = await listMessagesForJudgement();
-  const groupedMessages = groupMessagesByConversation(messages);
+  const groupedMessages = sortConversationGroupsForJudgement(groupMessagesByConversation(messages));
+  const mainControllerGroups = groupedMessages
+    .filter(isMainControllerConversationGroup)
+    .map((group) => group.conversationName || group.key);
   const results = [];
 
   for (const group of groupedMessages) {
@@ -54,6 +61,11 @@ try {
     reprocess,
     since: sinceIso || `${sinceHours}h`,
     sourceDataSource: 'SEVEN_CONVERSATIONS_DATA_SOURCE_ID',
+    judgmentPolicyVersion: masterPromptPolicy.version || '',
+    hierarchyPromptVersion: hierarchyPrompt.version || '',
+    hierarchyContractVersion: hierarchyContract.version || '',
+    mainControllerConversationLast: true,
+    mainControllerGroups,
     conversationContextLimit,
     scannedMessages: messages.length,
     conversationGroups: groupedMessages.length,
@@ -87,7 +99,8 @@ async function listMessagesForJudgement() {
   }
 
   const conversations = await queryConversationsForJudgement(baseFilters);
-  const messageGroups = await Promise.all(conversations.map(conversationToJudgementMessages));
+  const targetConversations = reprocess ? conversations : conversations.filter(needsConversationJudgement);
+  const messageGroups = await Promise.all(targetConversations.map(conversationToJudgementMessages));
   return messageGroups.flat()
     .filter((message) => shouldIncludeConversationMessage(message))
     .sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0));
@@ -234,9 +247,18 @@ function normalizeConversationPage(page) {
     type: selectName(properties['對象類型']),
     status: selectName(properties['監控狀態']),
     lastMessageTime: dateValue(properties['最後訊息時間']),
+    lastJudgementTime: dateValue(properties['最後任務判斷時間']),
+    lastJudgementMessageTime: dateValue(properties['最後任務判斷訊息時間']),
+    judgementStatus: selectName(properties['任務判斷狀態']),
     preview,
     project: selectName(properties['總控專案']) || inferConversationProject(`${name}\n${preview}`),
   };
+}
+
+function needsConversationJudgement(conversation) {
+  if (!conversation.lastMessageTime) return true;
+  if (!conversation.lastJudgementMessageTime) return true;
+  return new Date(conversation.lastMessageTime) > new Date(conversation.lastJudgementMessageTime);
 }
 
 function groupMessagesByConversation(messages) {
@@ -248,8 +270,50 @@ function groupMessagesByConversation(messages) {
   }
   return [...groups.entries()].map(([key, groupMessages]) => ({
     key,
+    conversationName: groupMessages[0]?.conversationDisplayName || groupMessages[0]?.conversationName || key,
+    conversationType: groupMessages[0]?.conversationType || '',
     messages: groupMessages.sort((a, b) => new Date(a.time || 0) - new Date(b.time || 0)),
   }));
+}
+
+function sortConversationGroupsForJudgement(groups) {
+  return groups
+    .map((group, index) => ({ group, index, isMainController: isMainControllerConversationGroup(group) }))
+    .sort((a, b) => Number(a.isMainController) - Number(b.isMainController) || a.index - b.index)
+    .map((item) => item.group);
+}
+
+function isMainControllerConversationGroup(group) {
+  const name = group.conversationName || group.messages?.[0]?.conversationName || group.key || '';
+  return isMainControllerConversationName(name);
+}
+
+function isMainControllerConversationName(name) {
+  const normalizedName = normalizeControllerName(name);
+  if (!normalizedName) return false;
+  const aliases = getMainControllerAliases();
+  return aliases.some((alias) => normalizedName.includes(normalizeControllerName(alias)));
+}
+
+function getMainControllerAliases() {
+  const configured = masterPromptPolicy.mainControllerConversation?.projectNameBasedAliases || {};
+  const aliases = Object.values(configured)
+    .flat()
+    .filter((alias) => alias && !String(alias).includes('{'));
+  return [...new Set([
+    ...aliases,
+    'Seven Junior',
+    '7Junior',
+    '7 Junior',
+    'Seven Jr.',
+    '7 Jr.',
+    'HOZO Junior',
+    'HOZO Jr.',
+  ])];
+}
+
+function normalizeControllerName(value) {
+  return String(value || '').replace(/[.\s_-]+/g, '').toLowerCase();
 }
 
 async function processMessage(message, runConversationMessages = []) {
@@ -335,7 +399,7 @@ async function processMessage(message, runConversationMessages = []) {
   }
 
   if (!dryRun && (!message.judged || reprocess)) {
-    await markMessageJudged(message, firstCreatedUrl(result));
+    await markMessageJudged(message);
     result.markedJudged = true;
   }
 
@@ -1525,35 +1589,28 @@ async function createProgressReport(candidate) {
   });
 }
 
-async function markMessageJudged(message, relatedUrl) {
-  if (message.sourceKind === 'conversation') {
-    return;
-  }
+async function markMessageJudged(message) {
+  await markConversationJudged(message);
+}
+
+async function markConversationJudged(message) {
+  if (!message.conversationId) return;
 
   const properties = compactProperties({
-    已進入判斷層: checkboxProperty(true),
-    關聯總控事件: relatedUrl ? urlProperty(relatedUrl) : undefined,
+    最後任務判斷時間: dateProperty(new Date()),
+    最後任務判斷訊息時間: message.time ? dateProperty(message.time) : undefined,
+    任務判斷狀態: selectProperty('已判斷'),
   });
 
   try {
-    await notionRequest(`/v1/pages/${message.id}`, {
+    await notionRequest(`/v1/pages/${message.conversationId}`, {
       method: 'PATCH',
       body: { properties },
     });
   } catch (error) {
-    if (!String(error.message || '').includes('關聯總控事件 is not a property')) throw error;
-    await notionRequest(`/v1/pages/${message.id}`, {
-      method: 'PATCH',
-      body: { properties: { 已進入判斷層: checkboxProperty(true) } },
-    });
+    if (!String(error.message || '').includes('is not a property')) throw error;
+    console.warn(`Conversation judgement fields are not installed yet for ${message.conversationName || message.conversationId}.`);
   }
-}
-
-function firstCreatedUrl(result) {
-  const task = result.createdTasks.find((item) => item.url);
-  if (task?.url) return task.url;
-  const progress = result.createdProgressReports.find((item) => item.url);
-  return progress?.url || '';
 }
 
 async function notionRequest(pathname, { method, body }) {
@@ -1628,10 +1685,6 @@ function urlProperty(value) {
   return value ? { url: String(value) } : undefined;
 }
 
-function checkboxProperty(value) {
-  return { checkbox: Boolean(value) };
-}
-
 function compactProperties(properties) {
   return Object.fromEntries(Object.entries(properties).filter(([, value]) => value !== undefined && value !== null));
 }
@@ -1678,6 +1731,16 @@ function loadEnvFile(path) {
     const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
     if (!match || process.env[match[1]]) continue;
     process.env[match[1]] = match[2].replace(/^["']|["']$/g, '');
+  }
+}
+
+function loadJsonFile(path) {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    console.warn(`Could not load JSON policy ${path}: ${error.message}`);
+    return {};
   }
 }
 
