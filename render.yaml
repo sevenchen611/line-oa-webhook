@@ -231,10 +231,7 @@ services:
           type: web
           envVarKey: NOTION_TOKEN
       - key: SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID
-        fromService:
-          name: line-oa-webhook
-          type: web
-          envVarKey: SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID
+        value: c4eee8de-e596-4d64-906b-1405d79e721c
 
   - type: cron
     name: seven-jr-extraction-feedback-sync
