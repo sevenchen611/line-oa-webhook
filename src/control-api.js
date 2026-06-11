@@ -741,6 +741,11 @@ async function approveReport(req, body) {
     followupSendResults.push(await applyFollowupSend(item, { reportType, approvedBy, submittedAt }));
   }
 
+  const projectAssignResults = [];
+  for (const item of normalizeApprovalList(body.projectAssigns)) {
+    projectAssignResults.push(await applyProjectAssign(item, { reportType, approvedBy, submittedAt }));
+  }
+
   const attachmentResults = [];
   for (const item of attachments) {
     attachmentResults.push(await createAttachmentConversionApproval(item, { reportType, approvedBy, submittedAt }));
@@ -776,6 +781,7 @@ async function approveReport(req, body) {
     snoozeResults,
     noteResults,
     followupSendResults,
+    projectAssignResults,
   });
 
   return {
@@ -793,6 +799,7 @@ async function approveReport(req, body) {
     snoozeResults,
     noteResults,
     followupSendResults,
+    projectAssignResults,
   };
 }
 
@@ -834,7 +841,7 @@ async function resolveAcknowledgementTargets(body) {
   });
 }
 
-function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [] }) {
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [], projectAssignResults = [] }) {
   const label = reportTypeLabel(reportType);
   const lines = [
     `Seven Jr. 已收到你送出的${label}確認。`,
@@ -856,6 +863,7 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   if (failedFollowups.length) summary.push(`追問發送失敗 ${failedFollowups.length} 則`);
   if (snoozeResults.length) summary.push(`暫緩追蹤 ${snoozeResults.length} 項`);
   if (noteResults.length) summary.push(`補充備註 ${noteResults.length} 項`);
+  if (projectAssignResults.length) summary.push(`專案歸屬 ${projectAssignResults.filter((item) => item.ok).length} 項`);
 
   lines.push(summary.length ? `已寫入：${summary.join('、')}` : '已寫入：本次確認紀錄');
 
@@ -1301,6 +1309,35 @@ async function ensureTaskReviewProperties() {
     taskReviewPropertiesEnsured = true;
   } catch (error) {
     console.warn(`Unable to ensure task review properties (追蹤暫緩至/最新備註): ${error.message}`);
+  }
+}
+
+async function applyProjectAssign(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  const project = String(item.project || '').trim();
+  if (!taskName || !project) {
+    return { ok: false, task: taskName, error: 'missing task name or project' };
+  }
+
+  try {
+    const page = await findTaskByName(taskName);
+    if (!page) {
+      return { ok: false, task: taskName, error: 'task not found' };
+    }
+
+    await notionRequest(`/v1/pages/${page.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          專案: selectProperty(project),
+          最後更新: dateProperty(context.submittedAt),
+        }),
+      },
+    });
+
+    return { ok: true, task: taskName, project };
+  } catch (error) {
+    return { ok: false, task: taskName, error: error.message };
   }
 }
 
