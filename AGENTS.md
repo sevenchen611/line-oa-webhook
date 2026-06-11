@@ -425,11 +425,22 @@ Rules:
 
 Used only for attachments that need OCR, text extraction, or AI parsing.
 
-Rules:
+Rules (replaced 2026-06-12 — automatic parsing policy):
 
-- Do not OCR every attachment automatically.
-- The 20:30 report should list received attachments and let the user choose which ones to parse.
-- Only confirmed attachments enter the conversion/parsing workflow.
+- Attachments are parsed automatically by `scripts/parse-attachments.js`
+  (every 15 minutes): images and PDF/Word/Excel/PPT files up to 5MB
+  (images 4.5MB) are parsed without confirmation.
+- Exceptions that require user approval in the review page (轉檔狀態=待確認):
+  files over the size limit, and images from private conversations
+  (no project or 私人事務).
+- Images now also create attachment records (previously only files did), so
+  the attachment database is the single parsing queue via 轉檔狀態:
+  待轉檔 → 已解析 / 待確認 / 已核准解析 / 確定不解析 / 不支援 / 解析失敗.
+- Parse results are written to the attachment page (解析摘要/解析時間 +
+  full extracted text in the body) and a summary line is appended to the
+  conversation master timeline so hourly task extraction can use attachment
+  contents as judgment evidence.
+- Video/audio are not parsed (不支援). Old attachments are not backfilled.
 
 ### 會議紀錄
 
