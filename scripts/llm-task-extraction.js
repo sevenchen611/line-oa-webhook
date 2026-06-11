@@ -10,6 +10,7 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const conversationsDataSourceId = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE_ID || '';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
 const judgmentRulesDataSourceId = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
+const calibrationCasesDataSourceId = process.env.SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID || '';
 const outgoingActorName = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
 const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
@@ -39,7 +40,8 @@ async function main() {
   const anthropic = new Anthropic({ apiKey: anthropicApiKey });
   const startedAt = new Date();
   const activeRules = await loadActiveJudgmentRules();
-  const systemPrompt = buildSystemPrompt(activeRules);
+  const calibrationStats = await loadConfidenceCalibrationStats();
+  const systemPrompt = buildSystemPrompt(activeRules, calibrationStats);
   const conversations = await listConversationsForJudgement();
   const createdTaskNames = new Set();
   const results = [];
@@ -65,6 +67,7 @@ async function main() {
     hierarchyPromptVersion: hierarchyPrompt.version || '',
     hierarchyContractVersion: hierarchyContract.version || '',
     activeJudgmentRules: activeRules.length,
+    confidenceCalibrationStats: calibrationStats,
     scannedConversations: conversations.length,
     failedConversations: fatalCount,
     createdTasks: results.reduce((count, item) => count + (item.createdTasks?.length || 0), 0),
@@ -83,7 +86,7 @@ async function main() {
 async function processConversation(anthropic, conversation, createdTaskNames, systemPrompt) {
   const timeline = await loadConversationTimeline(conversation);
   if (timeline.length === 0) {
-    await markConversationJudged(conversation);
+    if (!dryRun) await markConversationJudged(conversation);
     return { conversation: conversation.name, skipped: 'no-messages' };
   }
 
@@ -128,6 +131,8 @@ async function processConversation(anthropic, conversation, createdTaskNames, sy
     updatedTasks.push({ title: update.taskTitle || '', action: 'updated', status: safeStatus(update.suggestedStatus) });
   }
 
+  const borderlineSamples = await recordBorderlineSuppressions(conversation, extraction.suppressedItems || []);
+
   if (!dryRun) {
     await markConversationJudged(conversation);
   }
@@ -140,7 +145,44 @@ async function processConversation(anthropic, conversation, createdTaskNames, sy
     createdTasks,
     updatedTasks,
     suppressedCount: (extraction.suppressedItems || []).length,
+    borderlineSamples,
   };
+}
+
+async function recordBorderlineSuppressions(conversation, suppressedItems) {
+  if (!calibrationCasesDataSourceId) return 0;
+  const borderline = suppressedItems.filter((item) => item.borderline && item.summary).slice(0, 2);
+  if (borderline.length === 0 || dryRun) return borderline.length;
+
+  for (const item of borderline) {
+    try {
+      await notionRequest('/v1/pages', {
+        method: 'POST',
+        body: {
+          parent: { type: 'data_source_id', data_source_id: calibrationCasesDataSourceId },
+          properties: compactProperties({
+            'Review ID': titleProperty(`SEVEN-BL-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`),
+            Project: selectProperty('SEVEN_AM'),
+            'Source Type': selectProperty('LINE message'),
+            'Source URL': urlProperty(conversation.url),
+            'Task Type': selectProperty('task'),
+            'Assistant Judgment': richTextProperty(`AI 略過（邊緣案例）：${item.summary}`),
+            'Assistant Reason': richTextProperty([
+              `略過理由：${item.reason || '未提供'}`,
+              item.sourceExcerpt ? `來源節錄：${clampText(item.sourceExcerpt, 600)}` : '',
+              `來源對話：${conversation.name}`,
+            ].filter(Boolean).join('\n')),
+            'Assistant Confidence': selectProperty('low'),
+            'Case Status': selectProperty('New'),
+            'Data Boundary Check': { checkbox: true },
+          }),
+        },
+      });
+    } catch (error) {
+      console.warn(`Failed to record borderline suppression for ${conversation.name}: ${error.message}`);
+    }
+  }
+  return borderline.length;
 }
 
 async function runExtraction(anthropic, conversation, timeline, activeTasks, systemPrompt) {
@@ -229,9 +271,54 @@ async function loadActiveJudgmentRules() {
   }
 }
 
-function buildSystemPrompt(activeRules = []) {
+async function loadConfidenceCalibrationStats() {
+  if (!calibrationCasesDataSourceId) return null;
+  try {
+    const stats = {};
+    let startCursor;
+    let pages = 0;
+    do {
+      const body = { page_size: 100 };
+      if (startCursor) body.start_cursor = startCursor;
+      const result = await notionRequest(`/v1/data_sources/${calibrationCasesDataSourceId}/query`, { method: 'POST', body });
+      for (const page of result.results || []) {
+        const properties = page.properties || {};
+        const confidence = properties['Assistant Confidence']?.select?.name || '';
+        const judgment = textProperty(properties['Controller Judgment']);
+        if (!confidence || !judgment) continue;
+
+        if (!stats[confidence]) stats[confidence] = { total: 0, confirmed: 0, rejected: 0 };
+        stats[confidence].total += 1;
+        if (/已確認|成立|建立任務/.test(judgment)) stats[confidence].confirmed += 1;
+        else if (/封存|退回|不是任務/.test(judgment)) stats[confidence].rejected += 1;
+      }
+      startCursor = result.has_more ? result.next_cursor : null;
+      pages += 1;
+    } while (startCursor && pages < 5);
+    return stats;
+  } catch (error) {
+    console.warn(`Failed to load calibration stats; continuing without them: ${error.message}`);
+    return null;
+  }
+}
+
+function buildSystemPrompt(activeRules = [], calibrationStats = null) {
   const masterPrompt = (hierarchyPrompt.masterPrompt || []).join('\n');
   const safetyRules = (hierarchyContract.safetyRules || []).map((rule) => `- ${rule}`).join('\n');
+  const confidenceLabels = { high: '高', medium: '中', low: '低' };
+  const statLines = Object.entries(calibrationStats || {})
+    .filter(([, level]) => level.total >= 5)
+    .map(([key, level]) => {
+      const rate = Math.round((level.confirmed / level.total) * 100);
+      return `- 你過去標「${confidenceLabels[key] || key}」信心的任務共 ${level.total} 筆，其中 ${rate}% 被使用者確認成立、${Math.round((level.rejected / level.total) * 100)}% 被退回。`;
+    });
+  const calibrationStatsSection = statLines.length === 0 ? '' : [
+    '',
+    '## 信心校準統計（依據使用者歷史回饋）',
+    ...statLines,
+    '請據此校準你的信心標籤：「高」應該對應九成以上會被確認的任務；如果你的「高」信心確認率偏低，代表你太樂觀，請收緊標準，把不確定的改標「中」或「低」。',
+  ].join('\n');
+
   const calibrationRules = activeRules.length === 0 ? '' : [
     '',
     '## 校準規則（來自使用者的歷史修正，優先遵守）',
@@ -252,6 +339,7 @@ function buildSystemPrompt(activeRules = []) {
     '## 輸出規則',
     '- 所有新任務都會以「待確認」狀態建立，由使用者人工確認，所以寧可建立候選任務也不要遺漏真實任務。',
     '- 但純粹的問候、貼圖、知識分享、助理操作指令（查待辦、打開任務、產生報告等）絕對不要建立任務，列入 suppressedItems。',
+    '- 略過項目時誠實標記 borderline：如果你曾認真猶豫要不要建任務、最後才決定略過，borderline 設 true 並附來源節錄——這些邊緣案例會由使用者抽查，是發現漏抓的唯一防線。',
     '- 任務標題用繁體中文，動詞開頭，包含主詞與動作，例如「向台翰確認防水工程進場時間」。',
     '- taskUpdates 只能引用「目前進行中的相關任務」清單裡既有的 taskPageId，不要編造。',
     '- 訊息只是補充既有任務的進度、證據或回覆時，使用 taskUpdates 而不是 newTasks。',
@@ -259,6 +347,7 @@ function buildSystemPrompt(activeRules = []) {
     '- 看不出明確專案時 project 填「未分類」。',
     '- 沒有明確資訊的欄位填空字串，不要猜測負責人或截止日。',
     '- dueDate 格式為 YYYY-MM-DD，沒有明確日期就填空字串。',
+    calibrationStatsSection,
     calibrationRules,
   ].filter(Boolean).join('\n');
 }
@@ -319,10 +408,12 @@ function extractionSchema() {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['summary', 'reason'],
+          required: ['summary', 'reason', 'borderline', 'sourceExcerpt'],
           properties: {
             summary: { type: 'string' },
             reason: { type: 'string' },
+            borderline: { type: 'boolean', description: '你曾認真考慮要建立任務、最後才決定略過的邊緣案例為 true；明顯不是任務的為 false。' },
+            sourceExcerpt: { type: 'string', description: 'borderline 為 true 時提供來源訊息節錄，否則填空字串。' },
           },
         },
       },
