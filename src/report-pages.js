@@ -4,7 +4,7 @@
 // Section C: in-progress reminders with status change + notes (狀態=進行中/未開始)
 
 export async function renderTaskReviewPage({ reportType, title, subtitle }) {
-  const [pendingTasks, waitingTasks, inProgressTasks, mergeTargets] = await Promise.all([
+  const [pendingTasks, waitingTasks, inProgressTasks, mergeTargets, officialProjects] = await Promise.all([
     queryTasksByFilter({
       and: [
         { property: '確認狀態', select: { equals: '未確認' } },
@@ -20,6 +20,7 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
       ],
     }),
     queryMergeTargetTitles(),
+    queryOfficialProjects(),
   ]);
 
   const now = new Date();
@@ -27,6 +28,10 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
   const snoozedCount = waitingTasks.length - activeWaiting.length;
   // 等待回覆的任務已在 B 區處理，不重複出現在 A 區。
   const pendingOnly = pendingTasks.filter((task) => task.status !== '等待回覆');
+  const confirmedInProgress = inProgressTasks.filter((task) => task.confirmation !== '未確認');
+  // 區段四：已確認但還掛「未分類」的任務（待裁決的會在確認後才進來）。
+  const unclassifiedTasks = [...confirmedInProgress, ...activeWaiting]
+    .filter((task) => !task.project || task.project === '未分類');
 
   return buildHtml({
     reportType,
@@ -35,9 +40,29 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
     pendingTasks: pendingOnly,
     waitingTasks: activeWaiting,
     snoozedCount,
-    inProgressTasks: inProgressTasks.filter((task) => task.confirmation !== '未確認'),
+    inProgressTasks: confirmedInProgress,
+    unclassifiedTasks,
     mergeTargets,
+    officialProjects,
   });
+}
+
+async function queryOfficialProjects() {
+  const projectsDataSourceId = process.env.SEVEN_PROJECTS_DATA_SOURCE_ID || '2d4e4e80-09e6-447f-b2e2-36269ff1ac5c';
+  try {
+    const result = await notionRequest(`/v1/data_sources/${projectsDataSourceId}/query`, {
+      method: 'POST',
+      body: { page_size: 100 },
+    });
+    return (result.results || [])
+      .map((page) => {
+        const titleProperty = Object.values(page.properties || {}).find((property) => property.type === 'title');
+        return (titleProperty?.title || []).map((item) => item.plain_text || '').join('').trim();
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 async function queryTasksByFilter(filter) {
@@ -104,7 +129,7 @@ function buildDraftFollowupMessage(task) {
   return `${ownerPart}想跟您確認一下「${task.title}」目前的進度${stepPart}，方便的時候再麻煩回覆，謝謝！`;
 }
 
-function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, mergeTargets }) {
+function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, unclassifiedTasks, mergeTargets, officialProjects }) {
   const generatedAt = formatTaipeiDateTime(new Date());
 
   const pendingSections = groupByProject(pendingTasks)
@@ -122,7 +147,8 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
       ${tasks.map((task) => progressCard(task)).join('\n')}
     </section>`).join('\n');
 
-  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length;
+  const unclassifiedCards = unclassifiedTasks.map((task) => unclassifiedCard(task, officialProjects)).join('\n');
+  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length + unclassifiedTasks.length;
 
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -142,6 +168,7 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   .section-title.pending { background: #2f80ed; }
   .section-title.waiting { background: #e8590c; }
   .section-title.progress { background: #2b8a3e; }
+  .section-title.unclassified { background: #845ef7; }
   .section-hint { font-size: 12px; color: #52606d; margin: 4px 0 10px; }
   .project-group h2 { font-size: 15px; margin: 16px 0 8px; color: #334e68; border-left: 4px solid #9aa5b1; padding-left: 8px; }
   .card { background: #fff; border: 1px solid #e0e4e8; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
@@ -190,6 +217,10 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   <div class="section-title progress">三、進行中／未開始提醒（${inProgressTasks.length}）</div>
   <div class="section-hint">隨時調整狀態；備註會寫入任務內文（自動標註來源報告與時間），並提供 AI 判讀參考。</div>
   ${inProgressTasks.length === 0 ? '<div class="empty">沒有進行中或未開始的任務。</div>' : progressCards}
+
+  <div class="section-title unclassified">四、未分類任務待歸屬（${unclassifiedTasks.length}）</div>
+  <div class="section-hint">這些已確認的任務還沒有專案歸屬。指定專案後，AI 判讀和專案報表才能正確關聯它們。</div>
+  ${unclassifiedTasks.length === 0 ? '<div class="empty">沒有未分類的任務。</div>' : unclassifiedCards}
 
   <datalist id="merge-targets">
     ${mergeTargets.map((name) => `<option value="${escapeHtml(name)}"></option>`).join('\n')}
@@ -268,13 +299,19 @@ if (submitButton) submitButton.addEventListener('click', async () => {
     if (note) taskNotes.push({ task: taskName, note });
   });
 
+  const projectAssigns = [];
+  document.querySelectorAll('.card.unclassified-card').forEach((card) => {
+    const select = card.querySelector('select.project-assign');
+    if (select && select.value !== 'keep') projectAssigns.push({ task: card.dataset.task, project: select.value });
+  });
+
   if (invalid) {
     banner.className = 'banner err';
     banner.textContent = '「' + invalid + '」缺少必要內容（合併目標或追問訊息）。';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length;
+  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length;
   if (total === 0) {
     banner.className = 'banner err';
     banner.textContent = '還沒有任何處理（全部都維持原狀）。';
@@ -300,6 +337,7 @@ if (submitButton) submitButton.addEventListener('click', async () => {
         followupSends,
         snoozes,
         taskNotes,
+        projectAssigns,
         notes: (document.getElementById('notes') || {}).value || '',
       }),
     });
@@ -392,6 +430,21 @@ function waitingCard(task) {
         <option value="封存">❌ 不再追蹤：封存</option>
       </select>
       <textarea class="followup-message">${escapeHtml(draft)}</textarea>
+    </div>
+  </div>`;
+}
+
+function unclassifiedCard(task, officialProjects) {
+  return `
+  <div class="card unclassified-card" data-task="${escapeHtml(task.title)}">
+    <h3><a href="${escapeHtml(task.url)}" target="_blank" rel="noopener">${escapeHtml(task.title)}</a></h3>
+    <div class="badges">${badges(task)}</div>
+    ${cardDetails(task)}
+    <div class="controls">
+      <select class="project-assign">
+        <option value="keep" selected>暫不歸屬（保持未分類）</option>
+        ${officialProjects.map((name) => `<option value="${escapeHtml(name)}">📁 歸屬到：${escapeHtml(name)}</option>`).join('\n')}
+      </select>
     </div>
   </div>`;
 }
