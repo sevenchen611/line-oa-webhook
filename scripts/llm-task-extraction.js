@@ -249,7 +249,14 @@ async function runExtraction(anthropic, conversation, timeline, activeTasks, sys
   const activeTaskText = activeTasks.length === 0
     ? '（目前沒有進行中的相關任務）'
     : activeTasks
-      .map((task) => `- taskPageId: ${task.id}\n  任務名稱: ${task.name}\n  狀態: ${task.status || '未設定'}\n  專案: ${task.project || '未分類'}`)
+      .map((task) => [
+        `- taskPageId: ${task.id}`,
+        `  任務名稱: ${task.name}`,
+        `  狀態: ${task.status || '未設定'}`,
+        `  專案: ${task.project || '未分類'}`,
+        task.nextStep ? `  下一步: ${clampText(task.nextStep, 200)}` : '',
+        task.latestNote ? `  使用者最新備註: ${clampText(task.latestNote, 300)}` : '',
+      ].filter(Boolean).join('\n'))
       .join('\n');
 
   const response = await anthropic.messages.create({
@@ -751,6 +758,8 @@ async function queryActiveTasks(project) {
     name: textProperty(page.properties?.['任務名稱']),
     status: selectName(page.properties?.['狀態']),
     project: selectName(page.properties?.['專案']),
+    nextStep: textProperty(page.properties?.['下一步']),
+    latestNote: textProperty(page.properties?.['最新備註']),
   }));
 }
 
