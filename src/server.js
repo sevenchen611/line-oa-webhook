@@ -1095,7 +1095,22 @@ async function storeLineEventInNotion(event, rawBody) {
   const messagePage = await createMessagePage({ conversationId: conversation.id, event, rawBody, messageId, messageType, text, eventTime, display, context });
 
   let attachmentPage;
-  if (messageType === 'file' && attachmentsDataSourceId) {
+  if (['file', 'image'].includes(messageType) && attachmentsDataSourceId && uploadedContent?.fileUploadId) {
+    // 私人對話的照片不自動解析，進待確認；其餘附件由解析排程處理。
+    const conversationProject = conversation.properties?.['總控專案']?.select?.name || '';
+    const privateImage = messageType === 'image' && (!conversationProject || conversationProject === '私人事務');
+    attachmentPage = await createAttachmentPage({
+      conversationId: conversation.id,
+      messagePageId: messagePage.id,
+      event,
+      message,
+      messageId,
+      messageType,
+      eventTime,
+      uploadedContent,
+      initialConversionStatus: privateImage ? '待確認' : '待轉檔',
+    });
+  } else if (messageType === 'file' && attachmentsDataSourceId) {
     attachmentPage = await createAttachmentPage({ conversationId: conversation.id, messagePageId: messagePage.id, event, message, messageId, messageType, eventTime, uploadedContent });
   }
 
@@ -1514,7 +1529,7 @@ async function updateConversationAfterMessage(conversation, display, eventTime, 
   });
 }
 
-async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime, uploadedContent }) {
+async function createAttachmentPage({ conversationId, messagePageId, event, message, messageId, messageType, eventTime, uploadedContent, initialConversionStatus }) {
   const filename = uploadedContent?.filename || message.fileName || `${messageType}-${messageId}`;
   const properties = {
     '附件項目': title(filename),
@@ -1528,7 +1543,7 @@ async function createAttachmentPage({ conversationId, messagePageId, event, mess
     'Content-Type': richText(uploadedContent?.contentType || message.contentProvider?.type || ''),
     '來源': select('line'),
     '建立時間': date(eventTime),
-    '轉檔狀態': select(uploadedContent?.fileUploadId ? '待轉檔' : '失敗'),
+    '轉檔狀態': select(uploadedContent?.fileUploadId ? (initialConversionStatus || '待轉檔') : '失敗'),
   };
 
   if (uploadedContent?.fileUploadId) {
