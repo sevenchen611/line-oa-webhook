@@ -22,6 +22,7 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
     queryMergeTargetTitles(),
     queryOfficialProjects(),
   ]);
+  const pendingAttachments = await queryPendingAttachments();
 
   const now = new Date();
   const activeWaiting = waitingTasks.filter((task) => !task.snoozedUntil || new Date(task.snoozedUntil) <= now);
@@ -44,7 +45,37 @@ export async function renderTaskReviewPage({ reportType, title, subtitle }) {
     unclassifiedTasks,
     mergeTargets,
     officialProjects,
+    pendingAttachments,
   });
+}
+
+async function queryPendingAttachments() {
+  const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID || '';
+  if (!attachmentsDataSourceId) return [];
+  try {
+    const result = await notionRequest(`/v1/data_sources/${attachmentsDataSourceId}/query`, {
+      method: 'POST',
+      body: {
+        page_size: 30,
+        filter: { property: '轉檔狀態', select: { equals: '待確認' } },
+        sorts: [{ property: '建立時間', direction: 'descending' }],
+      },
+    });
+    return (result.results || []).map((page) => {
+      const properties = page.properties || {};
+      return {
+        pageId: page.id,
+        url: page.url,
+        filename: textProperty(properties['檔案名稱']) || textProperty(properties['附件項目']) || '未命名附件',
+        attachmentType: properties['附件類型']?.select?.name || '',
+        fileSize: properties['檔案大小']?.number || 0,
+        note: textProperty(properties['解析摘要']),
+        createdAt: properties['建立時間']?.date?.start || '',
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function queryOfficialProjects() {
@@ -129,7 +160,7 @@ function buildDraftFollowupMessage(task) {
   return `${ownerPart}想跟您確認一下「${task.title}」目前的進度${stepPart}，方便的時候再麻煩回覆，謝謝！`;
 }
 
-function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, unclassifiedTasks, mergeTargets, officialProjects }) {
+function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, snoozedCount, inProgressTasks, unclassifiedTasks, mergeTargets, officialProjects, pendingAttachments = [] }) {
   const generatedAt = formatTaipeiDateTime(new Date());
 
   const pendingSections = groupByProject(pendingTasks)
@@ -148,7 +179,8 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
     </section>`).join('\n');
 
   const unclassifiedCards = unclassifiedTasks.map((task) => unclassifiedCard(task, officialProjects)).join('\n');
-  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length + unclassifiedTasks.length;
+  const attachmentCards = pendingAttachments.map((attachment) => attachmentCard(attachment)).join('\n');
+  const totalActionable = pendingTasks.length + waitingTasks.length + inProgressTasks.length + unclassifiedTasks.length + pendingAttachments.length;
 
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -169,6 +201,7 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   .section-title.waiting { background: #e8590c; }
   .section-title.progress { background: #2b8a3e; }
   .section-title.unclassified { background: #845ef7; }
+  .section-title.attachments { background: #0b7285; }
   .section-hint { font-size: 12px; color: #52606d; margin: 4px 0 10px; }
   .project-group h2 { font-size: 15px; margin: 16px 0 8px; color: #334e68; border-left: 4px solid #9aa5b1; padding-left: 8px; }
   .card { background: #fff; border: 1px solid #e0e4e8; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
@@ -221,6 +254,10 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   <div class="section-title unclassified">四、未分類任務待歸屬（${unclassifiedTasks.length}）</div>
   <div class="section-hint">這些已確認的任務還沒有專案歸屬。指定專案後，AI 判讀和專案報表才能正確關聯它們。</div>
   ${unclassifiedTasks.length === 0 ? '<div class="empty">沒有未分類的任務。</div>' : unclassifiedCards}
+
+  <div class="section-title attachments">五、附件解析確認（${pendingAttachments.length}）</div>
+  <div class="section-hint">超過大小上限或來自私人對話的附件，確認後才會解析。</div>
+  ${pendingAttachments.length === 0 ? '<div class="empty">沒有等待確認的附件。</div>' : attachmentCards}
 
   <datalist id="merge-targets">
     ${mergeTargets.map((name) => `<option value="${escapeHtml(name)}"></option>`).join('\n')}
@@ -305,13 +342,19 @@ if (submitButton) submitButton.addEventListener('click', async () => {
     if (select && select.value !== 'keep') projectAssigns.push({ task: card.dataset.task, project: select.value });
   });
 
+  const attachmentDecisions = [];
+  document.querySelectorAll('.card.attachment-card').forEach((card) => {
+    const select = card.querySelector('select.attachment-decision');
+    if (select && select.value !== 'keep') attachmentDecisions.push({ pageId: card.dataset.page, decision: select.value });
+  });
+
   if (invalid) {
     banner.className = 'banner err';
     banner.textContent = '「' + invalid + '」缺少必要內容（合併目標或追問訊息）。';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length;
+  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length + attachmentDecisions.length;
   if (total === 0) {
     banner.className = 'banner err';
     banner.textContent = '還沒有任何處理（全部都維持原狀）。';
@@ -338,6 +381,7 @@ if (submitButton) submitButton.addEventListener('click', async () => {
         snoozes,
         taskNotes,
         projectAssigns,
+        attachmentDecisions,
         notes: (document.getElementById('notes') || {}).value || '',
       }),
     });
@@ -430,6 +474,29 @@ function waitingCard(task) {
         <option value="封存">❌ 不再追蹤：封存</option>
       </select>
       <textarea class="followup-message">${escapeHtml(draft)}</textarea>
+    </div>
+  </div>`;
+}
+
+function attachmentCard(attachment) {
+  const size = attachment.fileSize >= 1024 * 1024
+    ? `${Math.round((attachment.fileSize / (1024 * 1024)) * 10) / 10}MB`
+    : `${Math.round(attachment.fileSize / 1024)}KB`;
+  return `
+  <div class="card attachment-card" data-page="${escapeHtml(attachment.pageId)}">
+    <h3><a href="${escapeHtml(attachment.url)}" target="_blank" rel="noopener">${escapeHtml(attachment.filename)}</a></h3>
+    <div class="badges">
+      ${attachment.attachmentType ? `<span class="badge">${escapeHtml(attachment.attachmentType)}</span>` : ''}
+      <span class="badge">${escapeHtml(size)}</span>
+      ${attachment.createdAt ? `<span class="badge">收到 ${escapeHtml(attachment.createdAt.slice(0, 10))}</span>` : ''}
+    </div>
+    ${attachment.note ? `<div class="latest-note">${escapeHtml(attachment.note)}</div>` : ''}
+    <div class="controls">
+      <select class="attachment-decision">
+        <option value="keep" selected>暫不決定</option>
+        <option value="已核准解析">✅ 核准解析（下一輪自動處理）</option>
+        <option value="確定不解析">❌ 不需要解析</option>
+      </select>
     </div>
   </div>`;
 }
