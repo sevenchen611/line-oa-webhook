@@ -585,6 +585,7 @@ Render Cron uses UTC. Taipei time is UTC+8.
 | --- | --- | --- | --- |
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE conversation LLM task extraction |
 | `seven-jr-codex-command-triage` | every 15 minutes | `*/15 * * * *` | Codex command queue LLM triage |
+| `seven-jr-extraction-feedback-sync` | 22:45 daily | `45 14 * * *` | extraction feedback calibration sync |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
 | `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
@@ -941,6 +942,31 @@ session being online.
   exits cleanly and commands stay `Pending` for a manual session.
 - Required env: `ANTHROPIC_API_KEY` (secret, set on the Render web service and
   shared to crons), optional `ANTHROPIC_MODEL` (default `claude-opus-4-8`).
+
+## Extraction Feedback Calibration Loop (2026-06-11)
+
+`scripts/sync-extraction-feedback.js` (daily 22:45 Taipei) closes the judgment
+calibration loop automatically:
+
+1. **Collect feedback**: scans `總控任務庫` for LINE-sourced tasks the user has
+   decided on — `確認狀態 = 已確認` (confirmed), `確認狀態 = 合併到既有任務`
+   (merged), or `狀態 = 封存` without confirmation (rejected) — and records each
+   as a case in `Seven 判斷校準案例庫` (`Case Status = Replied`). Tasks already
+   linked from a case are skipped, so reruns are idempotent.
+2. **Suggest rules**: for rejected tasks, Claude analyzes whether the
+   misjudgment generalizes. If yes, it creates a rule in `Seven 判斷規則庫` with
+   `Status = Needs review`. **Rules never activate themselves** — the user must
+   flip Status to `Active` in Notion for a rule to take effect.
+3. **Apply rules**: `scripts/llm-task-extraction.js` loads rules with
+   `Status = Active` and `Applies To` containing `SEVEN_AM` at the start of each
+   run and injects them into the extraction system prompt as
+   「校準規則（優先遵守）」.
+4. **Stats**: each run logs per-confidence confirm/reject rates
+   (`calibrationStats` in the cron output) so confidence calibration drift is
+   visible in Render logs.
+
+This pipeline coexists with the manual LINE calibration flow
+(`開始做任務校準` commands); both write to the same case and rule databases.
 
 ## Cron Failure Alerts (2026-06-11)
 
