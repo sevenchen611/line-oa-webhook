@@ -510,7 +510,7 @@ async function queryOpenTasks() {
       project: pageRelationTitleFallback(page, '總控專案') || pageText(page, '專案'),
       owner: pageText(page, '負責人') || pageText(page, 'Owner'),
       status: pageStatus(page, '狀態') || pageSelect(page, '狀態'),
-      dueDate: pageDate(page, '期限') || pageDate(page, 'Due Date'),
+      dueDate: pageDate(page, '截止日') || pageDate(page, '期限') || pageDate(page, 'Due Date'),
       summary: pageText(page, 'Codex 判斷摘要') || pageText(page, '下一步') || pageText(page, '來源原文'),
       url: page.url || '',
     }))
@@ -525,7 +525,7 @@ async function findTaskDetailById(pageId) {
     project: pageRelationTitleFallback(page, '總控專案') || pageText(page, '專案'),
     owner: pageText(page, '負責人') || pageText(page, 'Owner'),
     status: pageStatus(page, '狀態') || pageSelect(page, '狀態'),
-    dueDate: pageDate(page, '期限') || pageDate(page, 'Due Date'),
+    dueDate: pageDate(page, '截止日') || pageDate(page, '期限') || pageDate(page, 'Due Date'),
     summary: pageText(page, 'Codex 判斷摘要') || pageText(page, '下一步') || pageText(page, '來源原文'),
     url: page.url || '',
   };
