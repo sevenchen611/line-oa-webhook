@@ -592,10 +592,21 @@ Fixed schedules are handled by Render Cron Jobs, not by Codex local network call
 
 Render Cron uses UTC. Taipei time is UTC+8.
 
+**System operating hours (2026-06-12)**: the whole system works Taipei
+07:00-23:00 and rests 23:00-07:00. The 15-minute crons (command triage,
+attachment parsing, scheduled actions) are restricted to UTC `0-14,23`
+(Taipei 07:00-22:45 last run), and the local worker has the same gate
+(`SEVEN_WORKER_ACTIVE_HOUR_START`/`SEVEN_WORKER_ACTIVE_HOUR_END`, default
+7/23, Taipei hours): outside the window it pauses scanning AND heartbeats,
+then resumes at 07:00 with an immediate heartbeat so Render crons stand
+down. Next Actions that come due overnight fire on the first morning scan
+(~07:03). 7 Junior commands sent at night are queued and answered after
+07:00.
+
 | Render Cron Job | Taipei Time | UTC Cron | reportType |
 | --- | --- | --- | --- |
 | `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE conversation LLM task extraction |
-| `seven-jr-codex-command-triage` | every 15 minutes | `*/15 * * * *` | Codex command queue LLM triage |
+| `seven-jr-codex-command-triage` | 07:00-22:45 every 15 min | `*/15 0-14,23 * * *` | Codex command queue LLM triage |
 | `seven-jr-extraction-feedback-sync` | 22:45 daily | `45 14 * * *` | extraction feedback calibration sync |
 | `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
 | `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
