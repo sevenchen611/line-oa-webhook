@@ -247,7 +247,7 @@ function taskRow(task, childrenByParent, depth, currentProject, officialNames, t
       </select>
     </div>
   </div>
-  ${children.map((child) => taskRow(child, childrenByParent, depth + 1, currentProject, officialNames)).join('\n')}`;
+  ${children.map((child) => taskRow(child, childrenByParent, depth + 1, currentProject, officialNames, taskById, parentCandidatesFor)).join('\n')}`;
 }
 
 export async function renderTaskPage(taskPageId) {
