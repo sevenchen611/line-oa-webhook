@@ -100,7 +100,24 @@ export async function renderProjectPage(projectName) {
   roots.sort((a, b) => statusRank(a) - statusRank(b) || (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0));
 
   const officialNames = projects.filter((item) => !['候選', '封存'].includes(item.status)).map((item) => item.name);
-  const rows = roots.map((task) => taskRow(task, childrenByParent, 0, projectName, officialNames)).join('\n');
+
+  // 每個任務的「可選母任務」＝同專案任務，排除自己與自己的子孫（防循環）。
+  const descendantsOf = (taskId) => {
+    const collected = new Set();
+    const walk = (id) => {
+      for (const child of childrenByParent.get(id) || []) {
+        if (!collected.has(child.id)) { collected.add(child.id); walk(child.id); }
+      }
+    };
+    walk(taskId);
+    return collected;
+  };
+  const parentCandidatesFor = (task) => {
+    const blocked = descendantsOf(task.id);
+    return projectTasks.filter((candidate) => candidate.id !== task.id && !blocked.has(candidate.id) && candidate.status !== '已完成');
+  };
+
+  const rows = roots.map((task) => taskRow(task, childrenByParent, 0, projectName, officialNames, taskById, parentCandidatesFor)).join('\n');
   const counts = countBy(projectTasks, (task) => task.status);
 
   const body = `
@@ -132,6 +149,33 @@ export async function renderProjectPage(projectName) {
   ${rows || '<div class="hint">此專案目前沒有任務。</div>'}
 
   <script>
+  document.querySelectorAll('select.parent-move').forEach((select) => {
+    select.addEventListener('change', async () => {
+      if (select.value === 'keep') return;
+      const taskName = select.dataset.task;
+      const clearing = select.value === '__clear__';
+      const message = clearing
+        ? '解除「' + taskName + '」的子任務關係？'
+        : '將「' + taskName + '」設為所選任務的子任務？';
+      if (!confirm(message)) { select.selectedIndex = 0; return; }
+      select.disabled = true;
+      try {
+        const response = await fetch('/dashboard/set-parent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: select.dataset.id, parentId: clearing ? '' : select.value }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+        location.reload();
+      } catch (error) {
+        alert('調整失敗：' + error.message);
+        select.disabled = false;
+        select.selectedIndex = 0;
+      }
+    });
+  });
+
   document.querySelectorAll('select.project-move').forEach((select) => {
     select.addEventListener('change', async () => {
       if (select.value === 'keep') return;
@@ -159,11 +203,18 @@ export async function renderProjectPage(projectName) {
   return pageShell(`${project.name} - SevenAM`, body);
 }
 
-function taskRow(task, childrenByParent, depth, currentProject, officialNames) {
+function taskRow(task, childrenByParent, depth, currentProject, officialNames, taskById, parentCandidatesFor) {
   const children = (childrenByParent.get(task.id) || []);
   const moveOptions = officialNames
     .filter((name) => name !== currentProject)
     .map((name) => `<option value="${escapeHtml(name)}">移到：${escapeHtml(name)}</option>`)
+    .join('');
+
+  const currentParentId = task.parentIds.find((id) => taskById.has(id)) || '';
+  const currentParentName = currentParentId ? taskById.get(currentParentId).title : '';
+  const parentOptions = parentCandidatesFor(task)
+    .filter((candidate) => candidate.id !== currentParentId)
+    .map((candidate) => `<option value="${escapeHtml(candidate.id)}">↳ 設為子任務：${escapeHtml(clampText(candidate.title, 40))}</option>`)
     .join('');
 
   return `
@@ -183,11 +234,18 @@ function taskRow(task, childrenByParent, depth, currentProject, officialNames) {
       </div>
       ${task.nextStep ? `<div class="mini">➡️ ${escapeHtml(clampText(task.nextStep, 90))}</div>` : ''}
     </a>
-    <select class="project-move" data-task="${escapeHtml(task.title)}">
-      <option value="keep" selected>📁 ${escapeHtml(currentProject)}</option>
-      ${moveOptions}
-      ${currentProject !== '未分類' ? '<option value="未分類">移到：未分類</option>' : ''}
-    </select>
+    <div class="move-row">
+      <select class="project-move" data-task="${escapeHtml(task.title)}">
+        <option value="keep" selected>📁 ${escapeHtml(currentProject)}</option>
+        ${moveOptions}
+        ${currentProject !== '未分類' ? '<option value="未分類">移到：未分類</option>' : ''}
+      </select>
+      <select class="parent-move" data-id="${escapeHtml(task.id)}" data-task="${escapeHtml(task.title)}">
+        <option value="keep" selected>${currentParentName ? `↳ 母任務：${escapeHtml(clampText(currentParentName, 30))}` : '↳ 母任務：（無）'}</option>
+        ${currentParentId ? '<option value="__clear__">✂️ 解除子任務關係（升回獨立任務）</option>' : ''}
+        ${parentOptions}
+      </select>
+    </div>
   </div>
   ${children.map((child) => taskRow(child, childrenByParent, depth + 1, currentProject, officialNames)).join('\n')}`;
 }
@@ -394,7 +452,8 @@ function pageShell(title, body) {
   .field a { color: #2f80ed; }
   .task-line { display: flex; align-items: center; gap: 8px; }
   a.task-link { display: block; text-decoration: none; color: inherit; }
-  select.project-move { width: 100%; margin-top: 8px; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
+  .move-row { display: flex; gap: 6px; margin-top: 8px; }
+  select.project-move, select.parent-move { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .task-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
   .hint { font-size: 13px; color: #52606d; background: #fff; border: 1px dashed #cbd2d9; border-radius: 10px; padding: 12px; }
