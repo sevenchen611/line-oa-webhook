@@ -922,6 +922,23 @@ three-level drill-down view from live Notion data (`src/dashboard-pages.js`):
 The task route validates that the requested page belongs to the tasks data
 source before rendering.
 
+The dashboard is also an **editing surface** (2026-06-12 additions):
+
+- Project view: per-task 📁 select moves the task to another official project
+  (`POST /dashboard/assign-project`), and a ↳ select sets/clears the 母任務
+  relation (`POST /dashboard/set-parent`, server-side cycle protection walks
+  the parent chain; candidates exclude self/descendants/completed tasks,
+  same-project only).
+- Task view: a full edit panel (狀態/優先級/負責人/截止日/下一步/新增備註)
+  posts to the existing `/control/tasks/update`; notes append to the page body
+  with timestamp+editor AND write the `最新備註` property so hourly extraction
+  sees them. Setting an active status auto-sets 確認狀態=已確認; 封存 leaves
+  confirmation untouched (feedback integrity). All endpoints share the
+  Dashboard Basic auth.
+- Pitfall fixed 2026-06-12: `taskRow` recursion must pass all args; missing
+  `taskById` caused 500 on projects with subtasks.
+- LINE command 儀表板/總控/dashboard (controller-only) replies the URL.
+
 ## Render Control API
 
 Control endpoints:
