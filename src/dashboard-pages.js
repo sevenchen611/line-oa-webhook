@@ -278,11 +278,96 @@ export async function renderTaskPage(taskPageId) {
   </header>
 
   <div class="panel">
-    ${task.nextStep ? `<div class="field"><span class="key">下一步</span>${escapeHtml(task.nextStep)}</div>` : ''}
     ${task.latestNote ? `<div class="field"><span class="key">最新備註</span>${escapeHtml(task.latestNote)}</div>` : ''}
     ${task.summary ? `<div class="field"><span class="key">AI 判斷摘要</span><pre>${escapeHtml(task.summary)}</pre></div>` : ''}
     <div class="field"><a href="${escapeHtml(task.url)}" target="_blank" rel="noopener">在 Notion 開啟任務頁 ↗</a></div>
   </div>
+
+  <h2 class="section">✏️ 編輯任務</h2>
+  <div class="panel" id="edit-panel" data-page="${escapeHtml(task.id)}">
+    <div class="edit-grid">
+      <label>狀態
+        <select id="edit-status">
+          ${STATUS_ORDER.map((status) => `<option value="${status}" ${status === task.status ? 'selected' : ''}>${status}</option>`).join('')}
+        </select>
+      </label>
+      <label>優先級
+        <select id="edit-priority">
+          ${['高', '中', '低'].map((priority) => `<option value="${priority}" ${priority === (task.priority || '中') ? 'selected' : ''}>${priority}</option>`).join('')}
+        </select>
+      </label>
+      <label>負責人
+        <input type="text" id="edit-owner" value="${escapeHtml(task.owner)}" placeholder="姓名">
+      </label>
+      <label>截止日
+        <input type="date" id="edit-due" value="${escapeHtml(task.dueDate.slice(0, 10))}">
+      </label>
+    </div>
+    <label class="edit-full">下一步
+      <textarea id="edit-next" rows="2">${escapeHtml(task.nextStep)}</textarea>
+    </label>
+    <label class="edit-full">新增備註（會寫入任務內文＋提供 AI 判讀參考，自動標註時間）
+      <textarea id="edit-note" rows="3" placeholder="（選填）這次更新的說明、現場狀況、口頭承諾⋯⋯"></textarea>
+    </label>
+    <button id="edit-save" class="save-btn">💾 儲存變更</button>
+    <div id="edit-result" class="mini" style="margin-top:8px"></div>
+  </div>
+
+  <script>
+  (function () {
+    const panel = document.getElementById('edit-panel');
+    const button = document.getElementById('edit-save');
+    const original = {
+      status: ${JSON.stringify(task.status)},
+      priority: ${JSON.stringify(task.priority || '中')},
+      owner: ${JSON.stringify(task.owner)},
+      dueDate: ${JSON.stringify(task.dueDate.slice(0, 10))},
+      next: ${JSON.stringify(task.nextStep)},
+    };
+    button.addEventListener('click', async () => {
+      const payload = { pageId: panel.dataset.page, editedBy: 'Seven 陳聖文' };
+      const status = document.getElementById('edit-status').value;
+      const priority = document.getElementById('edit-priority').value;
+      const owner = document.getElementById('edit-owner').value.trim();
+      const dueDate = document.getElementById('edit-due').value;
+      const next = document.getElementById('edit-next').value.trim();
+      const note = document.getElementById('edit-note').value.trim();
+
+      if (status !== original.status) {
+        payload.status = status;
+        if (['未開始', '進行中', '等待回覆', '待確認完成', '已完成'].includes(status)) payload.confirmation = '已確認';
+      }
+      if (priority !== original.priority) payload.priority = priority;
+      if (owner !== original.owner) payload.owner = owner;
+      if (dueDate && dueDate !== original.dueDate) payload.dueDate = dueDate;
+      if (next !== original.next) payload.next = next;
+      if (note) payload.editNote = note;
+
+      if (Object.keys(payload).length <= 2) {
+        document.getElementById('edit-result').textContent = '沒有任何變更。';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = '儲存中…';
+      try {
+        const response = await fetch('/control/tasks/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+        document.getElementById('edit-result').textContent = '✅ 已儲存，頁面更新中…';
+        setTimeout(() => location.reload(), 900);
+      } catch (error) {
+        document.getElementById('edit-result').textContent = '❌ 儲存失敗：' + error.message;
+        button.disabled = false;
+        button.textContent = '💾 儲存變更';
+      }
+    });
+  })();
+  </script>
 
   <h2 class="section">📱 來源對話${conversation.name ? `：${escapeHtml(conversation.name)}` : ''}</h2>
   ${conversation.messages.length === 0
@@ -453,6 +538,11 @@ function pageShell(title, body) {
   .task-line { display: flex; align-items: center; gap: 8px; }
   a.task-link { display: block; text-decoration: none; color: inherit; }
   .move-row { display: flex; gap: 6px; margin-top: 8px; }
+  .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .edit-grid label, .edit-full { display: block; font-size: 12px; color: #52606d; font-weight: 700; margin-bottom: 8px; }
+  .edit-grid select, .edit-grid input, .edit-full textarea { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
+  .save-btn { width: 100%; font-size: 15px; font-weight: 700; padding: 12px; border: 0; border-radius: 10px; background: #2f80ed; color: #fff; cursor: pointer; }
+  .save-btn:disabled { background: #9aa5b1; }
   select.project-move, select.parent-move { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .task-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
