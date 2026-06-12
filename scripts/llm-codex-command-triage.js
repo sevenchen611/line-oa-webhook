@@ -9,6 +9,7 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const commandsDataSourceId = process.env.SEVEN_CODEX_COMMANDS_DATA_SOURCE_ID || '';
 const controlLinePushUrl = process.env.CONTROL_LINE_PUSH_URL || 'https://line-oa-webhook-nn5j.onrender.com/control/line/push';
 const controlApiKey = process.env.SEVEN_CONTROL_API_KEY || '';
+const controllerUserId = process.env.SEVEN_CONTROLLER_USER_ID || 'U09dc6553016c78d89c515522be9b74f6';
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
@@ -93,6 +94,11 @@ async function maybeReply(command, text) {
   if (!replyEnabled || dryRun || !text) return;
   if (!controlApiKey) {
     console.warn('SEVEN_CONTROL_API_KEY is not set; instant reply skipped.');
+    return;
+  }
+  // 只回答 controller 本人下的指令，避免把分析結果推進群組（資料外洩防線）。
+  if (command.userId !== controllerUserId) {
+    console.warn(`Instant reply skipped for non-controller command from ${command.actorName || command.userId || 'unknown'}.`);
     return;
   }
   const targetId = command.sourceId || command.userId;
