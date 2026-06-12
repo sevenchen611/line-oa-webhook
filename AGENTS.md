@@ -1145,6 +1145,30 @@ Therefore:
 - Immediate manual tests may need to be run from Render or another full-access Codex environment.
 - Long-term automation should rely on Render, Notion, and the notification queue, not on a local Codex session being online.
 
+## Controller-Only Command Gate (2026-06-12 incident fix)
+
+**Incident**: during an active calibration session, the reply interceptor
+(`shouldHandleJudgmentCalibrationReply`) accepted text from ANY conversation
+as the controller's calibration answer. Group chatter in 會計自動化顧問群組
+(and at least one other group) was consumed as calibration replies, which
+(a) sent the next calibration review — including task content — into those
+groups, (b) polluted 4 calibration cases (quarantined as
+「無效：群組訊息污染」), and (c) overwrote 4 tasks' `Codex 判斷摘要`.
+
+**Rule (enforced in code)**: the following replies are only ever produced for
+the controller's personal 1-on-1 chat (`SEVEN_CONTROLLER_USER_ID`, default
+`U09dc6553016c78d89c515522be9b74f6`):
+
+- calibration commands and calibration reply interception
+- 查待辦 / task detail replies
+- 報告 / 早報 page links
+- immediate-command acknowledgements
+
+Commands from group members are still logged to the queue for visibility, but
+get no reply, and the triage instant-reply (`--reply`) only answers commands
+issued by the controller. Never relax these gates without an explicit
+per-conversation allowlist design.
+
 ## Sensitive Data Rules
 
 Local `env.txt` contains sensitive values such as LINE tokens, Notion token, and `SEVEN_CONTROL_API_KEY`.
