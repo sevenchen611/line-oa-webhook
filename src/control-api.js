@@ -52,6 +52,10 @@ http.createServer = function createServerWithControlApi(listener) {
       return serveDashboard(req, res, pathname);
     }
 
+    if (req.method === 'POST' && pathname === '/dashboard/assign-project') {
+      return handleDashboardAssignProject(req, res);
+    }
+
     if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
       return serveReportPage(res, pathname);
     }
@@ -3532,6 +3536,29 @@ async function serveDashboard(req, res, pathname) {
   } catch (error) {
     console.warn(`Dashboard rendering failed (${pathname}): ${error.message}`);
     return sendJson(res, 500, { error: error.message });
+  }
+}
+
+async function handleDashboardAssignProject(req, res) {
+  if (!isUserUiAuthorized(req)) {
+    res.writeHead(401, {
+      ...corsHeaders(),
+      'WWW-Authenticate': 'Basic realm="SevenAM Dashboard"',
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    res.end('Login required.');
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(req);
+    const result = await applyProjectAssign(
+      { task: body.task, project: body.project },
+      { reportType: 'dashboard', approvedBy: 'Seven 陳聖文', submittedAt: new Date() },
+    );
+    return sendJson(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    return sendJson(res, 500, { ok: false, error: error.message });
   }
 }
 
