@@ -56,6 +56,10 @@ http.createServer = function createServerWithControlApi(listener) {
       return handleDashboardAssignProject(req, res);
     }
 
+    if (req.method === 'POST' && pathname === '/dashboard/set-parent') {
+      return handleDashboardSetParent(req, res);
+    }
+
     if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
       return serveReportPage(res, pathname);
     }
@@ -3557,6 +3561,64 @@ async function handleDashboardAssignProject(req, res) {
       { reportType: 'dashboard', approvedBy: 'Seven 陳聖文', submittedAt: new Date() },
     );
     return sendJson(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    return sendJson(res, 500, { ok: false, error: error.message });
+  }
+}
+
+async function handleDashboardSetParent(req, res) {
+  if (!isUserUiAuthorized(req)) {
+    res.writeHead(401, {
+      ...corsHeaders(),
+      'WWW-Authenticate': 'Basic realm="SevenAM Dashboard"',
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    res.end('Login required.');
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(req);
+    const taskId = String(body.taskId || '').replace(/[^0-9a-f]/gi, '');
+    const parentId = String(body.parentId || '').replace(/[^0-9a-f]/gi, '');
+    if (!taskId) {
+      return sendJson(res, 400, { ok: false, error: 'Missing task id' });
+    }
+
+    const taskPage = await notionRequest(`/v1/pages/${taskId}`, { method: 'GET' });
+    if (normalizeId(taskPage.parent?.data_source_id || '') !== normalizeId(TASKS_DATA_SOURCE_ID)) {
+      return sendJson(res, 400, { ok: false, error: 'Page is not a task' });
+    }
+
+    if (parentId) {
+      if (parentId === taskId) {
+        return sendJson(res, 400, { ok: false, error: '任務不能成為自己的子任務' });
+      }
+      // 防循環：沿著候選母任務的母任務鏈往上走，不可碰到自己。
+      let cursor = parentId;
+      for (let hop = 0; hop < 10 && cursor; hop += 1) {
+        const page = await notionRequest(`/v1/pages/${cursor}`, { method: 'GET' });
+        if (hop === 0 && normalizeId(page.parent?.data_source_id || '') !== normalizeId(TASKS_DATA_SOURCE_ID)) {
+          return sendJson(res, 400, { ok: false, error: 'Parent page is not a task' });
+        }
+        cursor = normalizeId((page.properties?.['母任務']?.relation || [])[0]?.id || '');
+        if (cursor === normalizeId(taskId)) {
+          return sendJson(res, 400, { ok: false, error: '這樣會形成循環（對方已是這個任務的子孫）' });
+        }
+      }
+    }
+
+    await notionRequest(`/v1/pages/${taskId}`, {
+      method: 'PATCH',
+      body: {
+        properties: {
+          母任務: { relation: parentId ? [{ id: parentId }] : [] },
+          最後更新: dateProperty(new Date()),
+        },
+      },
+    });
+
+    return sendJson(res, 200, { ok: true, taskId, parentId: parentId || null });
   } catch (error) {
     return sendJson(res, 500, { ok: false, error: error.message });
   }
