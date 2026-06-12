@@ -525,9 +525,12 @@ export async function renderTaskPage(taskPageId) {
     : `<div class="chat">${conversation.messages.map((message) => `
         <div class="msg ${message.outgoing ? 'out' : ''}">
           <div class="msg-meta">${escapeHtml(message.meta)}</div>
-          <div class="msg-text">${escapeHtml(message.text)}</div>
+          ${message.text ? `<div class="msg-text">${escapeHtml(message.text)}</div>` : ''}
+          ${(message.images || []).map((image) => `<a href="${escapeHtml(image.url)}" target="_blank" rel="noopener"><img class="msg-img" src="${escapeHtml(image.url)}" alt="${escapeHtml(image.caption || '圖片')}" loading="lazy"></a>`).join('')}
+          ${(message.files || []).map((file) => `<div class="msg-file">📎 <a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a></div>`).join('')}
+          ${(message.links || []).map((link) => `<div class="msg-file">🔗 <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.label)}</a></div>`).join('')}
         </div>`).join('\n')}</div>
-      ${conversation.url ? `<div class="hint"><a href="${escapeHtml(conversation.url)}" target="_blank" rel="noopener">在 Notion 開啟完整對話 ↗</a>（顯示最近 ${conversation.messages.length} 則，最新在最上方）</div>` : ''}`}
+      ${conversation.url ? `<div class="hint"><a href="${escapeHtml(conversation.url)}" target="_blank" rel="noopener">在 Notion 開啟完整對話 ↗</a>（顯示最近 ${conversation.messages.length} 則，最新在最上方；圖片與檔案連結約 1 小時內有效，過期重新整理頁面即可）</div>` : ''}`}
 
   <h2 class="section">📋 任務控制紀錄（內文）</h2>
   <div class="panel"><pre class="doc">${escapeHtml(bodyBlocks.join('\n') || '（無內文）')}</pre></div>`;
@@ -541,19 +544,45 @@ async function loadConversationPreview(conversationUrl) {
   try {
     const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
     const name = textProperty(page.properties?.['LINE 對話名稱']) || textProperty(page.properties?.['自定義名稱']);
-    const lines = await getBlockTexts(pageId, 80);
+    const result = await notionRequest(`/v1/blocks/${pageId}/children?page_size=100`, { method: 'GET' });
 
     const messages = [];
     let current = null;
-    for (const line of lines) {
-      if (line.includes('LINE 對話記錄')) continue;
+    for (const block of result.results || []) {
+      const data = block[block.type] || {};
+
+      // 圖片區塊：Notion 簽名網址約 1 小時有效，server-side 每次重抓都是新的。
+      if (block.type === 'image') {
+        const imageUrl = data.file?.url || data.external?.url || '';
+        const caption = (data.caption || []).map((item) => item.plain_text || '').join('');
+        if (imageUrl && current) current.images.push({ url: imageUrl, caption });
+        continue;
+      }
+      if (block.type === 'file') {
+        const fileUrl = data.file?.url || data.external?.url || '';
+        const fileName = (data.caption || []).map((item) => item.plain_text || '').join('') || data.name || '附件檔案';
+        if (fileUrl && current) current.files.push({ url: fileUrl, name: fileName });
+        continue;
+      }
+
+      const richItems = data.rich_text || [];
+      const line = richItems.map((item) => item.plain_text || '').join('');
+      if (!line || line.includes('LINE 對話記錄')) continue;
+
       const meta = line.match(/^【(.+?)】(.+)$/);
       if (meta) {
         if (current) messages.push(current);
-        current = { meta: line.slice(0, 80), text: '', outgoing: /Seven Jr\.|附件解析/.test(line) };
+        current = { meta: line.slice(0, 80), text: '', outgoing: /Seven Jr\.|附件解析/.test(line), images: [], files: [], links: [] };
         continue;
       }
-      if (current) current.text = current.text ? `${current.text}\n${line}` : line;
+      if (current) {
+        current.text = current.text ? `${current.text}\n${line}` : line;
+        // 文字中夾帶的超連結（例如附件紀錄頁連結）保留為可點連結。
+        for (const item of richItems) {
+          const href = item.href || item.text?.link?.url || '';
+          if (href) current.links.push({ url: href, label: (item.plain_text || '連結').slice(0, 60) });
+        }
+      }
     }
     if (current) messages.push(current);
 
@@ -716,6 +745,9 @@ function pageShell(title, body) {
   .msg.out { background: #d3f9d8; margin-left: auto; }
   .msg-meta { font-size: 11px; color: #748094; margin-bottom: 2px; }
   .msg-text { font-size: 13px; white-space: pre-wrap; line-height: 1.5; }
+  .msg-img { display: block; max-width: 100%; max-height: 320px; border-radius: 8px; margin-top: 6px; border: 1px solid #e0e4e8; }
+  .msg-file { font-size: 13px; margin-top: 4px; }
+  .msg-file a { color: #2f80ed; }
   pre { white-space: pre-wrap; font-family: inherit; font-size: 13px; margin: 4px 0; }
   pre.doc { font-size: 12.5px; line-height: 1.6; color: #3e4c59; }
 </style>
