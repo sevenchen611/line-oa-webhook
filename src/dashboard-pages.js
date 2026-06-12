@@ -261,6 +261,7 @@ export async function renderTaskPage(taskPageId) {
   const task = normalizeTask(page);
   const bodyBlocks = await getBlockTexts(page.id, 60);
   const conversation = await loadConversationPreview(task.conversationUrl);
+  markSourceMessages(conversation.messages, task.sourceText);
 
   const body = `
   <header>
@@ -279,6 +280,7 @@ export async function renderTaskPage(taskPageId) {
   </header>
 
   <div class="panel">
+    ${task.sourceText ? `<div class="field"><span class="key">來源原文</span><pre>${escapeHtml(clampText(task.sourceText, 600))}</pre></div>` : ''}
     ${task.latestNote ? `<div class="field"><span class="key">最新備註</span>${escapeHtml(task.latestNote)}</div>` : ''}
     ${task.summary ? `<div class="field"><span class="key">AI 判斷摘要</span><pre>${escapeHtml(task.summary)}</pre></div>` : ''}
     <div class="field"><a href="${escapeHtml(task.url)}" target="_blank" rel="noopener">在 Notion 開啟任務頁 ↗</a></div>
@@ -523,7 +525,8 @@ export async function renderTaskPage(taskPageId) {
   ${conversation.messages.length === 0
     ? '<div class="hint">此任務沒有關聯的對話來源（可能來自會議或手動建立）。</div>'
     : `<div class="chat">${conversation.messages.map((message) => `
-        <div class="msg ${message.outgoing ? 'out' : ''}">
+        <div class="msg ${message.outgoing ? 'out' : ''}${message.isSource ? ' src' : ''}">
+          ${message.isSource ? '<div class="src-tag">⭐ 本任務來源</div>' : ''}
           <div class="msg-meta">${escapeHtml(message.meta)}</div>
           ${message.text ? `<div class="msg-text">${escapeHtml(message.text)}</div>` : ''}
           ${(message.images || []).map((image) => `<a href="${escapeHtml(image.url)}" target="_blank" rel="noopener"><img class="msg-img" src="${escapeHtml(image.url)}" alt="${escapeHtml(image.caption || '圖片')}" loading="lazy"></a>`).join('')}
@@ -536,6 +539,19 @@ export async function renderTaskPage(taskPageId) {
   <div class="panel"><pre class="doc">${escapeHtml(bodyBlocks.join('\n') || '（無內文）')}</pre></div>`;
 
   return pageShell(`${task.title} - SevenAM`, body);
+}
+
+function markSourceMessages(messages, sourceText) {
+  const normalized = String(sourceText || '').replace(/\s+/g, '');
+  if (normalized.length < 10) return;
+  for (const message of messages) {
+    const text = String(message.text || '').replace(/\s+/g, '');
+    if (text.length < 10) continue;
+    // 任一方包含對方的前段內容即視為來源訊息（來源原文常帶前綴或被截斷）。
+    if (normalized.includes(text.slice(0, 60)) || text.includes(normalized.slice(0, 60))) {
+      message.isSource = true;
+    }
+  }
 }
 
 async function loadConversationPreview(conversationUrl) {
@@ -743,6 +759,8 @@ function pageShell(title, body) {
   .chat { background: #dfe7ef; border-radius: 12px; padding: 12px; }
   .msg { background: #fff; border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; max-width: 92%; }
   .msg.out { background: #d3f9d8; margin-left: auto; }
+  .msg.src { border: 2px solid #e8590c; }
+  .src-tag { font-size: 11px; font-weight: 700; color: #e8590c; margin-bottom: 3px; }
   .msg-meta { font-size: 11px; color: #748094; margin-bottom: 2px; }
   .msg-text { font-size: 13px; white-space: pre-wrap; line-height: 1.5; }
   .msg-img { display: block; max-width: 100%; max-height: 320px; border-radius: 8px; margin-top: 6px; border: 1px solid #e0e4e8; }
