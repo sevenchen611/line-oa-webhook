@@ -533,6 +533,7 @@ export async function renderTaskPage(taskPageId) {
           ${(message.files || []).map((file) => `<div class="msg-file">📎 <a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a></div>`).join('')}
           ${(message.links || []).map((link) => `<div class="msg-file">🔗 <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.label)}</a></div>`).join('')}
         </div>`).join('\n')}</div>
+      ${task.sourceText && !conversation.messages.some((message) => message.isSource) ? '<div class="hint">ℹ️ 本任務的來源訊息比下方顯示的範圍更早，已不在最近的訊息中——確切的出生原文請看上方「來源原文」欄位。</div>' : ''}
       ${conversation.url ? `<div class="hint"><a href="${escapeHtml(conversation.url)}" target="_blank" rel="noopener">在 Notion 開啟完整對話 ↗</a>（顯示最近 ${conversation.messages.length} 則，最新在最上方；圖片與檔案連結約 1 小時內有效，過期重新整理頁面即可）</div>` : ''}`}
 
   <h2 class="section">📋 任務控制紀錄（內文）</h2>
@@ -644,6 +645,7 @@ function normalizeTask(page) {
     nextStep: textProperty(properties['下一步']),
     latestNote: textProperty(properties['最新備註']),
     summary: textProperty(properties['Codex 判斷摘要']),
+    sourceText: textProperty(properties['來源原文']),
     conversationUrl: properties['關聯 Notion 頁面']?.url || '',
     parentIds: (properties['母任務']?.relation || []).map((relation) => normalizeId(relation.id)),
     plannedMessage: textProperty(properties['預定訊息內容']),
