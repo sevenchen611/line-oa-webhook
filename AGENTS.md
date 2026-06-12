@@ -939,6 +939,61 @@ The dashboard is also an **editing surface** (2026-06-12 additions):
   `taskById` caused 500 on projects with subtasks.
 - LINE command 儀表板/總控/dashboard (controller-only) replies the URL.
 
+## Planned Messages and Next Action Scheduling (2026-06-12)
+
+Every task can carry a **pre-approved outgoing message, its recipient, and a
+scheduled Next Action**. Six task properties (auto-created by
+`ensureTaskReviewProperties` and by the scheduler script):
+
+- `預定訊息內容` (rich_text): the prepared message draft.
+- `預定發送對象` (rich_text): recipient display name.
+- `預定發送對象ID` (rich_text): `type:id` form, e.g. `group:Cxxx` / `user:Uxxx`
+  (bare LINE IDs also accepted). When empty, sending falls back to the task's
+  source conversation (`關聯 Notion 頁面`).
+- `下次行動時間` (date): when the Next Action fires. Cleared after firing
+  (one-shot).
+- `下次行動模式` (select): `提醒我` (default) or `自動發送`.
+- `下次行動說明` (rich_text): human description shown in the reminder, e.g.
+  「提醒我跟 Kevin 聯繫約見面」.
+
+**Dead-man-switch semantics**: when the prior action happens on time, the user
+or AI rewrites/clears `下次行動時間` and defines the next one. If nobody acts,
+the timer fires as defined. Firing is one-shot: the scheduler always clears
+`下次行動時間` after firing (auto-send failures instead defer it +2 hours and
+alert the controller, so retries are bounded).
+
+Surfaces:
+
+- **Dashboard task page** has a 預定訊息與下次行動 panel: message textarea
+  (defaults to the system chase draft), recipient search (reuses
+  `GET /reports/followup-recipient-candidates`, so the message can go to the
+  next actor instead of the task owner), mode select, datetime picker with
+  +1/3/5/7-day quick buttons, action note, 儲存 (POST `/control/tasks/update`
+  with `plannedMessage`/`plannedTargetName`/`plannedTargetId`/`nextActionAt`/
+  `nextActionMode`/`nextActionNote`/`clearNextAction`), and 立即發送 (browser
+  confirm → POST `/control/tasks/send-planned`).
+- **`POST /control/tasks/send-planned`** (control key or User UI Basic auth):
+  sends the planned message now, persists the used message/target back to the
+  task as the new defaults, appends a 「預定訊息已發送」 record to the task
+  body, sets 狀態=等待回覆＋確認狀態=已確認 (unless 已完成/封存), and
+  auto-snoozes 2 days.
+- **Review pages section 2** prefill the chase textarea from `預定訊息內容`
+  and show 預定對象/⏰ badges. New verdict options 「排程：1/3/5/7 天後自動
+  發出」 post a `scheduledSends` list (`{task, message, days}`) to
+  `/control/reports/approve`, which writes the message + fire time +
+  模式=自動發送 and snoozes tracking until the fire time.
+- **Scheduler**: `scripts/run-scheduled-actions.js` (`npm run actions:run`,
+  Render cron `seven-jr-scheduled-actions` every 15 minutes at :03/:18/:33/:48).
+  Scans tasks with `下次行動時間 <= now` (excluding 已完成/封存). Mode
+  自動發送 pushes the planned message through the Control API (so outgoing
+  logging applies), records it in the task body, flips the task to 等待回覆,
+  and notifies the controller it acted. Mode 提醒我 sends the controller a
+  LINE reminder with the action note, draft preview, and dashboard task link.
+  Auto-send without message content or resolvable target degrades to a
+  reminder asking the user to fix the setup. External sends remain
+  user-approved by definition: the user wrote/approved the exact message and
+  time when scheduling.
+
 ## Render Control API
 
 Control endpoints:
