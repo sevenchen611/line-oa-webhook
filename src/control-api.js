@@ -98,7 +98,7 @@ async function handleControlRequest(req, res, pathname) {
       judgmentRulesConfigured: Boolean(JUDGMENT_RULES_DATA_SOURCE_ID),
       userUiLoginEnabled: Boolean(process.env.SEVEN_USER_UI_USERNAME && process.env.SEVEN_USER_UI_PASSWORD),
       reportTypes: ['morning', 'daily', 'followup-morning', 'followup-midday', 'followup-afternoon'],
-      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'GET /reports/followup-recipient-candidates', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/attachments/update', 'POST /control/judgment-rules/create', 'POST /control/codex-commands/test'],
+      endpoints: ['GET /user-ui/user-ui-connected-preview.html', 'GET /reports/followup-recipient-candidates', 'POST /control/line/push', 'POST /control/reports/send', 'POST /control/reports/preview', 'POST /control/reports/approve', 'POST /control/followups/dispatch', 'POST /control/tasks/update', 'POST /control/tasks/send-planned', 'POST /control/attachments/update', 'POST /control/judgment-rules/create', 'POST /control/codex-commands/test'],
     });
   }
 
@@ -146,6 +146,11 @@ async function handleControlRequest(req, res, pathname) {
 
     if (pathname === '/control/tasks/update') {
       const result = await updateTaskFromUserUi(req, body);
+      return sendJson(res, 200, result);
+    }
+
+    if (pathname === '/control/tasks/send-planned') {
+      const result = await sendPlannedTaskMessage(req, body);
       return sendJson(res, 200, result);
     }
 
@@ -316,6 +321,8 @@ async function updateTaskFromUserUi(req, body) {
     throw new Error('Task page id is required.');
   }
 
+  // 先確保預定訊息／下次行動欄位存在，這樣頁面快照才會帶出它們。
+  await ensureTaskReviewProperties();
   const page = await assertTaskPage(pageId);
   const submittedAt = new Date();
   const updates = body.updates && typeof body.updates === 'object' ? body.updates : body;
@@ -336,8 +343,19 @@ async function updateTaskFromUserUi(req, body) {
     逾期狀態: taskPropertyUpdate(page, '逾期狀態', stringOrEmpty(updates.overdueStatus)),
     'Codex 判斷摘要': taskPropertyUpdate(page, 'Codex 判斷摘要', stringOrEmpty(updates.judgment)),
     來源原文: taskPropertyUpdate(page, '來源原文', stringOrEmpty(updates.rawSource)),
+    預定訊息內容: taskPropertyUpdate(page, '預定訊息內容', stringOrEmpty(updates.plannedMessage)),
+    預定發送對象: taskPropertyUpdate(page, '預定發送對象', stringOrEmpty(updates.plannedTargetName)),
+    預定發送對象ID: taskPropertyUpdate(page, '預定發送對象ID', stringOrEmpty(updates.plannedTargetId)),
+    下次行動時間: taskPropertyUpdate(page, '下次行動時間', stringOrEmpty(updates.nextActionAt)),
+    下次行動模式: taskPropertyUpdate(page, '下次行動模式', stringOrEmpty(updates.nextActionMode)),
+    下次行動說明: taskPropertyUpdate(page, '下次行動說明', stringOrEmpty(updates.nextActionNote)),
     最後更新: page.properties?.最後更新 ? dateProperty(submittedAt) : undefined,
   });
+
+  // 取消排程：清空下次行動時間（taskPropertyUpdate 不處理清除，這裡明確設 null）。
+  if (updates.clearNextAction === true && page.properties?.['下次行動時間']) {
+    properties['下次行動時間'] = { date: null };
+  }
 
   if (!Object.keys(properties).length && !stringOrEmpty(updates.editNote) && !stringOrEmpty(updates.pageContent)) {
     throw new Error('No supported task fields were provided.');
@@ -377,6 +395,95 @@ async function updateTaskFromUserUi(req, body) {
     editedBy,
     updatedAt: submittedAt.toISOString(),
   };
+}
+
+// 立即發送任務的預定訊息：對象優先用 預定發送對象ID，沒有就回退到來源對話。
+// 發送後寫入任務內文、暫緩 2 天、狀態改為等待回覆（已是完成/封存者不動）。
+async function sendPlannedTaskMessage(req, body) {
+  if (!process.env.NOTION_TOKEN) {
+    throw new Error('NOTION_TOKEN is not set.');
+  }
+
+  await ensureTaskReviewProperties();
+  const pageId = normalizeId(body.pageId || body.taskPageId || '');
+  const page = pageId
+    ? await assertTaskPage(pageId)
+    : await findTaskByName(String(body.task || '').trim());
+  if (!page) {
+    throw new Error('Task not found.');
+  }
+
+  const submittedAt = new Date();
+  const editedBy = resolveUserUiEditor(req, body);
+  const message = clampLineText(stringOrEmpty(body.message) || pageTextProperty(page, '預定訊息內容'));
+  if (!message) {
+    throw new Error('沒有可發送的訊息內容，請先填寫預定訊息內容。');
+  }
+
+  const targetSpec = stringOrEmpty(body.targetId) || pageTextProperty(page, '預定發送對象ID');
+  const targetName = stringOrEmpty(body.targetName) || pageTextProperty(page, '預定發送對象');
+  let target = parsePlannedTarget(targetSpec, targetName);
+  if (!target) {
+    target = await resolveTaskFollowupTarget(pageUrlProperty(page, '關聯 Notion 頁面'));
+  }
+  if (!target) {
+    throw new Error('無法解析發送對象：請先設定預定發送對象，或確認任務有來源對話。');
+  }
+
+  const pushResult = await pushToTargets([target], [{ type: 'text', text: message }]);
+
+  const timestamp = formatTaipeiDateTime(submittedAt);
+  await notionRequest(`/v1/blocks/${page.id}/children`, {
+    method: 'PATCH',
+    body: {
+      children: [
+        { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `預定訊息已發送（${timestamp}）` } }] } },
+        { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(message) } }] } },
+        { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `發送對象：${target.name || target.id}（${target.type}）；由 ${editedBy} 確認後發送。` } }], color: 'gray' } },
+      ],
+    },
+  });
+
+  const currentStatus = pageSelectProperty(page, '狀態');
+  const snoozeUntil = new Date(submittedAt.getTime() + 2 * 24 * 60 * 60 * 1000);
+  await notionRequest(`/v1/pages/${page.id}`, {
+    method: 'PATCH',
+    body: {
+      properties: compactProperties({
+        // 發送後把這次用的內容與對象存回任務，下次就是「預設訊息」。
+        預定訊息內容: taskPropertyUpdate(page, '預定訊息內容', message),
+        預定發送對象: taskPropertyUpdate(page, '預定發送對象', target.name || targetName),
+        預定發送對象ID: taskPropertyUpdate(page, '預定發送對象ID', `${target.type}:${target.id}`),
+        狀態: ['已完成', '封存'].includes(currentStatus) ? undefined : taskPropertyUpdate(page, '狀態', '等待回覆'),
+        確認狀態: ['已完成', '封存'].includes(currentStatus) ? undefined : taskPropertyUpdate(page, '確認狀態', '已確認'),
+        追蹤暫緩至: dateProperty(snoozeUntil),
+        最後更新: page.properties?.最後更新 ? dateProperty(submittedAt) : undefined,
+      }),
+    },
+  });
+
+  return {
+    ok: true,
+    pageId: normalizeId(page.id),
+    target: { id: target.id, type: target.type, name: target.name || targetName || '' },
+    message,
+    pushResult: pushResult.results || [],
+    sentAt: submittedAt.toISOString(),
+  };
+}
+
+// 預定發送對象ID 的格式是「type:id」（例如 group:Cxxx／user:Uxxx）；也接受裸 LINE ID。
+function parsePlannedTarget(spec, name) {
+  const trimmed = String(spec || '').trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(group|room|user)\s*[:：]\s*(\S+)$/i);
+  if (match) {
+    return { id: match[2], type: match[1].toLowerCase(), name: String(name || '').trim(), source: 'planned-target' };
+  }
+  if (/^[CRU][0-9a-f]{10,}$/i.test(trimmed)) {
+    return { id: trimmed, type: inferTargetType(trimmed), name: String(name || '').trim(), source: 'planned-target' };
+  }
+  return null;
 }
 
 async function updateAttachmentFromUserUi(req, body) {
@@ -757,6 +864,11 @@ async function approveReport(req, body) {
     followupSendResults.push(await applyFollowupSend(item, { reportType, approvedBy, submittedAt }));
   }
 
+  const scheduledSendResults = [];
+  for (const item of normalizeApprovalList(body.scheduledSends)) {
+    scheduledSendResults.push(await applyScheduledSend(item, { reportType, approvedBy, submittedAt }));
+  }
+
   const projectAssignResults = [];
   for (const item of normalizeApprovalList(body.projectAssigns)) {
     projectAssignResults.push(await applyProjectAssign(item, { reportType, approvedBy, submittedAt }));
@@ -807,6 +919,7 @@ async function approveReport(req, body) {
     snoozeResults,
     noteResults,
     followupSendResults,
+    scheduledSendResults,
     projectAssignResults,
     attachmentDecisionResults,
     projectProposalResults,
@@ -827,6 +940,7 @@ async function approveReport(req, body) {
     snoozeResults,
     noteResults,
     followupSendResults,
+    scheduledSendResults,
     projectAssignResults,
     attachmentDecisionResults,
     projectProposalResults,
@@ -871,7 +985,7 @@ async function resolveAcknowledgementTargets(body) {
   });
 }
 
-function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [], projectAssignResults = [], attachmentDecisionResults = [], projectProposalResults = [] }) {
+function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submittedAt, taskResults, attachmentResults, decisions, followups, followupDispatch, decisionPage, snoozeResults = [], noteResults = [], followupSendResults = [], scheduledSendResults = [], projectAssignResults = [], attachmentDecisionResults = [], projectProposalResults = [] }) {
   const label = reportTypeLabel(reportType);
   const lines = [
     `Seven Jr. 已收到你送出的${label}確認。`,
@@ -891,6 +1005,9 @@ function buildApprovalAcknowledgementMessage({ reportType, approvedBy, submitted
   const failedFollowups = followupSendResults.filter((item) => !item.ok);
   if (sentFollowups.length) summary.push(`追問訊息已發送 ${sentFollowups.length} 則`);
   if (failedFollowups.length) summary.push(`追問發送失敗 ${failedFollowups.length} 則`);
+  const scheduledOk = scheduledSendResults.filter((item) => item.ok);
+  if (scheduledOk.length) summary.push(`排程自動發送 ${scheduledOk.length} 則`);
+  if (scheduledSendResults.length > scheduledOk.length) summary.push(`排程失敗 ${scheduledSendResults.length - scheduledOk.length} 則`);
   if (snoozeResults.length) summary.push(`暫緩追蹤 ${snoozeResults.length} 項`);
   if (noteResults.length) summary.push(`補充備註 ${noteResults.length} 項`);
   if (projectAssignResults.length) summary.push(`專案歸屬 ${projectAssignResults.filter((item) => item.ok).length} 項`);
@@ -1340,12 +1457,18 @@ async function ensureTaskReviewProperties() {
         properties: {
           追蹤暫緩至: { date: {} },
           最新備註: { rich_text: {} },
+          預定訊息內容: { rich_text: {} },
+          預定發送對象: { rich_text: {} },
+          預定發送對象ID: { rich_text: {} },
+          下次行動時間: { date: {} },
+          下次行動模式: { select: { options: [{ name: '提醒我' }, { name: '自動發送' }] } },
+          下次行動說明: { rich_text: {} },
         },
       },
     });
     taskReviewPropertiesEnsured = true;
   } catch (error) {
-    console.warn(`Unable to ensure task review properties (追蹤暫緩至/最新備註): ${error.message}`);
+    console.warn(`Unable to ensure task review properties (追蹤暫緩至/最新備註/預定訊息/下次行動): ${error.message}`);
   }
 }
 
@@ -1545,6 +1668,52 @@ async function applyFollowupSend(item, context) {
     }
 
     return { ok: true, task: taskName, target: { id: target.id, type: target.type, name: target.name || '' }, pushResult: pushResult.results || [] };
+  } catch (error) {
+    return { ok: false, task: taskName, error: error.message };
+  }
+}
+
+// 報告頁的「排程 N 天後自動發出」：把訊息與觸發時間寫進任務，到時由排程引擎
+// （scripts/run-scheduled-actions.js）自動發送。同步暫緩追蹤到觸發日，報告不再重複問。
+async function applyScheduledSend(item, context) {
+  const taskName = String(item.task || item.name || '').trim();
+  const message = clampLineText(String(item.message || '').trim());
+  const days = Math.min(Math.max(Number(item.days) || 1, 1), 30);
+  if (!taskName || !message) {
+    return { ok: false, task: taskName, error: 'missing task name or message' };
+  }
+
+  try {
+    const page = await findTaskByName(taskName);
+    if (!page) {
+      return { ok: false, task: taskName, error: 'task not found' };
+    }
+
+    await ensureTaskReviewProperties();
+    const fireAt = new Date(context.submittedAt.getTime() + days * 24 * 60 * 60 * 1000);
+    await notionRequest(`/v1/pages/${page.id}`, {
+      method: 'PATCH',
+      body: {
+        properties: compactProperties({
+          預定訊息內容: richTextProperty(message),
+          下次行動時間: dateProperty(fireAt),
+          下次行動模式: selectProperty('自動發送'),
+          追蹤暫緩至: dateProperty(fireAt),
+          最後更新: dateProperty(context.submittedAt),
+        }),
+      },
+    });
+
+    await notionRequest(`/v1/blocks/${page.id}/children`, {
+      method: 'PATCH',
+      body: {
+        children: [
+          paragraphProperty(`【排程發送】${formatTaipeiDateTime(context.submittedAt)}｜由 ${context.approvedBy} 從 ${reportTypeLabel(context.reportType)} 排程，${days} 天後（${formatTaipeiDateTime(fireAt)}）自動發送預定訊息。`),
+        ],
+      },
+    });
+
+    return { ok: true, task: taskName, days, fireAt: fireAt.toISOString() };
   } catch (error) {
     return { ok: false, task: taskName, error: error.message };
   }
