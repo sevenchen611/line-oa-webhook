@@ -16,6 +16,9 @@ const controlApiKey = process.env.SEVEN_CONTROL_API_KEY || '';
 const intervalSeconds = clampNumber(Number(process.env.SEVEN_WORKER_INTERVAL_SECONDS || 90), 30, 900);
 const failureBackoffSeconds = 300;
 const workerId = `local-${process.env.COMPUTERNAME || 'worker'}`;
+// 工作時段（台北時間）：時段外不掃描、不心跳；Render 夜間排程也已關閉，全系統休息。
+const activeHourStart = clampNumber(Number(process.env.SEVEN_WORKER_ACTIVE_HOUR_START ?? 7), 0, 23);
+const activeHourEnd = clampNumber(Number(process.env.SEVEN_WORKER_ACTIVE_HOUR_END ?? 23), 1, 24);
 
 let consecutiveFailures = 0;
 let cycles = 0;
@@ -34,8 +37,26 @@ if (!selfTest.ok) {
   process.exit(2);
 }
 log('✅ Claude Code CLI 自我檢測通過，訂閱額度可用。');
+log(`工作時段：台北 ${String(activeHourStart).padStart(2, '0')}:00–${String(activeHourEnd % 24).padStart(2, '0')}:00；時段外暫停所有掃描。`);
+
+let inQuietHours = false;
 
 while (!stopping) {
+  if (!isActiveHour()) {
+    if (!inQuietHours) {
+      inQuietHours = true;
+      log(`🌙 進入夜間休息（台北 ${String(activeHourEnd % 24).padStart(2, '0')}:00–${String(activeHourStart).padStart(2, '0')}:00）：暫停工作與心跳，到點自動恢復。`);
+    }
+    await delay(5 * 60 * 1000);
+    continue;
+  }
+  if (inQuietHours) {
+    inQuietHours = false;
+    log('☀️ 進入工作時段，恢復掃描。');
+    // 先送心跳佔位，讓 Render 早上的排程立刻知道 worker 已接手，避免兩邊搶工作。
+    await sendHeartbeat({ cycles, resumedFromQuietHours: true });
+  }
+
   cycles += 1;
   const cycleStartedAt = Date.now();
   let cycleOk = true;
@@ -118,6 +139,15 @@ async function sendHeartbeat(meta) {
   } catch (error) {
     log(`Heartbeat failed: ${error.message}`);
   }
+}
+
+function isActiveHour() {
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  }).format(new Date()));
+  return hour >= activeHourStart && hour < activeHourEnd;
 }
 
 function log(message) {
