@@ -60,6 +60,7 @@ Do not copy production values from another project. Each project must use its ow
 | `AM-IMP-2026.0612.12` | Controller-only command gate | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.12.md` | Deployed to production same day; quarantine and cleanup verified in Notion. |
 | `AM-IMP-2026.0612.13` | Dashboard editing surface | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.13.md` | Move/parent/edit flows verified live; cycle protection and feedback-integrity rules in place; conversation media preview added. |
 | `AM-IMP-2026.0612.14` | Planned messages and Next Action scheduling | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.14.md` | Properties auto-created; scheduler dry-run passed; report schedule options and dashboard panel verified in production; Render cron pending Blueprint sync confirmation. |
+| `AM-IMP-2026.0612.15` | System operating hours (07:00-23:00) | Installed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.15.md` | Local worker restarted with active-hours gate verified in log; Render cron schedule restriction pending Blueprint sync. |
 
 ## Project-Specific Values
 
