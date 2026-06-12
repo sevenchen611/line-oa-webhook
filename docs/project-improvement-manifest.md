@@ -58,6 +58,8 @@ Do not copy production values from another project. Each project must use its ow
 | `AM-IMP-2026.0612.10` | Attachment parsing pipeline | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.10.md` | 7 real attachments parsed in production including a signed contract PDF with accurate party/term extraction. |
 | `AM-IMP-2026.0612.11` | Dual-mode local worker | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.11.md` | Production heartbeat verified (workerActive:true); first subscription-quota cycle created a real task; auth-failure standby behavior verified. |
 | `AM-IMP-2026.0612.12` | Controller-only command gate | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.12.md` | Deployed to production same day; quarantine and cleanup verified in Notion. |
+| `AM-IMP-2026.0612.13` | Dashboard editing surface | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.13.md` | Move/parent/edit flows verified live; cycle protection and feedback-integrity rules in place; conversation media preview added. |
+| `AM-IMP-2026.0612.14` | Planned messages and Next Action scheduling | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.14.md` | Properties auto-created; scheduler dry-run passed; report schedule options and dashboard panel verified in production; Render cron pending Blueprint sync confirmation. |
 
 ## Project-Specific Values
 
