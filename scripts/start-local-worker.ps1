@@ -1,5 +1,7 @@
 # SevenAM 本機 worker 啟動器：崩潰自動重啟（快速失敗時退避 5 分鐘）。
 # 用法：pwsh -File scripts/start-local-worker.ps1
+# 注意：輸出用原生重導向寫檔，不可用 Tee-Object——管線停滯會塞住 node stdout，
+# 讓 worker 整個卡死（2026-06-12 在 HOZO AM 實測踩雷）。
 $ErrorActionPreference = 'Continue'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $logDir = Join-Path (Get-Location) 'logs'
@@ -9,7 +11,7 @@ while ($true) {
   $started = Get-Date
   $logFile = Join-Path $logDir ("worker-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
   "[$(Get-Date -Format o)] worker starting" | Add-Content $logFile
-  & node scripts/local-worker.js 2>&1 | Tee-Object -FilePath $logFile -Append
+  & cmd /c "node scripts/local-worker.js >> `"$logFile`" 2>&1"
   $exitCode = $LASTEXITCODE
   $ranSeconds = ((Get-Date) - $started).TotalSeconds
   "[$(Get-Date -Format o)] worker exited code=$exitCode after ${ranSeconds}s" | Add-Content $logFile
