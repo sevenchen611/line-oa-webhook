@@ -164,6 +164,10 @@ async function queryTasksByFilter(filter) {
       sourceText: textProperty(properties['來源原文']),
       snoozedUntil: properties['追蹤暫緩至']?.date?.start || '',
       conversationUrl: properties['關聯 Notion 頁面']?.url || '',
+      plannedMessage: textProperty(properties['預定訊息內容']),
+      plannedTargetName: textProperty(properties['預定發送對象']),
+      nextActionAt: properties['下次行動時間']?.date?.start || '',
+      nextActionMode: properties['下次行動模式']?.select?.name || '',
       url: page.url,
     };
   }).filter((task) => task.title);
@@ -275,7 +279,7 @@ function buildHtml({ reportType, title, subtitle, pendingTasks, waitingTasks, sn
   ${pendingTasks.length === 0 ? '<div class="empty">沒有待裁決的新任務。</div>' : pendingSections}
 
   <div class="section-title waiting">二、等待回覆：要不要追問？（${waitingTasks.length}${snoozedCount ? `，另有 ${snoozedCount} 筆暫緩中` : ''}）</div>
-  <div class="section-hint">這些任務在等對方回覆。可以發送追問訊息（可先修改內容）、暫緩幾天再問、或更新狀態。發送後自動暫緩 2 天。</div>
+  <div class="section-hint">這些任務在等對方回覆。可以立即發送追問（可先修改內容）、排程幾天後自動發出、暫緩幾天再問、或更新狀態。發送後自動暫緩 2 天；排程後到期由系統自動發出並通知你。</div>
   ${waitingTasks.length === 0 ? '<div class="empty">沒有需要決定的等待回覆任務。</div>' : waitingCards}
 
   <div class="section-title progress">三、進行中／未開始提醒（${inProgressTasks.length}）</div>
@@ -321,7 +325,7 @@ document.querySelectorAll('select.verdict').forEach((select) => {
 document.querySelectorAll('select.followup-action').forEach((select) => {
   select.addEventListener('change', () => {
     const messageInput = select.closest('.card').querySelector('textarea.followup-message');
-    if (messageInput) messageInput.style.display = select.value === 'send' ? 'block' : 'none';
+    if (messageInput) messageInput.style.display = (select.value === 'send' || select.value.startsWith('schedule-')) ? 'block' : 'none';
   });
 });
 
@@ -330,6 +334,7 @@ if (submitButton) submitButton.addEventListener('click', async () => {
   const banner = document.getElementById('banner');
   const tasks = [];
   const followupSends = [];
+  const scheduledSends = [];
   const snoozes = [];
   const taskNotes = [];
   let invalid = '';
@@ -356,6 +361,10 @@ if (submitButton) submitButton.addEventListener('click', async () => {
       const message = card.querySelector('textarea.followup-message').value.trim();
       if (!message) { invalid = taskName; return; }
       followupSends.push({ task: taskName, message, conversationUrl: card.dataset.conv || '' });
+    } else if (value.startsWith('schedule-')) {
+      const message = card.querySelector('textarea.followup-message').value.trim();
+      if (!message) { invalid = taskName; return; }
+      scheduledSends.push({ task: taskName, message, days: Number(value.slice(9)) });
     } else if (value.startsWith('snooze-')) {
       snoozes.push({ task: taskName, days: Number(value.slice(7)) });
     } else {
@@ -395,15 +404,18 @@ if (submitButton) submitButton.addEventListener('click', async () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  const total = tasks.length + followupSends.length + snoozes.length + taskNotes.length + projectAssigns.length + attachmentDecisions.length + projectProposalDecisions.length;
+  const total = tasks.length + followupSends.length + scheduledSends.length + snoozes.length + taskNotes.length + projectAssigns.length + attachmentDecisions.length + projectProposalDecisions.length;
   if (total === 0) {
     banner.className = 'banner err';
     banner.textContent = '還沒有任何處理（全部都維持原狀）。';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  if (followupSends.length > 0) {
-    const confirmed = confirm('將發送 ' + followupSends.length + ' 則追問訊息到對應的 LINE 對話，確定嗎？');
+  if (followupSends.length > 0 || scheduledSends.length > 0) {
+    const parts = [];
+    if (followupSends.length) parts.push('立即發送 ' + followupSends.length + ' 則追問訊息');
+    if (scheduledSends.length) parts.push('排程 ' + scheduledSends.length + ' 則訊息到期自動發出');
+    const confirmed = confirm('將' + parts.join('，並') + '，確定嗎？');
     if (!confirmed) return;
   }
 
@@ -419,6 +431,7 @@ if (submitButton) submitButton.addEventListener('click', async () => {
         approvalKey: localStorage.getItem(APPROVAL_KEY_STORAGE) || '',
         tasks,
         followupSends,
+        scheduledSends,
         snoozes,
         taskNotes,
         projectAssigns,
@@ -431,8 +444,9 @@ if (submitButton) submitButton.addEventListener('click', async () => {
     if (!response.ok || result.error) throw new Error(result.error || ('HTTP ' + response.status));
     const sendOk = (result.followupSendResults || []).filter((item) => item.ok).length;
     const sendFail = (result.followupSendResults || []).filter((item) => !item.ok).length;
+    const scheduleOk = (result.scheduledSendResults || []).filter((item) => item.ok).length;
     banner.className = 'banner ok';
-    banner.textContent = '✅ 已處理 ' + total + ' 筆' + (sendOk ? '，追問已發送 ' + sendOk + ' 則' : '') + (sendFail ? '，' + sendFail + ' 則發送失敗（詳見任務頁）' : '') + '。頁面即將更新…';
+    banner.textContent = '✅ 已處理 ' + total + ' 筆' + (sendOk ? '，追問已發送 ' + sendOk + ' 則' : '') + (scheduleOk ? '，已排程 ' + scheduleOk + ' 則自動發送' : '') + (sendFail ? '，' + sendFail + ' 則發送失敗（詳見任務頁）' : '') + '。頁面即將更新…';
     setTimeout(() => location.reload(), 2500);
   } catch (error) {
     banner.className = 'banner err';
@@ -497,16 +511,24 @@ function pendingCard(task) {
 }
 
 function waitingCard(task) {
-  const draft = buildDraftFollowupMessage(task);
+  // 任務有預定訊息就優先帶入，沒有才用系統草稿。
+  const draft = task.plannedMessage || buildDraftFollowupMessage(task);
   return `
   <div class="card waiting-card" data-task="${escapeHtml(task.title)}" data-conv="${escapeHtml(task.conversationUrl)}">
     <h3><a href="${escapeHtml(task.url)}" target="_blank" rel="noopener">${escapeHtml(task.title)}</a></h3>
-    <div class="badges">${badges(task)}</div>
+    <div class="badges">${badges(task)}
+      ${task.plannedTargetName ? `<span class="badge">📨 預定對象 ${escapeHtml(task.plannedTargetName)}</span>` : ''}
+      ${task.nextActionAt ? `<span class="badge">⏰ ${escapeHtml(task.nextActionMode || '提醒')} ${escapeHtml(task.nextActionAt.slice(0, 16).replace('T', ' '))}</span>` : ''}
+    </div>
     ${cardDetails(task)}
     <div class="controls">
       <select class="followup-action">
         <option value="keep" selected>今天不處理</option>
-        <option value="send">📨 發送追問訊息（可先修改下方內容）</option>
+        <option value="send">📨 立即發送追問訊息（可先修改下方內容）</option>
+        <option value="schedule-1">🕘 排程：1 天後自動發出下方訊息</option>
+        <option value="schedule-3">🕘 排程：3 天後自動發出下方訊息</option>
+        <option value="schedule-5">🕘 排程：5 天後自動發出下方訊息</option>
+        <option value="schedule-7">🕘 排程：7 天後自動發出下方訊息</option>
         <option value="snooze-1">⏸ 暫緩 1 天再問</option>
         <option value="snooze-3">⏸ 暫緩 3 天再問</option>
         <option value="snooze-5">⏸ 暫緩 5 天再問</option>
