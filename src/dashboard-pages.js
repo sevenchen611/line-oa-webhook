@@ -99,7 +99,8 @@ export async function renderProjectPage(projectName) {
   const statusRank = (task) => STATUS_ORDER.indexOf(task.status) === -1 ? 99 : STATUS_ORDER.indexOf(task.status);
   roots.sort((a, b) => statusRank(a) - statusRank(b) || (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0));
 
-  const rows = roots.map((task) => taskRow(task, childrenByParent, 0)).join('\n');
+  const officialNames = projects.filter((item) => !['候選', '封存'].includes(item.status)).map((item) => item.name);
+  const rows = roots.map((task) => taskRow(task, childrenByParent, 0, projectName, officialNames)).join('\n');
   const counts = countBy(projectTasks, (task) => task.status);
 
   const body = `
@@ -128,30 +129,67 @@ export async function renderProjectPage(projectName) {
   </div>`}
 
   <h2 class="section">任務（${projectTasks.length}）　<span class="mini">${STATUS_ORDER.filter((status) => counts[status]).map((status) => `${status} ${counts[status]}`).join('｜')}</span></h2>
-  ${rows || '<div class="hint">此專案目前沒有任務。</div>'}`;
+  ${rows || '<div class="hint">此專案目前沒有任務。</div>'}
+
+  <script>
+  document.querySelectorAll('select.project-move').forEach((select) => {
+    select.addEventListener('change', async () => {
+      if (select.value === 'keep') return;
+      const taskName = select.dataset.task;
+      if (!confirm('將「' + taskName + '」移到專案「' + select.value + '」？')) { select.value = 'keep'; return; }
+      select.disabled = true;
+      try {
+        const response = await fetch('/dashboard/assign-project', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: taskName, project: select.value }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+        location.reload();
+      } catch (error) {
+        alert('移動失敗：' + error.message);
+        select.disabled = false;
+        select.value = 'keep';
+      }
+    });
+  });
+  </script>`;
 
   return pageShell(`${project.name} - SevenAM`, body);
 }
 
-function taskRow(task, childrenByParent, depth) {
+function taskRow(task, childrenByParent, depth, currentProject, officialNames) {
   const children = (childrenByParent.get(task.id) || []);
+  const moveOptions = officialNames
+    .filter((name) => name !== currentProject)
+    .map((name) => `<option value="${escapeHtml(name)}">移到：${escapeHtml(name)}</option>`)
+    .join('');
+
   return `
-  <a class="card task" style="margin-left:${depth * 22}px" href="/dashboard/task?id=${encodeURIComponent(task.id)}">
-    <div class="task-line">
-      <span class="status-dot" style="background:${STATUS_COLORS[task.status] || '#adb5bd'}"></span>
-      <span class="task-title">${depth > 0 ? '└ ' : ''}${escapeHtml(task.title)}</span>
-    </div>
-    <div class="badges">
-      <span class="badge" style="color:${STATUS_COLORS[task.status] || '#495057'}">${escapeHtml(task.status || '未設定')}</span>
-      ${task.overdue ? '<span class="badge overdue">⚠️ 已逾期</span>' : ''}
-      ${task.priority === '高' ? '<span class="badge overdue">高優先</span>' : ''}
-      ${task.owner ? `<span class="badge">${escapeHtml(task.owner)}</span>` : ''}
-      ${task.dueDate ? `<span class="badge">截止 ${escapeHtml(task.dueDate.slice(0, 10))}</span>` : ''}
-      ${children.length ? `<span class="badge">${children.length} 個子任務</span>` : ''}
-    </div>
-    ${task.nextStep ? `<div class="mini">➡️ ${escapeHtml(clampText(task.nextStep, 90))}</div>` : ''}
-  </a>
-  ${children.map((child) => taskRow(child, childrenByParent, depth + 1)).join('\n')}`;
+  <div class="card task" style="margin-left:${depth * 22}px">
+    <a class="task-link" href="/dashboard/task?id=${encodeURIComponent(task.id)}">
+      <div class="task-line">
+        <span class="status-dot" style="background:${STATUS_COLORS[task.status] || '#adb5bd'}"></span>
+        <span class="task-title">${depth > 0 ? '└ ' : ''}${escapeHtml(task.title)}</span>
+      </div>
+      <div class="badges">
+        <span class="badge" style="color:${STATUS_COLORS[task.status] || '#495057'}">${escapeHtml(task.status || '未設定')}</span>
+        ${task.overdue ? '<span class="badge overdue">⚠️ 已逾期</span>' : ''}
+        ${task.priority === '高' ? '<span class="badge overdue">高優先</span>' : ''}
+        ${task.owner ? `<span class="badge">${escapeHtml(task.owner)}</span>` : ''}
+        ${task.dueDate ? `<span class="badge">截止 ${escapeHtml(task.dueDate.slice(0, 10))}</span>` : ''}
+        ${children.length ? `<span class="badge">${children.length} 個子任務</span>` : ''}
+      </div>
+      ${task.nextStep ? `<div class="mini">➡️ ${escapeHtml(clampText(task.nextStep, 90))}</div>` : ''}
+    </a>
+    <select class="project-move" data-task="${escapeHtml(task.title)}">
+      <option value="keep" selected>📁 ${escapeHtml(currentProject)}</option>
+      ${moveOptions}
+      ${currentProject !== '未分類' ? '<option value="未分類">移到：未分類</option>' : ''}
+    </select>
+  </div>
+  ${children.map((child) => taskRow(child, childrenByParent, depth + 1, currentProject, officialNames)).join('\n')}`;
 }
 
 export async function renderTaskPage(taskPageId) {
@@ -355,6 +393,8 @@ function pageShell(title, body) {
   .field-row { display: flex; gap: 24px; flex-wrap: wrap; }
   .field a { color: #2f80ed; }
   .task-line { display: flex; align-items: center; gap: 8px; }
+  a.task-link { display: block; text-decoration: none; color: inherit; }
+  select.project-move { width: 100%; margin-top: 8px; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .task-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
   .hint { font-size: 13px; color: #52606d; background: #fff; border: 1px dashed #cbd2d9; border-radius: 10px; padding: 12px; }
