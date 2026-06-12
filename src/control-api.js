@@ -320,7 +320,10 @@ async function updateTaskFromUserUi(req, body) {
   const submittedAt = new Date();
   const updates = body.updates && typeof body.updates === 'object' ? body.updates : body;
   const editedBy = resolveUserUiEditor(req, updates);
+  const editNoteForProperty = stringOrEmpty(updates.editNote);
   const properties = compactProperties({
+    // 備註同步寫入「最新備註」欄位，讓每小時的 AI 判讀讀得到。
+    最新備註: editNoteForProperty ? taskPropertyUpdate(page, '最新備註', `[${formatTaipeiDateTime(submittedAt)}] ${editNoteForProperty}`) : undefined,
     狀態: taskPropertyUpdate(page, '狀態', normalizeOptionalTaskStatus(updates.status)),
     確認狀態: taskPropertyUpdate(page, '確認狀態', stringOrEmpty(updates.confirmation)),
     負責人: taskPropertyUpdate(page, '負責人', stringOrEmpty(updates.owner)),
