@@ -34,6 +34,8 @@ const eventQueue = createEventQueue({
 const conversationAnchorText = '【Seven LINE】對話記錄（最新在最上方）';
 const reportCommands = new Set(['#報告', '報告', '#每日報告', '每日報告']);
 const morningBriefCommands = new Set(['#早報', '早報', '#今日早報', '今日早報', '#行程', '行程']);
+const dashboardCommands = new Set(['#儀表板', '儀表板', '#總控', '總控', 'dashboard', 'Dashboard', '#dashboard']);
+const dashboardUrl = process.env.SEVEN_DASHBOARD_URL || 'https://line-oa-webhook-nn5j.onrender.com/dashboard';
 const judgmentCalibrationSessionReviewId = 'SEVEN-JC-SESSION';
 // 敏感指令（校準、查待辦、報告連結）只回應 controller 本人的一對一私訊，
 // 防止群組成員觸發後把任務內容洩漏到群組。
@@ -220,6 +222,14 @@ async function buildCommandReply(event) {
     return {
       type: 'text',
       text: `每日總控報告網頁版：\n${reportUrl}\n\n目前這是試跑版，可以在手機上檢視附件解析與任務狀態確認畫面。`,
+    };
+  }
+
+  if (dashboardCommands.has(text) || (parseImmediateCommand(text) && dashboardCommands.has(parseImmediateCommand(text).commandText))) {
+    if (!fromController) return null;
+    return {
+      type: 'text',
+      text: `📊 SevenAM 總控 Dashboard：\n${dashboardUrl}\n\n三層下鑽：全局統計 → 專案目標與任務 → 任務詳情（含來源對話內容）。\n第一次開啟需輸入 User UI 帳密，瀏覽器會記住。`,
     };
   }
 
