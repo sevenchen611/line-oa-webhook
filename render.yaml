@@ -205,7 +205,8 @@ services:
     plan: starter
     buildCommand: npm install
     startCommand: node scripts/run-cron-with-alert.js -- node scripts/llm-codex-command-triage.js --limit 10
-    schedule: "*/15 * * * *"
+    # 工作時段台北 07:00-23:00（UTC 23:00-15:00）；夜間不執行。
+    schedule: "*/15 0-14,23 * * *"
     envVars:
       - key: AM_SKIP_IF_WORKER_ACTIVE
         value: "true"
@@ -247,7 +248,8 @@ services:
     plan: starter
     buildCommand: npm install
     startCommand: node scripts/run-cron-with-alert.js -- node scripts/parse-attachments.js --limit 8
-    schedule: "7,22,37,52 * * * *"
+    # 工作時段台北 07:00-23:00（UTC 23:00-15:00）；夜間不執行。
+    schedule: "7,22,37,52 0-14,23 * * *"
     envVars:
       - key: CRON_JOB_NAME
         value: seven-jr-attachment-parsing
@@ -288,7 +290,8 @@ services:
     plan: starter
     buildCommand: npm install
     startCommand: node scripts/run-cron-with-alert.js -- node scripts/run-scheduled-actions.js --limit 20
-    schedule: "3,18,33,48 * * * *"
+    # 工作時段台北 07:00-23:00（UTC 23:00-15:00）；夜間到期的排程會在早上第一輪補發。
+    schedule: "3,18,33,48 0-14,23 * * *"
     envVars:
       - key: CRON_JOB_NAME
         value: seven-jr-scheduled-actions
