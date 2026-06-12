@@ -1,8 +1,11 @@
-// 24/7 local worker: runs extraction + command triage on the Claude Code
-// subscription (LLM_BACKEND=claude-code) and heartbeats to Render so the
-// hourly/15-min crons stand down while this machine is healthy.
-// If the machine, CLI auth, or quota dies, heartbeats stop and Render's
-// API-billed crons take over automatically.
+// SevenAM local worker（Claude Code 訂閱額度，LLM_BACKEND=claude-code）。
+// 2026-06-13 起 worker 是主要排程引擎：
+//   每輪（90 秒）：任務萃取＋指令分流（即時回覆）
+//   每 15 分鐘：Next Action 排程掃描；每小時：會議任務／權責候選同步
+//   定時報告：08:30 / 10:00 / 13:00 / 17:00 / 20:30（30 分寬限窗，不補發）
+//   每晚：22:20 專案提案、22:45 回饋收割
+// Render 只保留三個 API 備援 cron（萃取／指令分流／附件解析）：worker 心跳
+// 健康時自動讓位，這台機器掛了它們自動接手（附件解析一律在 Render，需要 API 視覺）。
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -23,6 +26,23 @@ const activeHourEnd = clampNumber(Number(process.env.SEVEN_WORKER_ACTIVE_HOUR_EN
 let consecutiveFailures = 0;
 let cycles = 0;
 let stopping = false;
+let lastScheduledActionsAt = 0;
+let lastMeetingSyncAt = 0;
+let lastResponsibilitySyncAt = 0;
+let proposalsRanOn = '';
+let feedbackRanOn = '';
+const reportRanOn = {};
+
+// 定時報告（2026-06-13 起報告 cron 移出 Render，由 worker 按表呼叫發報 API）。
+// 只在 [時間, 時間+30分) 的窗口內發；worker 停機錯過窗口就跳過，不補發過期報告。
+const REPORT_TIMETABLE = [
+  { name: 'morning', minutes: 8 * 60 + 30 },
+  { name: 'followup-morning', minutes: 10 * 60 },
+  { name: 'followup-midday', minutes: 13 * 60 },
+  { name: 'followup-afternoon', minutes: 17 * 60 },
+  { name: 'daily', minutes: 20 * 60 + 30 },
+];
+const REPORT_GRACE_MINUTES = 30;
 
 process.on('SIGINT', () => { stopping = true; log('SIGINT received; finishing current cycle then exiting.'); });
 process.on('SIGTERM', () => { stopping = true; });
@@ -66,6 +86,43 @@ while (!stopping) {
 
   const triage = await runChild('codex-command-triage', ['scripts/llm-codex-command-triage.js', '--limit', '5', '--reply']);
   if (!triage.ok) cycleOk = false;
+
+  // Next Action 排程掃描（無 LLM）：每 15 分鐘一次。
+  if (Date.now() - lastScheduledActionsAt >= 15 * 60 * 1000) {
+    const actions = await runChild('scheduled-actions', ['scripts/run-scheduled-actions.js', '--limit', '20']);
+    if (actions.ok) lastScheduledActionsAt = Date.now();
+  }
+
+  // 每小時 Notion 同步（原 Render cron：會議任務、權責候選；皆無 LLM）。
+  if (Date.now() - lastMeetingSyncAt >= 60 * 60 * 1000) {
+    const meeting = await runChild('meeting-action-sync', ['scripts/sync-meeting-actions.js', '--limit', '50']);
+    if (meeting.ok) lastMeetingSyncAt = Date.now();
+  }
+  if (Date.now() - lastResponsibilitySyncAt >= 60 * 60 * 1000) {
+    const responsibility = await runChild('responsibility-sync', ['scripts/sync-responsibility-candidates.js']);
+    if (responsibility.ok) lastResponsibilitySyncAt = Date.now();
+  }
+
+  const { date: taipeiDate, minutes: taipeiMinutes } = taipeiNow();
+
+  // 定時報告（原 Render cron）。
+  for (const report of REPORT_TIMETABLE) {
+    if (reportRanOn[report.name] === taipeiDate) continue;
+    if (taipeiMinutes >= report.minutes && taipeiMinutes < report.minutes + REPORT_GRACE_MINUTES) {
+      reportRanOn[report.name] = taipeiDate;
+      await runChild(`report-${report.name}`, ['scripts/render-cron-report.js', report.name]);
+    }
+  }
+
+  // 夜間批次（原 Render cron：專案提案 22:20、回饋收割 22:45）。
+  if (taipeiMinutes >= 22 * 60 + 20 && proposalsRanOn !== taipeiDate) {
+    proposalsRanOn = taipeiDate;
+    await runChild('project-proposals', ['scripts/propose-projects.js']);
+  }
+  if (taipeiMinutes >= 22 * 60 + 45 && feedbackRanOn !== taipeiDate) {
+    feedbackRanOn = taipeiDate;
+    await runChild('extraction-feedback', ['scripts/sync-extraction-feedback.js', '--since-days', '7']);
+  }
 
   if (cycleOk) {
     consecutiveFailures = 0;
@@ -139,6 +196,17 @@ async function sendHeartbeat(meta) {
   } catch (error) {
     log(`Heartbeat failed: ${error.message}`);
   }
+}
+
+function taipeiNow() {
+  const formatted = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+  const [date, time] = formatted.split(' ');
+  const [hour, minute] = time.split(':').map(Number);
+  return { date, minutes: hour * 60 + minute };
 }
 
 function isActiveHour() {
