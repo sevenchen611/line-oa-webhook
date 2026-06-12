@@ -441,6 +441,7 @@ function buildSystemPrompt(activeRules = [], calibrationStats = null, officialPr
     '- 略過項目時誠實標記 borderline：如果你曾認真猶豫要不要建任務、最後才決定略過，borderline 設 true 並附來源節錄——這些邊緣案例會由使用者抽查，是發現漏抓的唯一防線。',
     '- 任務標題用繁體中文，動詞開頭，包含主詞與動作，例如「向台翰確認防水工程進場時間」。',
     '- taskUpdates 只能引用「目前進行中的相關任務」清單裡既有的 taskPageId，不要編造。',
+    '- sourceExcerpt 必須只摘錄「與該任務直接相關」的句子。同一段對話同時討論多件事時（例如同一個人同時談 A 案租賃與 B 案引薦），每個任務只引用屬於自己的句子，禁止把整段多主題對話照貼給每個任務。',
     '- 訊息只是補充既有任務的進度、證據或回覆時，使用 taskUpdates 而不是 newTasks。',
     '- 涉及金錢、投資、合約、法律、稅務、人資、對外承諾的項目，sensitive 設為 true。',
     '- 看不出明確專案時 project 填「未分類」，由使用者後續歸屬。',
