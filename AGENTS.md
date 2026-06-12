@@ -603,18 +603,21 @@ down. Next Actions that come due overnight fire on the first morning scan
 (~07:03). 7 Junior commands sent at night are queued and answered after
 07:00.
 
-| Render Cron Job | Taipei Time | UTC Cron | reportType |
+**Schedule consolidation (2026-06-13)**: the local worker is the primary
+scheduler. It runs extraction + triage every cycle, Next Action scheduled
+actions every 15 min, meeting/responsibility syncs hourly, the five daily
+reports (08:30 / 10:00 / 13:00 / 17:00 / 20:30, 30-minute grace window, no
+stale back-fill), and the nightly proposal (22:20) / feedback (22:45) jobs.
+Render keeps only three API-fallback crons — they stand down while the
+worker heartbeat is fresh and take over automatically when it dies.
+Attachment parsing always runs on Render (needs the Anthropic API for
+vision).
+
+| Render Cron Job | Taipei Time | UTC Cron | Role |
 | --- | --- | --- | --- |
-| `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | LINE conversation LLM task extraction |
-| `seven-jr-codex-command-triage` | 07:00-22:45 every 15 min | `*/15 0-14,23 * * *` | Codex command queue LLM triage |
-| `seven-jr-extraction-feedback-sync` | 22:45 daily | `45 14 * * *` | extraction feedback calibration sync |
-| `seven-jr-meeting-action-sync` | 08:00-22:00 hourly | `0 0-14 * * *` | meeting action sync |
-| `seven-jr-responsibility-candidate-sync` | 08:15-22:15 hourly | `15 0-14 * * *` | responsibility candidate sync |
-| `seven-jr-morning-brief` | 08:30 | `30 0 * * *` | `morning` |
-| `seven-jr-followup-morning` | 10:00 | `0 2 * * *` | `followup-morning` |
-| `seven-jr-followup-midday` | 13:00 | `0 5 * * *` | `followup-midday` |
-| `seven-jr-followup-afternoon` | 17:00 | `0 9 * * *` | `followup-afternoon` |
-| `seven-jr-daily-report` | 20:30 | `30 12 * * *` | `daily` |
+| `seven-jr-line-message-judgement-sync` | 08:10-22:10 hourly | `10 0-14 * * *` | extraction fallback (skips when worker active) |
+| `seven-jr-codex-command-triage` | 07:00-22:45 every 15 min | `*/15 0-14,23 * * *` | triage fallback (skips when worker active) |
+| `seven-jr-attachment-parsing` | 07:07-22:52 every 15 min | `7,22,37,52 0-14,23 * * *` | attachment parsing (Render-only) |
 
 Report Cron Jobs run:
 
