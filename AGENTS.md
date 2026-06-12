@@ -901,6 +901,27 @@ Rules:
 
 Reference doc: `docs/line-group-mention-notification.md`.
 
+## Drill-Down Dashboard (2026-06-12)
+
+`GET /dashboard` (Basic auth, same credentials as User UI) renders a
+three-level drill-down view from live Notion data (`src/dashboard-pages.js`):
+
+1. **Overview**: headline stats (案件總數 / 進行中含等待回覆 / 待處理 =
+   待確認＋未開始未確認), status chips, and one card per official project
+   (plus 未分類) with a task-status distribution bar and overdue badge.
+2. **`/dashboard/project?name=X`**: project goal, success criteria, start and
+   target dates, progress summary, risk, plus all project tasks rendered as a
+   parent/child hierarchy (母任務 relation) sorted by status, each linking to
+   its task page and Notion.
+3. **`/dashboard/task?id=Y`**: full task fields, AI judgment summary, latest
+   note, the task control record body, and the **source LINE conversation
+   inline** (latest ~30 messages chat-style, resolved from 關聯 Notion 頁面)
+   with a link to the Notion conversation page. LINE offers no deep links
+   into group chats, so inline rendering is the intended UX.
+
+The task route validates that the requested page belongs to the tasks data
+source before rendering.
+
 ## Render Control API
 
 Control endpoints:
