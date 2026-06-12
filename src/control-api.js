@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import { renderTaskReviewPage } from './report-pages.js';
+import { renderDashboardOverview, renderProjectPage, renderTaskPage } from './dashboard-pages.js';
 
 loadDotenv();
 
@@ -45,6 +46,10 @@ http.createServer = function createServerWithControlApi(listener) {
 
     if (req.method === 'GET' && (pathname === '/reports/daily-control-report' || pathname === '/reports/followup-confirmation')) {
       return serveDynamicTaskReview(req, res, pathname);
+    }
+
+    if (req.method === 'GET' && (pathname === '/dashboard' || pathname.startsWith('/dashboard/'))) {
+      return serveDashboard(req, res, pathname);
     }
 
     if (req.method === 'GET' && REPORT_ROUTES.has(pathname)) {
@@ -3489,6 +3494,45 @@ function serveReportPage(res, pathname) {
     'Cache-Control': 'no-store',
   });
   res.end(html);
+}
+
+async function serveDashboard(req, res, pathname) {
+  // Dashboard 內含全部業務資料，沿用 User UI 的 Basic auth 保護。
+  if (!isUserUiAuthorized(req)) {
+    res.writeHead(401, {
+      ...corsHeaders(),
+      'WWW-Authenticate': 'Basic realm="SevenAM Dashboard"',
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    res.end('Login required.');
+    return;
+  }
+
+  const query = new URL(req.url ?? '/', 'http://localhost').searchParams;
+  try {
+    let html;
+    if (pathname === '/dashboard') {
+      html = await renderDashboardOverview();
+    } else if (pathname === '/dashboard/project') {
+      html = await renderProjectPage(String(query.get('name') || '未分類'));
+    } else if (pathname === '/dashboard/task') {
+      const taskId = String(query.get('id') || '').replace(/[^0-9a-f]/gi, '');
+      if (!taskId) return sendJson(res, 400, { error: 'Missing task id' });
+      html = await renderTaskPage(taskId);
+    } else {
+      return sendJson(res, 404, { error: 'Not found' });
+    }
+
+    res.writeHead(200, {
+      ...corsHeaders(),
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(html);
+  } catch (error) {
+    console.warn(`Dashboard rendering failed (${pathname}): ${error.message}`);
+    return sendJson(res, 500, { error: error.message });
+  }
 }
 
 async function serveDynamicTaskReview(req, res, pathname) {
