@@ -274,6 +274,7 @@ export async function renderTaskPage(taskPageId) {
       ${task.confidence ? `<span class="badge">信心 ${escapeHtml(task.confidence)}</span>` : ''}
       ${task.owner ? `<span class="badge">負責人 ${escapeHtml(task.owner)}</span>` : ''}
       ${task.dueDate ? `<span class="badge">截止 ${escapeHtml(task.dueDate.slice(0, 10))}</span>` : ''}
+      ${task.nextActionAt ? `<span class="badge strong">⏰ ${escapeHtml(task.nextActionMode)} ${escapeHtml(task.nextActionAt.slice(0, 16).replace('T', ' '))}</span>` : ''}
     </div>
   </header>
 
@@ -369,6 +370,155 @@ export async function renderTaskPage(taskPageId) {
   })();
   </script>
 
+  <h2 class="section">📨 預定訊息與下次行動</h2>
+  <div class="panel" id="planned-panel" data-page="${escapeHtml(task.id)}">
+    ${task.nextActionAt ? `<div class="field" style="background:#fff8e1;border-radius:8px;padding:8px 10px">⏰ 已排程：${escapeHtml(formatTaipeiDateTime(new Date(task.nextActionAt)))}（${escapeHtml(task.nextActionMode)}）${task.nextActionNote ? `｜${escapeHtml(task.nextActionNote)}` : ''}</div>` : ''}
+    <label class="edit-full">預定訊息內容（確認後按「立即發送」直接傳出；或排程到時自動處理）
+      <textarea id="planned-message" rows="3">${escapeHtml(task.plannedMessage || defaultDraftMessage(task))}</textarea>
+    </label>
+    <div class="edit-grid">
+      <label>發送對象（目前：${escapeHtml(task.plannedTargetName || (conversation.name ? `來源對話「${conversation.name}」` : '未設定'))}）
+        <input type="text" id="planned-target-search" placeholder="輸入姓名或群組名稱搜尋…" value="">
+      </label>
+      <label>搜尋結果（選擇後成為發送對象）
+        <select id="planned-target-select">
+          <option value="" selected>${task.plannedTargetId ? `沿用：${escapeHtml(task.plannedTargetName || task.plannedTargetId)}` : (conversation.name ? `預設：來源對話「${escapeHtml(conversation.name)}」` : '（先搜尋再選擇）')}</option>
+        </select>
+      </label>
+    </div>
+    <div class="edit-grid">
+      <label>下次行動模式
+        <select id="planned-mode">
+          <option value="提醒我" ${task.nextActionMode !== '自動發送' ? 'selected' : ''}>⏰ 時間到提醒我（由我決定）</option>
+          <option value="自動發送" ${task.nextActionMode === '自動發送' ? 'selected' : ''}>📨 時間到自動發送預定訊息</option>
+        </select>
+      </label>
+      <label>下次行動時間
+        <input type="datetime-local" id="planned-at" value="${escapeHtml(toDatetimeLocal(task.nextActionAt))}">
+      </label>
+    </div>
+    <div class="quick-days">
+      <button type="button" class="day-btn" data-days="1">+1 天</button>
+      <button type="button" class="day-btn" data-days="3">+3 天</button>
+      <button type="button" class="day-btn" data-days="5">+5 天</button>
+      <button type="button" class="day-btn" data-days="7">+7 天</button>
+      ${task.nextActionAt ? '<button type="button" class="day-btn" id="planned-clear">✂️ 取消排程</button>' : ''}
+    </div>
+    <label class="edit-full">下次行動說明（提醒時會顯示，例如「提醒我跟 Kevin 聯繫約見面」）
+      <input type="text" id="planned-note" value="${escapeHtml(task.nextActionNote)}">
+    </label>
+    <div class="planned-actions">
+      <button id="planned-save" class="save-btn half">💾 儲存預定與排程</button>
+      <button id="planned-send" class="save-btn half send">📨 立即發送</button>
+    </div>
+    <div id="planned-result" class="mini" style="margin-top:8px"></div>
+  </div>
+
+  <script>
+  (function () {
+    const panel = document.getElementById('planned-panel');
+    const resultBox = document.getElementById('planned-result');
+    const searchInput = document.getElementById('planned-target-search');
+    const targetSelect = document.getElementById('planned-target-select');
+    let searchTimer = null;
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const text = searchInput.value.trim();
+      if (text.length < 2) return;
+      searchTimer = setTimeout(async () => {
+        try {
+          const response = await fetch('/reports/followup-recipient-candidates?target=' + encodeURIComponent(text));
+          const data = await response.json();
+          const keep = targetSelect.options[0];
+          targetSelect.innerHTML = '';
+          targetSelect.appendChild(keep);
+          for (const candidate of data.candidates || []) {
+            const option = document.createElement('option');
+            const targetId = candidate.targetMemberUserId && candidate.targetType === 'user' ? candidate.targetMemberUserId : candidate.targetId;
+            option.value = candidate.targetType + ':' + targetId;
+            option.dataset.name = candidate.label;
+            option.textContent = candidate.label;
+            targetSelect.appendChild(option);
+          }
+          if ((data.candidates || []).length) targetSelect.selectedIndex = 1;
+          resultBox.textContent = (data.candidates || []).length ? '' : '找不到符合的對象，換個關鍵字試試。';
+        } catch (error) {
+          resultBox.textContent = '對象搜尋失敗：' + error.message;
+        }
+      }, 350);
+    });
+
+    document.querySelectorAll('.day-btn[data-days]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const fireAt = new Date(Date.now() + Number(button.dataset.days) * 86400000);
+        fireAt.setHours(9, 0, 0, 0);
+        const pad = (n) => String(n).padStart(2, '0');
+        document.getElementById('planned-at').value = fireAt.getFullYear() + '-' + pad(fireAt.getMonth() + 1) + '-' + pad(fireAt.getDate()) + 'T' + pad(fireAt.getHours()) + ':' + pad(fireAt.getMinutes());
+      });
+    });
+
+    const clearButton = document.getElementById('planned-clear');
+    if (clearButton) clearButton.addEventListener('click', () => {
+      document.getElementById('planned-at').value = '';
+      clearButton.dataset.cleared = '1';
+      resultBox.textContent = '已標記取消排程，按「儲存預定與排程」生效。';
+    });
+
+    function selectedTarget() {
+      const option = targetSelect.options[targetSelect.selectedIndex];
+      if (!option || !option.value) return null;
+      return { id: option.value, name: option.dataset.name || option.textContent };
+    }
+
+    document.getElementById('planned-save').addEventListener('click', async () => {
+      const payload = { pageId: panel.dataset.page, editedBy: 'Seven 陳聖文' };
+      const message = document.getElementById('planned-message').value.trim();
+      const at = document.getElementById('planned-at').value;
+      const note = document.getElementById('planned-note').value.trim();
+      const target = selectedTarget();
+      if (message) payload.plannedMessage = message;
+      if (target) { payload.plannedTargetId = target.id; payload.plannedTargetName = target.name; }
+      if (at) payload.nextActionAt = at + ':00+08:00';
+      else if (clearButton && clearButton.dataset.cleared) payload.clearNextAction = true;
+      payload.nextActionMode = document.getElementById('planned-mode').value;
+      if (note) payload.nextActionNote = note;
+      await submit('/control/tasks/update', payload, document.getElementById('planned-save'), '💾 儲存預定與排程');
+    });
+
+    document.getElementById('planned-send').addEventListener('click', async () => {
+      const message = document.getElementById('planned-message').value.trim();
+      if (!message) { resultBox.textContent = '請先填寫預定訊息內容。'; return; }
+      const target = selectedTarget();
+      const targetLabel = target ? target.name : ${JSON.stringify(task.plannedTargetName || '')} || ${JSON.stringify('來源對話')};
+      if (!confirm('確定把這則訊息發送給「' + targetLabel + '」？\n\n' + message)) return;
+      const payload = { pageId: panel.dataset.page, editedBy: 'Seven 陳聖文', message };
+      if (target) { payload.targetId = target.id; payload.targetName = target.name; }
+      await submit('/control/tasks/send-planned', payload, document.getElementById('planned-send'), '📨 立即發送');
+    });
+
+    async function submit(url, payload, button, label) {
+      button.disabled = true;
+      button.textContent = '處理中…';
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+        resultBox.textContent = '✅ 完成，頁面更新中…';
+        setTimeout(() => location.reload(), 900);
+      } catch (error) {
+        resultBox.textContent = '❌ 失敗：' + error.message;
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+  })();
+  </script>
+
   <h2 class="section">📱 來源對話${conversation.name ? `：${escapeHtml(conversation.name)}` : ''}</h2>
   ${conversation.messages.length === 0
     ? '<div class="hint">此任務沒有關聯的對話來源（可能來自會議或手動建立）。</div>'
@@ -451,6 +601,12 @@ function normalizeTask(page) {
     summary: textProperty(properties['Codex 判斷摘要']),
     conversationUrl: properties['關聯 Notion 頁面']?.url || '',
     parentIds: (properties['母任務']?.relation || []).map((relation) => normalizeId(relation.id)),
+    plannedMessage: textProperty(properties['預定訊息內容']),
+    plannedTargetName: textProperty(properties['預定發送對象']),
+    plannedTargetId: textProperty(properties['預定發送對象ID']),
+    nextActionAt: properties['下次行動時間']?.date?.start || '',
+    nextActionMode: properties['下次行動模式']?.select?.name || '提醒我',
+    nextActionNote: textProperty(properties['下次行動說明']),
   };
 }
 
@@ -543,6 +699,13 @@ function pageShell(title, body) {
   .edit-grid select, .edit-grid input, .edit-full textarea { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
   .save-btn { width: 100%; font-size: 15px; font-weight: 700; padding: 12px; border: 0; border-radius: 10px; background: #2f80ed; color: #fff; cursor: pointer; }
   .save-btn:disabled { background: #9aa5b1; }
+  .planned-actions { display: flex; gap: 8px; }
+  .save-btn.half { flex: 1; width: auto; }
+  .save-btn.send { background: #e8590c; }
+  .quick-days { display: flex; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
+  .day-btn { font-size: 12px; padding: 6px 12px; border: 1px solid #cbd2d9; border-radius: 999px; background: #fff; color: #3e4c59; cursor: pointer; }
+  .day-btn:hover { border-color: #2f80ed; color: #2f80ed; }
+  .edit-grid label input[type="datetime-local"] { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
   select.project-move, select.parent-move { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .task-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
@@ -591,6 +754,24 @@ async function notionRequest(pathname, { method, body }) {
     await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
   }
   throw lastError;
+}
+
+function defaultDraftMessage(task) {
+  const ownerPart = task.owner ? `${task.owner}，您好！` : '您好！';
+  const stepPart = task.nextStep ? `（${task.nextStep}）` : '';
+  return `${ownerPart}想跟您確認一下「${task.title}」目前的進度${stepPart}，方便的時候再麻煩回覆，謝謝！`;
+}
+
+// Notion 日期（ISO）轉 <input type="datetime-local"> 的台北時間值。
+function toDatetimeLocal(isoValue) {
+  if (!isoValue) return '';
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(date);
+  return parts.replace(' ', 'T');
 }
 
 function countBy(items, keyFn) {
