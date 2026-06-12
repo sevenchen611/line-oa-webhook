@@ -1,7 +1,8 @@
 databases:
-  # 訊息持久化佇列。free 方案 30 天後到期，正式使用請升級為 basic-256mb 以上付費方案。
+  # 訊息持久化佇列（2026-06-13 轉付費：解除免費版 30 天到期風險，
+  # 並把帳戶唯一的免費 Postgres 名額讓給 HOZO 測試用）。
   - name: sevenam-queue-db
-    plan: free
+    plan: basic-256mb
     databaseName: sevenam_queue
     user: sevenam
 
