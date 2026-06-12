@@ -61,6 +61,11 @@ Do not copy production values from another project. Each project must use its ow
 | `AM-IMP-2026.0612.13` | Dashboard editing surface | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.13.md` | Move/parent/edit flows verified live; cycle protection and feedback-integrity rules in place; conversation media preview added. |
 | `AM-IMP-2026.0612.14` | Planned messages and Next Action scheduling | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.14.md` | Properties auto-created; scheduler dry-run passed; report schedule options and dashboard panel verified in production; Render cron pending Blueprint sync confirmation. |
 | `AM-IMP-2026.0612.15` | System operating hours (07:00-23:00) | Installed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.15.md` | Local worker restarted with active-hours gate verified in log; Render cron schedule restriction pending Blueprint sync. |
+| `AM-IMP-2026.0612.16` | Case-separation judgment standard | Deployed | 2026-06-12 | `docs/upgrades/UPGRADE-2026-06-12-AM-IMP-2026.0612.16.md` | Active rule in production; Renmei case split out of Xitou project and verified clean. |
+| `AM-IMP-2026.0613.01` | OpenAI Codex CLI LLM backend | Ready | 2026-06-13 | `docs/upgrades/UPGRADE-2026-06-13-AM-IMP-2026.0613.01.md` | Deliberately not installed in SevenAM (stays on Claude for the A/B test); deployed and verified in HOZO AM. |
+| `AM-IMP-2026.0613.02` | Worker wrapper OS-level log redirection | Deployed | 2026-06-13 | `docs/upgrades/UPGRADE-2026-06-13-AM-IMP-2026.0613.02.md` | Tee-Object freeze reproduced and fixed live; both workers verified under the cmd /c wrapper. |
+| `AM-IMP-2026.0613.03` | Local-worker schedule consolidation | Installed | 2026-06-13 | `docs/upgrades/UPGRADE-2026-06-13-AM-IMP-2026.0613.03.md` | Worker timetable live; Render reduced to 3 fallback crons; full-day report verification on 2026-06-13. |
+| `AM-IMP-2026.0613.04` | Queue database plan policy | Installed | 2026-06-13 | `docs/upgrades/UPGRADE-2026-06-13-AM-IMP-2026.0613.04.md` | sevenam-queue-db upgraded to basic-256mb (7/11 expiry removed); free slot reassigned to the HOZO test queue. |
 
 ## Project-Specific Values
 
