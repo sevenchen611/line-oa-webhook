@@ -72,6 +72,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-5
       - key: DATABASE_URL
         fromDatabase:
           name: sevenam-queue-db
@@ -96,6 +98,8 @@ services:
           name: line-oa-webhook
           type: web
           envVarKey: ANTHROPIC_API_KEY
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-5
       - key: CONTROL_LINE_PUSH_URL
         value: https://line-oa-webhook-nn5j.onrender.com/control/line/push
       - key: AM_PROJECT_ENV_PREFIX
@@ -161,6 +165,8 @@ services:
           name: line-oa-webhook
           type: web
           envVarKey: ANTHROPIC_API_KEY
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-5
       - key: NOTION_TOKEN
         fromService:
           name: line-oa-webhook
@@ -200,6 +206,8 @@ services:
           name: line-oa-webhook
           type: web
           envVarKey: ANTHROPIC_API_KEY
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-5
       - key: NOTION_TOKEN
         fromService:
           name: line-oa-webhook
