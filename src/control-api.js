@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import { renderTaskReviewPage } from './report-pages.js';
 import { renderDashboardOverview, renderProjectPage, renderTaskPage } from './dashboard-pages.js';
+import { saveReportSnapshot, getLatestReportSnapshot } from './report-snapshot-store.js';
 
 loadDotenv();
 
@@ -46,6 +47,14 @@ http.createServer = function createServerWithControlApi(listener) {
 
     if (req.method === 'GET' && (pathname === '/reports/daily-control-report' || pathname === '/reports/followup-confirmation')) {
       return serveDynamicTaskReview(req, res, pathname);
+    }
+
+    if (req.method === 'GET' && pathname === '/reports/morning-brief') {
+      return serveMorningBrief(req, res);
+    }
+
+    if (req.method === 'POST' && pathname === '/control/reports/snapshot') {
+      return handleReportSnapshotUpload(req, res);
     }
 
     if (req.method === 'GET' && (pathname === '/dashboard' || pathname.startsWith('/dashboard/'))) {
@@ -3674,6 +3683,46 @@ function serveReportPage(res, pathname) {
     'Cache-Control': 'no-store',
   });
   res.end(html);
+}
+
+// 早報以 worker 產生的快照為主（worker 有 Google 金鑰、Render 沒有）。
+// 讀不到快照（尚未產生 / DB 未設 / 出錯）時，退回 prototype 而不是空白頁。
+async function serveMorningBrief(req, res) {
+  try {
+    const snapshot = await getLatestReportSnapshot('morning');
+    if (snapshot && snapshot.html) {
+      res.writeHead(200, {
+        ...corsHeaders(),
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Snapshot-Date': snapshot.reportDate || '',
+      });
+      return res.end(snapshot.html);
+    }
+  } catch (error) {
+    console.warn(`Morning brief snapshot read failed: ${error.message}`);
+  }
+  return serveReportPage(res, '/reports/morning-brief');
+}
+
+// worker 上傳當天算好的報告 HTML，存進 Postgres 供頁面服務。需 control 金鑰。
+async function handleReportSnapshotUpload(req, res) {
+  if (!isAuthorized(req)) {
+    return sendJson(res, 401, { error: 'Unauthorized' });
+  }
+  try {
+    const body = await readJsonBody(req);
+    const reportType = String(body.reportType || '').trim();
+    const reportDate = String(body.reportDate || '').trim();
+    const html = typeof body.html === 'string' ? body.html : '';
+    if (!reportType || !html) {
+      return sendJson(res, 400, { error: 'reportType and html are required.' });
+    }
+    const result = await saveReportSnapshot({ reportType, reportDate, html });
+    return sendJson(res, 200, { ...result, bytes: html.length });
+  } catch (error) {
+    return sendJson(res, 500, { ok: false, error: error.message });
+  }
 }
 
 async function serveDashboard(req, res, pathname) {
