@@ -29,6 +29,7 @@ let stopping = false;
 let lastScheduledActionsAt = 0;
 let lastMeetingSyncAt = 0;
 let lastResponsibilitySyncAt = 0;
+let lastCalendarInviteScanAt = 0;
 let proposalsRanOn = '';
 let feedbackRanOn = '';
 const reportRanOn = {};
@@ -91,6 +92,9 @@ while (!stopping) {
   if (Date.now() - lastScheduledActionsAt >= 15 * 60 * 1000) {
     const actions = await runChild('scheduled-actions', ['scripts/run-scheduled-actions.js', '--limit', '20']);
     if (actions.ok) lastScheduledActionsAt = Date.now();
+    // 行事曆（無 LLM）：同步專案行程候選並建立/追問/過期 Google 事件。
+    await runChild('calendar-scan-projects', ['scripts/scan-calendar-candidates.js', '--limit', '40']);
+    await runChild('calendar-sync', ['scripts/sync-calendar-events.js', '--limit', '50']);
   }
 
   // 每小時 Notion 同步（原 Render cron：會議任務、權責候選；皆無 LLM）。
@@ -102,6 +106,11 @@ while (!stopping) {
     const responsibility = await runChild('responsibility-sync', ['scripts/sync-responsibility-candidates.js']);
     if (responsibility.ok) lastResponsibilitySyncAt = Date.now();
   }
+  // LINE 邀約偵測（有 LLM）：每小時掃描近期對話，產生待確認行事曆候選。
+  if (Date.now() - lastCalendarInviteScanAt >= 60 * 60 * 1000) {
+    const invites = await runChild('calendar-invite-scan', ['scripts/scan-calendar-candidates.js', '--no-projects', '--invites', '--since-hours', '48', '--limit', '20']);
+    if (invites.ok) lastCalendarInviteScanAt = Date.now();
+  }
 
   const { date: taipeiDate, minutes: taipeiMinutes } = taipeiNow();
 
@@ -110,6 +119,11 @@ while (!stopping) {
     if (reportRanOn[report.name] === taipeiDate) continue;
     if (taipeiMinutes >= report.minutes && taipeiMinutes < report.minutes + REPORT_GRACE_MINUTES) {
       reportRanOn[report.name] = taipeiDate;
+      // 早報需先在本機算好快照（Google Calendar 全部日曆＋Notion）並上傳 Render，
+      // 之後再發 LINE 連結，使用者點開時快照已就緒。Render 沒有 Google 金鑰，故必須在這裡產生。
+      if (report.name === 'morning') {
+        await runChild('morning-brief-snapshot', ['scripts/generate-morning-brief.js']);
+      }
       await runChild(`report-${report.name}`, ['scripts/render-cron-report.js', report.name]);
     }
   }
