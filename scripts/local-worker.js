@@ -50,14 +50,20 @@ process.on('SIGTERM', () => { stopping = true; });
 
 log(`SevenAM local worker starting (id=${workerId}, interval=${intervalSeconds}s, backend=claude-code)`);
 
+// Claude 認證失敗時不再整個退出。改為降級模式：照樣跑不需 Claude 的工作
+// （行事曆同步、定時報告、Notion 同步、排程動作），只跳過需要 Claude 的判讀
+// （萃取、指令分流、邀約偵測、提案、回饋），並定期重試恢復。這樣訂閱登入
+// 過期時，Google Calendar 與報告等不依賴 Claude 的功能不會跟著停擺。
 const selfTest = await claudeCodeSelfTest();
-if (!selfTest.ok) {
-  log(`❌ Claude Code CLI 自我檢測失敗：${selfTest.error}`);
-  log('請在這台電腦的終端機執行 claude 並完成 /login（瀏覽器登入訂閱帳號），然後重啟 worker。');
-  log('在此之前 Render 的 API 排程會照常運作，系統不會中斷。');
-  process.exit(2);
+let claudeAvailable = selfTest.ok;
+let lastClaudeRetestAt = Date.now();
+if (claudeAvailable) {
+  log('✅ Claude Code CLI 自我檢測通過，訂閱額度可用。');
+} else {
+  log(`⚠️ Claude Code CLI 認證失敗：${selfTest.error}`);
+  log('進入降級模式：行事曆同步、定時報告、Notion 同步照常跑；任務萃取與指令分流改由 Render API 排程接手。');
+  log('要恢復完整功能（訂閱額度判讀）：在這台電腦的終端機執行 claude 並完成 /login，worker 會自動偵測恢復，不需重啟。');
 }
-log('✅ Claude Code CLI 自我檢測通過，訂閱額度可用。');
 log(`工作時段：台北 ${String(activeHourStart).padStart(2, '0')}:00–${String(activeHourEnd % 24).padStart(2, '0')}:00；時段外暫停所有掃描。`);
 
 let inQuietHours = false;
@@ -82,11 +88,24 @@ while (!stopping) {
   const cycleStartedAt = Date.now();
   let cycleOk = true;
 
-  const extraction = await runChild('llm-task-extraction', ['scripts/llm-task-extraction.js', '--include-outgoing-groups', '--limit', '10']);
-  if (!extraction.ok) cycleOk = false;
+  // 降級模式下每 5 分鐘重試一次 Claude 認證；恢復後自動回到完整模式。
+  if (!claudeAvailable && Date.now() - lastClaudeRetestAt >= 5 * 60 * 1000) {
+    lastClaudeRetestAt = Date.now();
+    const retest = await claudeCodeSelfTest();
+    if (retest.ok) {
+      claudeAvailable = true;
+      log('✅ Claude Code 已恢復，回到完整模式（恢復萃取與指令分流）。');
+    }
+  }
 
-  const triage = await runChild('codex-command-triage', ['scripts/llm-codex-command-triage.js', '--limit', '5', '--reply']);
-  if (!triage.ok) cycleOk = false;
+  // 需要 Claude 的判讀工作：認證有效才跑；降級時交給 Render API 排程。
+  if (claudeAvailable) {
+    const extraction = await runChild('llm-task-extraction', ['scripts/llm-task-extraction.js', '--include-outgoing-groups', '--limit', '10']);
+    if (!extraction.ok) cycleOk = false;
+
+    const triage = await runChild('codex-command-triage', ['scripts/llm-codex-command-triage.js', '--limit', '5', '--reply']);
+    if (!triage.ok) cycleOk = false;
+  }
 
   // Next Action 排程掃描（無 LLM）：每 15 分鐘一次。
   if (Date.now() - lastScheduledActionsAt >= 15 * 60 * 1000) {
@@ -107,7 +126,7 @@ while (!stopping) {
     if (responsibility.ok) lastResponsibilitySyncAt = Date.now();
   }
   // LINE 邀約偵測（有 LLM）：每小時掃描近期對話，產生待確認行事曆候選。
-  if (Date.now() - lastCalendarInviteScanAt >= 60 * 60 * 1000) {
+  if (claudeAvailable && Date.now() - lastCalendarInviteScanAt >= 60 * 60 * 1000) {
     const invites = await runChild('calendar-invite-scan', ['scripts/scan-calendar-candidates.js', '--no-projects', '--invites', '--since-hours', '48', '--limit', '20']);
     if (invites.ok) lastCalendarInviteScanAt = Date.now();
   }
@@ -128,14 +147,21 @@ while (!stopping) {
     }
   }
 
-  // 夜間批次（原 Render cron：專案提案 22:20、回饋收割 22:45）。
-  if (taipeiMinutes >= 22 * 60 + 20 && proposalsRanOn !== taipeiDate) {
+  // 夜間批次（原 Render cron：專案提案 22:20、回饋收割 22:45；皆需 Claude）。
+  if (claudeAvailable && taipeiMinutes >= 22 * 60 + 20 && proposalsRanOn !== taipeiDate) {
     proposalsRanOn = taipeiDate;
     await runChild('project-proposals', ['scripts/propose-projects.js']);
   }
-  if (taipeiMinutes >= 22 * 60 + 45 && feedbackRanOn !== taipeiDate) {
+  if (claudeAvailable && taipeiMinutes >= 22 * 60 + 45 && feedbackRanOn !== taipeiDate) {
     feedbackRanOn = taipeiDate;
     await runChild('extraction-feedback', ['scripts/sync-extraction-feedback.js', '--since-days', '7']);
+  }
+
+  // 降級模式不送心跳：讓 Render 的 API 排程接手萃取與指令分流（本機只負責
+  // 不需 Claude 的工作，與 Render 不衝突）。
+  if (!claudeAvailable) {
+    await delay(intervalSeconds * 1000);
+    continue;
   }
 
   if (cycleOk) {
