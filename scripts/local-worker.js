@@ -9,7 +9,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { claudeCodeSelfTest } from '../src/llm-backend.js';
+import { claudeCodeSelfTest, codexSelfTest } from '../src/llm-backend.js';
 
 loadEnvFile('.env');
 loadEnvFile('../env.txt');
@@ -19,6 +19,12 @@ const controlApiKey = process.env.SEVEN_CONTROL_API_KEY || '';
 const intervalSeconds = clampNumber(Number(process.env.SEVEN_WORKER_INTERVAL_SECONDS || 90), 30, 900);
 const failureBackoffSeconds = 300;
 const workerId = `local-${process.env.COMPUTERNAME || 'worker'}`;
+// AI 後端：2026-06-15 起 SevenAM 改用 OpenAI Codex（ChatGPT 訂閱額度），與 HOZO 一致。
+const workerBackend = String(process.env.SEVEN_WORKER_LLM_BACKEND || 'codex').trim().toLowerCase();
+const backendSelfTest = workerBackend === 'codex' ? codexSelfTest : claudeCodeSelfTest;
+const backendLoginHint = workerBackend === 'codex'
+  ? '在這台電腦的終端機執行 codex 並完成 ChatGPT 訂閱登入'
+  : '在這台電腦的終端機執行 claude 並完成 /login';
 // 工作時段（台北時間）：時段外不掃描、不心跳；Render 夜間排程也已關閉，全系統休息。
 const activeHourStart = clampNumber(Number(process.env.SEVEN_WORKER_ACTIVE_HOUR_START ?? 7), 0, 23);
 const activeHourEnd = clampNumber(Number(process.env.SEVEN_WORKER_ACTIVE_HOUR_END ?? 23), 1, 24);
@@ -30,6 +36,7 @@ let lastScheduledActionsAt = 0;
 let lastMeetingSyncAt = 0;
 let lastResponsibilitySyncAt = 0;
 let lastCalendarInviteScanAt = 0;
+let lastAttachmentParseAt = 0;
 let proposalsRanOn = '';
 let feedbackRanOn = '';
 const reportRanOn = {};
@@ -48,21 +55,21 @@ const REPORT_GRACE_MINUTES = 30;
 process.on('SIGINT', () => { stopping = true; log('SIGINT received; finishing current cycle then exiting.'); });
 process.on('SIGTERM', () => { stopping = true; });
 
-log(`SevenAM local worker starting (id=${workerId}, interval=${intervalSeconds}s, backend=claude-code)`);
+log(`SevenAM local worker starting (id=${workerId}, interval=${intervalSeconds}s, backend=${workerBackend})`);
 
-// Claude 認證失敗時不再整個退出。改為降級模式：照樣跑不需 Claude 的工作
-// （行事曆同步、定時報告、Notion 同步、排程動作），只跳過需要 Claude 的判讀
+// AI 認證失敗時不再整個退出。改為降級模式：照樣跑不需 AI 的工作
+// （行事曆同步、定時報告、Notion 同步、排程動作），只跳過需要 AI 的判讀
 // （萃取、指令分流、邀約偵測、提案、回饋），並定期重試恢復。這樣訂閱登入
-// 過期時，Google Calendar 與報告等不依賴 Claude 的功能不會跟著停擺。
-const selfTest = await claudeCodeSelfTest();
+// 過期時，Google Calendar 與報告等不依賴 AI 的功能不會跟著停擺。
+const selfTest = await backendSelfTest();
 let claudeAvailable = selfTest.ok;
 let lastClaudeRetestAt = Date.now();
 if (claudeAvailable) {
-  log('✅ Claude Code CLI 自我檢測通過，訂閱額度可用。');
+  log(`✅ ${workerBackend} 自我檢測通過，訂閱額度可用。`);
 } else {
-  log(`⚠️ Claude Code CLI 認證失敗：${selfTest.error}`);
+  log(`⚠️ ${workerBackend} 認證失敗：${selfTest.error}`);
   log('進入降級模式：行事曆同步、定時報告、Notion 同步照常跑；任務萃取與指令分流改由 Render API 排程接手。');
-  log('要恢復完整功能（訂閱額度判讀）：在這台電腦的終端機執行 claude 並完成 /login，worker 會自動偵測恢復，不需重啟。');
+  log(`要恢復完整功能（訂閱額度判讀）：${backendLoginHint}，worker 會自動偵測恢復，不需重啟。`);
 }
 log(`工作時段：台北 ${String(activeHourStart).padStart(2, '0')}:00–${String(activeHourEnd % 24).padStart(2, '0')}:00；時段外暫停所有掃描。`);
 
@@ -91,10 +98,10 @@ while (!stopping) {
   // 降級模式下每 5 分鐘重試一次 Claude 認證；恢復後自動回到完整模式。
   if (!claudeAvailable && Date.now() - lastClaudeRetestAt >= 5 * 60 * 1000) {
     lastClaudeRetestAt = Date.now();
-    const retest = await claudeCodeSelfTest();
+    const retest = await backendSelfTest();
     if (retest.ok) {
       claudeAvailable = true;
-      log('✅ Claude Code 已恢復，回到完整模式（恢復萃取與指令分流）。');
+      log(`✅ ${workerBackend} 已恢復，回到完整模式（恢復萃取與指令分流）。`);
     }
   }
 
@@ -105,6 +112,12 @@ while (!stopping) {
 
     const triage = await runChild('codex-command-triage', ['scripts/llm-codex-command-triage.js', '--limit', '5', '--reply']);
     if (!triage.ok) cycleOk = false;
+
+    // 附件解析（需 AI 視覺；圖片走 Codex -i）：每 15 分鐘一次。
+    if (Date.now() - lastAttachmentParseAt >= 15 * 60 * 1000) {
+      const attachments = await runChild('attachment-parsing', ['scripts/parse-attachments.js', '--limit', '6']);
+      if (attachments.ok) lastAttachmentParseAt = Date.now();
+    }
   }
 
   // Next Action 排程掃描（無 LLM）：每 15 分鐘一次。
@@ -180,12 +193,12 @@ while (!stopping) {
   await delay(sleepSeconds * 1000);
 
   if (consecutiveFailures >= 3 && consecutiveFailures % 3 === 0) {
-    const retest = await claudeCodeSelfTest();
+    const retest = await backendSelfTest();
     if (retest.ok) {
-      log('✅ Claude Code 恢復可用，恢復正常節奏。');
+      log(`✅ ${workerBackend} 恢復可用，恢復正常節奏。`);
       consecutiveFailures = 0;
     } else {
-      log(`Claude Code 仍不可用：${retest.error}`);
+      log(`${workerBackend} 仍不可用：${retest.error}`);
     }
   }
 }
@@ -196,7 +209,7 @@ function runChild(label, scriptArgs) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, scriptArgs, {
       cwd: process.cwd(),
-      env: { ...process.env, LLM_BACKEND: 'claude-code' },
+      env: { ...process.env, LLM_BACKEND: workerBackend },
       windowsHide: true,
     });
 
