@@ -184,6 +184,12 @@ services:
     # 工作時段台北 07:00-23:00（UTC 23:00-15:00）；夜間不執行。
     schedule: "7,22,37,52 0-14,23 * * *"
     envVars:
+      # 本機 worker 健康時讓位（worker 用 Codex 解析附件）；只在 worker 掛掉時
+      # 才用 Anthropic API 視覺當備援。
+      - key: AM_SKIP_IF_WORKER_ACTIVE
+        value: "true"
+      - key: AM_WORKER_STATUS_URL
+        value: https://line-oa-webhook-nn5j.onrender.com/worker/status
       - key: CRON_JOB_NAME
         value: seven-jr-attachment-parsing
       - key: CONTROL_LINE_PUSH_URL
