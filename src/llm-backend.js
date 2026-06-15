@@ -4,7 +4,7 @@
 // brain stays identical across backends.
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -125,9 +125,53 @@ function createCodexBackend({ model }) {
   };
 }
 
+// 機器層級的 Codex 共用鎖：SevenAM 與 HOZO 兩個 worker 共用同一個 ChatGPT
+// 訂閱額度，這把鎖讓所有 Codex 呼叫排隊輪流，永不同時打同一額度。鎖檔放在
+// OS 暫存目錄（兩專案共見）；逾時仍取不到就照常執行（避免死結），陳舊鎖自動回收。
+const CODEX_LOCK_FILE = join(tmpdir(), 'am-codex-shared.lock');
+const CODEX_LOCK_STALE_MS = 6 * 60 * 1000;
+
+function delayMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireCodexLock(maxWaitMs = 600000) {
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      writeFileSync(CODEX_LOCK_FILE, `${process.pid}@${Date.now()}`, { flag: 'wx' });
+      return true;
+    } catch {
+      // 鎖已被佔用——檢查是否為陳舊鎖（持有者異常退出沒釋放）。
+      try {
+        if (Date.now() - statSync(CODEX_LOCK_FILE).mtimeMs > CODEX_LOCK_STALE_MS) {
+          unlinkSync(CODEX_LOCK_FILE);
+          continue;
+        }
+      } catch {}
+      if (Date.now() - startedAt > maxWaitMs) return false; // 等太久就放行，不卡死
+      await delayMs(1000 + Math.floor(Math.random() * 800));
+    }
+  }
+}
+
+function releaseCodexLock() {
+  try { if (existsSync(CODEX_LOCK_FILE)) unlinkSync(CODEX_LOCK_FILE); } catch {}
+}
+
 // OpenAI Codex CLI 無頭執行：prompt 走 stdin，最終訊息用 -o 寫到暫存檔再讀回，
 // 避免從 stdout 的事件紀錄裡撈答案。圖片用 -i 附上（Codex 視覺）。
-export function runCodex(prompt, { model = '', timeoutMs = 300000, imagePaths = [] } = {}) {
+// 透過共用鎖序列化，兩個 worker 不會同時呼叫 Codex。
+export async function runCodex(prompt, options = {}) {
+  await acquireCodexLock();
+  try {
+    return await spawnCodex(prompt, options);
+  } finally {
+    releaseCodexLock();
+  }
+}
+
+function spawnCodex(prompt, { model = '', timeoutMs = 300000, imagePaths = [] } = {}) {
   return new Promise((resolve, reject) => {
     const outputFile = join(tmpdir(), `codex-last-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
     const cliArgs = ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '-o', outputFile];
