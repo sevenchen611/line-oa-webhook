@@ -4,12 +4,18 @@
 // brain stays identical across backends.
 
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 
 export function createLlmBackend({ apiKey, model } = {}) {
   const backendName = String(process.env.LLM_BACKEND || 'api').trim().toLowerCase();
   const resolvedModel = model || process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
+  if (backendName === 'codex') {
+    return createCodexBackend({ model: process.env.CODEX_MODEL || '' });
+  }
   if (backendName === 'claude-code') {
     return createClaudeCodeBackend({ model: process.env.CLAUDE_CODE_MODEL || '' });
   }
@@ -94,6 +100,100 @@ function createClaudeCodeBackend({ model }) {
       throw new Error(`claude-code backend returned unparseable JSON: ${lastError?.message || 'unknown'}`);
     },
   };
+}
+
+function createCodexBackend({ model }) {
+  return {
+    name: 'codex',
+    model: model || '(codex default)',
+    available: true,
+    // imagePaths：給附件解析用，把圖片以 codex exec -i 附上。
+    async completeJson({ system, userContent, schema, maxTokens, imagePaths = [] }) {
+      const prompt = buildClaudeCodePrompt({ system, userContent, schema });
+
+      let lastError = null;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const raw = await runCodex(prompt, { model, imagePaths });
+        try {
+          return parseJsonLoose(raw, schema);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw new Error(`codex backend returned unparseable JSON: ${lastError?.message || 'unknown'}`);
+    },
+  };
+}
+
+// OpenAI Codex CLI 無頭執行：prompt 走 stdin，最終訊息用 -o 寫到暫存檔再讀回，
+// 避免從 stdout 的事件紀錄裡撈答案。圖片用 -i 附上（Codex 視覺）。
+export function runCodex(prompt, { model = '', timeoutMs = 300000, imagePaths = [] } = {}) {
+  return new Promise((resolve, reject) => {
+    const outputFile = join(tmpdir(), `codex-last-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
+    const cliArgs = ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '-o', outputFile];
+    if (model) cliArgs.push('-m', model);
+    for (const imagePath of imagePaths) {
+      if (imagePath) cliArgs.push('-i', imagePath);
+    }
+    cliArgs.push('-');
+
+    // 不讓子行程吃到 API key，強制走 ChatGPT 訂閱登入（~/.codex 的憑證）。
+    const env = { ...process.env };
+    delete env.OPENAI_API_KEY;
+    delete env.OPENAI_BASE_URL;
+
+    const child = spawn('codex', cliArgs, {
+      env,
+      shell: process.platform === 'win32',
+      windowsHide: true,
+    });
+
+    let stderr = '';
+    const cleanup = () => { try { if (existsSync(outputFile)) unlinkSync(outputFile); } catch {} };
+    const timer = setTimeout(() => {
+      child.kill();
+      cleanup();
+      reject(new Error(`codex call timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    child.stdout.on('data', () => {});
+    child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-2000); });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error(`codex spawn failed: ${error.message}`));
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      let lastMessage = '';
+      try {
+        if (existsSync(outputFile)) lastMessage = readFileSync(outputFile, 'utf8').trim();
+      } catch {}
+      cleanup();
+      if (code !== 0 && !lastMessage) {
+        reject(new Error(`codex exited with code ${code}: ${stderr.slice(0, 400)}`));
+        return;
+      }
+      if (!lastMessage) {
+        reject(new Error(`codex produced no final message: ${stderr.slice(0, 400)}`));
+        return;
+      }
+      resolve(lastMessage);
+    });
+
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
+export async function codexSelfTest() {
+  try {
+    const raw = await runCodex('只輸出純 JSON：{"pong": true}', { timeoutMs: 120000 });
+    const parsed = parseJsonLoose(raw, { required: ['pong'] });
+    return { ok: parsed.pong === true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function buildClaudeCodePrompt({ system, userContent, schema }) {
