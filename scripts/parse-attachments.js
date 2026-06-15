@@ -1,8 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { createLlmBackend } from '../src/llm-backend.js';
 
 loadEnvFile('.env');
 loadEnvFile('../env.txt');
@@ -10,8 +12,6 @@ loadEnvFile('../env.txt');
 const notionToken = process.env.NOTION_TOKEN;
 const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const attachmentsDataSourceId = process.env.SEVEN_ATTACHMENTS_DATA_SOURCE_ID || '';
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
-const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
 const AUTO_PARSE_LIMIT_BYTES = 5 * 1024 * 1024;
 const IMAGE_LIMIT_BYTES = Math.floor(4.5 * 1024 * 1024);
@@ -22,14 +22,16 @@ const dryRun = Boolean(args['dry-run']);
 const limit = clampNumber(Number(args.limit || 8), 1, 30);
 let parsePropertiesEnsured = false;
 
-if (!anthropicApiKey) {
-  console.warn('ANTHROPIC_API_KEY is not set. Attachment parsing skipped; items stay queued.');
+// 可插拔 AI 後端：codex（ChatGPT 訂閱，預設由 worker 設 LLM_BACKEND=codex）、
+// claude-code（Claude 訂閱）、或 api（Anthropic API，Render 用）。
+const backend = createLlmBackend();
+if (!backend.available) {
+  console.warn(`LLM backend (${backend.name}) is not available. Attachment parsing skipped; items stay queued.`);
   process.exit(0);
 }
 if (!notionToken) fail('NOTION_TOKEN is not set.');
 if (!attachmentsDataSourceId) fail('SEVEN_ATTACHMENTS_DATA_SOURCE_ID is not set.');
 
-const anthropic = new Anthropic({ apiKey: anthropicApiKey });
 const startedAt = new Date();
 await ensureParseProperties();
 const queued = await listQueuedAttachments();
@@ -51,7 +53,8 @@ for (const attachment of queued) {
 console.log(JSON.stringify({
   ok: true,
   dryRun,
-  model: anthropicModel,
+  backend: backend.name,
+  model: backend.model,
   scanned: queued.length,
   parsed: results.filter((item) => item.action === 'parsed').length,
   deferred: results.filter((item) => item.action === 'needs-approval').length,
@@ -150,28 +153,66 @@ async function downloadFile(url) {
 }
 
 async function analyzeAttachment(kind, attachment, buffer) {
+  const isApi = backend.name === 'api';
+
   if (kind === 'image') {
-    const mediaType = normalizeImageMediaType(attachment.contentType);
-    return callClaude([
-      { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
-      { type: 'text', text: '這是 LINE 群組訊息中的附件圖片。請解析它的內容。' },
-    ]);
+    if (isApi) {
+      const mediaType = normalizeImageMediaType(attachment.contentType);
+      return callBackend({ userContent: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } },
+        { type: 'text', text: '這是 LINE 群組訊息中的附件圖片。請解析它的內容。' },
+      ] });
+    }
+    // codex / claude-code：圖片寫暫存檔，用 -i 附上交給訂閱後端讀圖。
+    return withTempFile(buffer, imageExtension(attachment), (filePath) => callBackend({
+      userContent: '這是 LINE 群組訊息中的附件圖片（已附上）。請解析它的內容。',
+      imagePaths: [filePath],
+    }));
   }
 
   if (kind === 'pdf') {
-    return callClaude([
-      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } },
-      { type: 'text', text: `這是 LINE 群組訊息中的 PDF 附件「${attachment.filename}」。請解析它的內容。` },
-    ]);
+    if (isApi) {
+      return callBackend({ userContent: [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } },
+        { type: 'text', text: `這是 LINE 群組訊息中的 PDF 附件「${attachment.filename}」。請解析它的內容。` },
+      ] });
+    }
+    // codex / claude-code：PDF 以 -i 附上（Codex 可讀 PDF）。
+    return withTempFile(buffer, '.pdf', (filePath) => callBackend({
+      userContent: `這是 LINE 群組訊息中的 PDF 附件「${attachment.filename}」（已附上）。請解析它的內容。`,
+      imagePaths: [filePath],
+    }));
   }
 
   const text = await extractOfficeText(kind, buffer);
   if (!text.trim()) {
     throw new Error('Office 檔案抽不出文字內容。');
   }
-  return callClaude([
-    { type: 'text', text: `這是 LINE 群組訊息中的 ${kind} 附件「${attachment.filename}」，以下是抽取出的文字內容：\n\n${clampText(text, 30000)}` },
-  ]);
+  return callBackend({
+    userContent: `這是 LINE 群組訊息中的 ${kind} 附件「${attachment.filename}」，以下是抽取出的文字內容：\n\n${clampText(text, 30000)}`,
+  });
+}
+
+async function withTempFile(buffer, ext, fn) {
+  const filePath = join(tmpdir(), `seven-attach-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+  writeFileSync(filePath, buffer);
+  try {
+    return await fn(filePath);
+  } finally {
+    try { if (existsSync(filePath)) unlinkSync(filePath); } catch {}
+  }
+}
+
+function imageExtension(attachment) {
+  const name = (attachment.filename || '').toLowerCase();
+  if (name.endsWith('.png')) return '.png';
+  if (name.endsWith('.gif')) return '.gif';
+  if (name.endsWith('.webp')) return '.webp';
+  const type = (attachment.contentType || '').toLowerCase();
+  if (type.includes('png')) return '.png';
+  if (type.includes('gif')) return '.gif';
+  if (type.includes('webp')) return '.webp';
+  return '.jpg';
 }
 
 async function extractOfficeText(kind, buffer) {
@@ -207,49 +248,31 @@ async function extractOfficeText(kind, buffer) {
   return '';
 }
 
-async function callClaude(content) {
-  const response = await anthropic.messages.create({
-    model: anthropicModel,
-    max_tokens: 8000,
-    thinking: { type: 'adaptive' },
+async function callBackend({ userContent, imagePaths = [] }) {
+  return backend.completeJson({
+    maxTokens: 8000,
+    imagePaths,
     system: [
-      {
-        type: 'text',
-        text: [
-          '你是 SevenAM 控制中心的附件解析引擎。附件來自工程、財務、營運相關的 LINE 群組。',
-          '解析目標：讓任務判讀引擎和使用者快速理解這份附件「在講什麼、跟哪些工作有關」。',
-          '- summary：2-4 句語意摘要（繁體中文），講清楚這是什麼、關鍵內容、與工作的關聯。',
-          '- extractedText：圖片做完整 OCR；文件列出關鍵段落與數字。保留金額、日期、人名、項目名稱等可查證細節。',
-          '- workSignals：列出與任務相關的訊號（完工回報、報價金額、期限、待辦、問題回報），沒有就空陣列。',
-          '- sensitive：內容涉及金錢、合約、法律、人資、個資時為 true。',
-        ].join('\n'),
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    messages: [{ role: 'user', content }],
-    output_config: {
-      format: {
-        type: 'json_schema',
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['summary', 'extractedText', 'workSignals', 'sensitive'],
-          properties: {
-            summary: { type: 'string' },
-            extractedText: { type: 'string' },
-            workSignals: { type: 'array', items: { type: 'string' } },
-            sensitive: { type: 'boolean' },
-          },
-        },
+      '你是 SevenAM 控制中心的附件解析引擎。附件來自工程、財務、營運相關的 LINE 群組。',
+      '解析目標：讓任務判讀引擎和使用者快速理解這份附件「在講什麼、跟哪些工作有關」。',
+      '- summary：2-4 句語意摘要（繁體中文），講清楚這是什麼、關鍵內容、與工作的關聯。',
+      '- extractedText：圖片做完整 OCR；文件列出關鍵段落與數字。保留金額、日期、人名、項目名稱等可查證細節。',
+      '- workSignals：列出與任務相關的訊號（完工回報、報價金額、期限、待辦、問題回報），沒有就空陣列。',
+      '- sensitive：內容涉及金錢、合約、法律、人資、個資時為 true。',
+    ].join('\n'),
+    userContent,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['summary', 'extractedText', 'workSignals', 'sensitive'],
+      properties: {
+        summary: { type: 'string' },
+        extractedText: { type: 'string' },
+        workSignals: { type: 'array', items: { type: 'string' } },
+        sensitive: { type: 'boolean' },
       },
     },
   });
-
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock) {
-    throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
-  }
-  return JSON.parse(textBlock.text);
 }
 
 function normalizeImageMediaType(contentType) {
