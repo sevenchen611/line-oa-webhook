@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
+import { createLlmBackend } from '../src/llm-backend.js';
 
 loadEnvFile('.env');
 loadEnvFile('../env.txt');
@@ -9,13 +9,12 @@ const notionVersion = process.env.NOTION_VERSION || '2025-09-03';
 const tasksDataSourceId = process.env.SEVEN_TASKS_DATA_SOURCE_ID || '';
 const casesDataSourceId = process.env.SEVEN_JUDGMENT_CALIBRATION_CASES_DATA_SOURCE_ID || '';
 const rulesDataSourceId = process.env.SEVEN_JUDGMENT_RULES_DATA_SOURCE_ID || '';
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
-const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
 const args = parseArgs(process.argv.slice(2));
 const dryRun = Boolean(args['dry-run']);
 const sinceDays = clampNumber(Number(args['since-days'] || 7), 1, 60);
 const maxRuleSuggestions = clampNumber(Number(args['max-rule-suggestions'] || 3), 0, 10);
+const llmBackend = createLlmBackend();
 
 if (!notionToken) fail('NOTION_TOKEN is not set.');
 if (!tasksDataSourceId) fail('SEVEN_TASKS_DATA_SOURCE_ID is not set.');
@@ -173,17 +172,16 @@ function mapConfidence(confidence) {
 
 async function suggestRulesFromRejections(rejectedCases) {
   if (rejectedCases.length === 0) return [];
-  if (!anthropicApiKey) {
-    console.warn('ANTHROPIC_API_KEY is not set. Skipping rule suggestions; rejection cases are still recorded.');
+  if (!llmBackend.available) {
+    console.warn('LLM backend is not available. Skipping rule suggestions; rejection cases are still recorded.');
     return [];
   }
 
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
   const suggestions = [];
 
   for (const item of rejectedCases.slice(0, maxRuleSuggestions)) {
     try {
-      const suggestion = await suggestRule(anthropic, item.task);
+      const suggestion = await suggestRule(llmBackend, item.task);
       if (!suggestion.worthCreatingRule) {
         suggestions.push({ task: item.title, action: 'skipped', reason: suggestion.skipReason });
         continue;
@@ -233,20 +231,18 @@ async function suggestRulesFromRejections(rejectedCases) {
 }
 
 async function suggestRule(anthropic, task) {
-  const response = await anthropic.messages.create({
-    model: anthropicModel,
-    max_tokens: 4000,
-    thinking: { type: 'adaptive' },
+  return anthropic.completeJson({
+    maxTokens: 4000,
     system: [
       '你是 SevenAM 任務判讀系統的校準分析師。AI 從 LINE 對話萃取了一個任務，但使用者退回了它（不是任務）。',
       '你的工作：判斷這次誤判是否值得歸納成一條「可泛化的判讀規則」，讓未來的萃取避免同類錯誤。',
       '只有當錯誤模式明確、可泛化、不只是單一特例時，才建議建立規則（worthCreatingRule = true）。',
       '規則描述用繁體中文，Trigger Pattern 描述什麼樣的訊息模式會觸發這條規則。',
     ].join('\n'),
-    messages: [
+    userContent: [
       {
-        role: 'user',
-        content: [
+        type: 'text',
+        text: [
           `被退回的任務：${task.title}`,
           `AI 的判斷摘要：${task.summary || '無'}`,
           `來源原文：${clampText(task.sourceText || '無', 800)}`,
@@ -255,33 +251,22 @@ async function suggestRule(anthropic, task) {
         ].join('\n'),
       },
     ],
-    output_config: {
-      format: {
-        type: 'json_schema',
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['worthCreatingRule', 'skipReason', 'ruleName', 'triggerPattern', 'preferredJudgment', 'avoidedJudgment', 'reason', 'exceptions'],
-          properties: {
-            worthCreatingRule: { type: 'boolean' },
-            skipReason: { type: 'string', description: '不建立規則時的原因，否則填空字串。' },
-            ruleName: { type: 'string', description: '規則簡短名稱（20 字內）。' },
-            triggerPattern: { type: 'string', description: '什麼樣的訊息模式會觸發這條規則。' },
-            preferredJudgment: { type: 'string', description: '遇到此模式時應該怎麼判斷。' },
-            avoidedJudgment: { type: 'string', description: '應該避免的錯誤判斷。' },
-            reason: { type: 'string' },
-            exceptions: { type: 'string', description: '例外情況，沒有就填空字串。' },
-          },
-        },
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['worthCreatingRule', 'skipReason', 'ruleName', 'triggerPattern', 'preferredJudgment', 'avoidedJudgment', 'reason', 'exceptions'],
+      properties: {
+        worthCreatingRule: { type: 'boolean' },
+        skipReason: { type: 'string', description: '不建立規則時的原因，否則填空字串。' },
+        ruleName: { type: 'string', description: '規則簡短名稱（20 字內）。' },
+        triggerPattern: { type: 'string', description: '什麼樣的訊息模式會觸發這條規則。' },
+        preferredJudgment: { type: 'string', description: '遇到此模式時應該怎麼判斷。' },
+        avoidedJudgment: { type: 'string', description: '應該避免的錯誤判斷。' },
+        reason: { type: 'string' },
+        exceptions: { type: 'string', description: '例外情況，沒有就填空字串。' },
       },
     },
   });
-
-  const textBlock = response.content.find((block) => block.type === 'text');
-  if (!textBlock) {
-    throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
-  }
-  return JSON.parse(textBlock.text);
 }
 
 // ---- calibration stats ----

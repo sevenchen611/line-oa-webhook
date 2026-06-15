@@ -27,14 +27,18 @@ function createApiBackend({ apiKey, model }) {
       if (!client) {
         throw new Error('ANTHROPIC_API_KEY is not set for the api backend.');
       }
-      const response = await client.messages.create({
+      const request = {
         model,
         max_tokens: maxTokens,
-        thinking: { type: 'adaptive' },
         system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userContent }],
         output_config: { format: { type: 'json_schema', schema } },
-      });
+      };
+      if (shouldUseAdaptiveThinking(model)) {
+        request.thinking = { type: 'adaptive' };
+      }
+
+      const response = await createMessageWithThinkingFallback(client, request);
       const textBlock = response.content.find((block) => block.type === 'text');
       if (!textBlock) {
         throw new Error(`Claude response has no text block (stop_reason: ${response.stop_reason}).`);
@@ -42,6 +46,32 @@ function createApiBackend({ apiKey, model }) {
       return JSON.parse(textBlock.text);
     },
   };
+}
+
+async function createMessageWithThinkingFallback(client, request) {
+  try {
+    return await client.messages.create(request);
+  } catch (error) {
+    if (!request.thinking || !isUnsupportedThinkingError(error)) {
+      throw error;
+    }
+    const { thinking, ...retryRequest } = request;
+    console.warn(`Model ${request.model} does not support adaptive thinking; retrying without it.`);
+    return client.messages.create(retryRequest);
+  }
+}
+
+function shouldUseAdaptiveThinking(model) {
+  if (String(process.env.ANTHROPIC_DISABLE_ADAPTIVE_THINKING || '').toLowerCase() === 'true') {
+    return false;
+  }
+  const value = String(model || '').toLowerCase();
+  return value.includes('opus-4') || value.includes('sonnet-4') || value.includes('claude-4');
+}
+
+function isUnsupportedThinkingError(error) {
+  const message = String(error?.message || error || '');
+  return /adaptive thinking is not supported|thinking.*not supported/i.test(message);
 }
 
 function createClaudeCodeBackend({ model }) {
