@@ -497,7 +497,7 @@ export async function renderTaskPage(taskPageId) {
       <button id="planned-save" class="save-btn half">💾 儲存預定與排程</button>
       <button id="planned-send" class="save-btn half send">📨 立即發送</button>
     </div>
-    <div id="planned-result" class="mini" style="margin-top:8px"></div>
+    <div id="planned-result" class="mini action-feedback"></div>
   </div>
 
   <script>
@@ -576,19 +576,36 @@ export async function renderTaskPage(taskPageId) {
     });
 
     document.getElementById('planned-send').addEventListener('click', async () => {
+      const sendButton = document.getElementById('planned-send');
+      sendButton.classList.add('is-pressed');
+      setTimeout(() => sendButton.classList.remove('is-pressed'), 180);
+      setFeedback('已收到點擊，正在準備送出確認...', 'working');
       const message = document.getElementById('planned-message').value.trim();
-      if (!message) { resultBox.textContent = '請先填寫預定訊息內容。'; return; }
+      if (!message) { setFeedback('請先填寫預定訊息內容。', 'error'); return; }
       const target = selectedTarget();
       const targetLabel = target ? target.name : ${JSON.stringify(task.plannedTargetName || '')} || ${JSON.stringify('來源對話')};
-      if (!confirm('確定把這則訊息發送給「' + targetLabel + '」？\n\n' + message)) return;
+      if (!confirm('確定把這則訊息發送給「' + targetLabel + '」？\n\n' + message)) {
+        setFeedback('已取消發送，沒有訊息被送出。', 'idle');
+        return;
+      }
       const payload = { pageId: panel.dataset.page, editedBy: 'Seven 陳聖文', message };
       if (target) { payload.targetId = target.id; payload.targetName = target.name; }
-      await submit('/control/tasks/send-planned', payload, document.getElementById('planned-send'), '📨 立即發送');
+      await submit('/control/tasks/send-planned', payload, sendButton, '📨 立即發送', {
+        loadingText: '📨 發送中...',
+        workingText: '正在送到 LINE，請不要關閉或重複點擊。',
+      });
     });
 
-    async function submit(url, payload, button, label) {
+    function setFeedback(message, state) {
+      resultBox.textContent = message;
+      resultBox.className = 'mini action-feedback ' + (state || 'idle');
+    }
+
+    async function submit(url, payload, button, label, options = {}) {
       button.disabled = true;
-      button.textContent = '處理中…';
+      button.classList.add('is-busy');
+      button.textContent = options.loadingText || '處理中...';
+      setFeedback(options.workingText || '正在處理，請稍候...', 'working');
       try {
         const response = await fetch(url, {
           method: 'POST',
@@ -602,13 +619,14 @@ export async function renderTaskPage(taskPageId) {
         if (!response.ok || !result.ok) {
           throw new Error(result.error || responseText || ('HTTP ' + response.status));
         }
-        resultBox.textContent = '✅ 完成，頁面更新中…';
+        setFeedback('✅ 完成，頁面更新中...', 'success');
         setTimeout(() => location.reload(), 900);
       } catch (error) {
         const message = '❌ 失敗：' + error.message;
-        resultBox.textContent = message;
+        setFeedback(message, 'error');
         alert(message);
         button.disabled = false;
+        button.classList.remove('is-busy');
         button.textContent = label;
       }
     }
@@ -971,11 +989,20 @@ function pageShell(title, body) {
   .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
   .edit-grid label, .edit-full { display: block; font-size: 12px; color: #52606d; font-weight: 700; margin-bottom: 8px; }
   .edit-grid select, .edit-grid input, .edit-full textarea { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
-  .save-btn { width: 100%; font-size: 15px; font-weight: 700; padding: 12px; border: 0; border-radius: 10px; background: #2f80ed; color: #fff; cursor: pointer; }
+  .save-btn { width: 100%; font-size: 15px; font-weight: 700; padding: 12px; border: 0; border-radius: 10px; background: #2f80ed; color: #fff; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+  .save-btn:active, .save-btn.is-pressed { transform: translateY(1px) scale(.99); filter: brightness(.96); }
   .save-btn:disabled { background: #9aa5b1; }
+  .save-btn.is-busy { background: #495057; cursor: wait; box-shadow: 0 0 0 4px rgba(47, 128, 237, .18); animation: sendPulse 1s ease-in-out infinite; }
   .planned-actions { display: flex; gap: 8px; }
   .save-btn.half { flex: 1; width: auto; }
   .save-btn.send { background: #e8590c; }
+  .save-btn.send.is-busy { background: #c2410c; box-shadow: 0 0 0 4px rgba(232, 89, 12, .22); }
+  .action-feedback { display: block; min-height: 20px; margin-top: 8px; padding: 9px 11px; border-radius: 8px; border: 1px solid transparent; background: #f8f9fa; color: #52606d; font-weight: 700; }
+  .action-feedback.working { border-color: #ffd8a8; background: #fff4e6; color: #b35c00; }
+  .action-feedback.success { border-color: #b2f2bb; background: #ebfbee; color: #2b8a3e; }
+  .action-feedback.error { border-color: #ffc9c9; background: #fff5f5; color: #c92a2a; }
+  .action-feedback.idle { border-color: #d0ebff; background: #f1f8ff; color: #1864ab; }
+  @keyframes sendPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.1); } }
   .quick-days { display: flex; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
   .day-btn { font-size: 12px; padding: 6px 12px; border: 1px solid #cbd2d9; border-radius: 999px; background: #fff; color: #3e4c59; cursor: pointer; }
   .day-btn:hover { border-color: #2f80ed; color: #2f80ed; }
