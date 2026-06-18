@@ -177,6 +177,7 @@ export async function renderProjectPage(projectName) {
       try {
         const response = await fetch('/control/tasks/update', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
@@ -435,6 +436,7 @@ export async function renderTaskPage(taskPageId) {
       try {
         const response = await fetch('/control/tasks/update', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
@@ -590,15 +592,22 @@ export async function renderTaskPage(taskPageId) {
       try {
         const response = await fetch(url, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+        const responseText = await response.text();
+        let result = {};
+        try { result = responseText ? JSON.parse(responseText) : {}; } catch {}
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || responseText || ('HTTP ' + response.status));
+        }
         resultBox.textContent = '✅ 完成，頁面更新中…';
         setTimeout(() => location.reload(), 900);
       } catch (error) {
-        resultBox.textContent = '❌ 失敗：' + error.message;
+        const message = '❌ 失敗：' + error.message;
+        resultBox.textContent = message;
+        alert(message);
         button.disabled = false;
         button.textContent = label;
       }
