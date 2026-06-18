@@ -440,7 +440,8 @@ async function sendPlannedTaskMessage(req, body) {
     throw new Error('無法解析發送對象：請先設定預定發送對象，或確認任務有來源對話。');
   }
 
-  const pushResult = await pushToTargets([target], [{ type: 'text', text: message }]);
+  const delivery = await resolvePlannedTaskDelivery(page, target, message);
+  const pushResult = await pushToTargets([delivery.target], [delivery.message]);
 
   const timestamp = formatTaipeiDateTime(submittedAt);
   await notionRequest(`/v1/blocks/${page.id}/children`, {
@@ -449,7 +450,7 @@ async function sendPlannedTaskMessage(req, body) {
       children: [
         { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ type: 'text', text: { content: `預定訊息已發送（${timestamp}）` } }] } },
         { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: clampNotionText(message) } }] } },
-        { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `發送對象：${target.name || target.id}（${target.type}）；由 ${editedBy} 確認後發送。` } }], color: 'gray' } },
+        { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: `發送對象：${delivery.target.name || delivery.target.id}（${delivery.target.type}）；${delivery.note ? `${delivery.note}；` : ''}由 ${editedBy} 確認後發送。` } }], color: 'gray' } },
       ],
     },
   });
@@ -462,8 +463,8 @@ async function sendPlannedTaskMessage(req, body) {
       properties: compactProperties({
         // 發送後把這次用的內容與對象存回任務，下次就是「預設訊息」。
         預定訊息內容: taskPropertyUpdate(page, '預定訊息內容', message),
-        預定發送對象: taskPropertyUpdate(page, '預定發送對象', target.name || targetName),
-        預定發送對象ID: taskPropertyUpdate(page, '預定發送對象ID', `${target.type}:${target.id}`),
+        預定發送對象: taskPropertyUpdate(page, '預定發送對象', delivery.savedTargetName || target.name || targetName),
+        預定發送對象ID: taskPropertyUpdate(page, '預定發送對象ID', delivery.savedTargetId || `${target.type}:${target.id}`),
         狀態: ['已完成', '封存'].includes(currentStatus) ? undefined : taskPropertyUpdate(page, '狀態', '等待回覆'),
         確認狀態: ['已完成', '封存'].includes(currentStatus) ? undefined : taskPropertyUpdate(page, '確認狀態', '已確認'),
         追蹤暫緩至: dateProperty(snoozeUntil),
@@ -475,10 +476,86 @@ async function sendPlannedTaskMessage(req, body) {
   return {
     ok: true,
     pageId: normalizeId(page.id),
-    target: { id: target.id, type: target.type, name: target.name || targetName || '' },
+    target: { id: delivery.target.id, type: delivery.target.type, name: delivery.target.name || '' },
+    deliveryMode: delivery.mode,
     message,
     pushResult: pushResult.results || [],
     sentAt: submittedAt.toISOString(),
+  };
+}
+
+async function resolvePlannedTaskDelivery(page, target, message) {
+  if (target.type !== 'user') {
+    return {
+      mode: 'direct',
+      target,
+      message: { type: 'text', text: message },
+      savedTargetId: `${target.type}:${target.id}`,
+      savedTargetName: target.name || '',
+      note: '',
+    };
+  }
+
+  const profileCheck = await canPushToUser(target.id);
+  if (profileCheck.ok) {
+    return {
+      mode: 'direct-user',
+      target,
+      message: { type: 'text', text: message },
+      savedTargetId: `user:${target.id}`,
+      savedTargetName: target.name || profileCheck.displayName || '',
+      note: '',
+    };
+  }
+
+  const sourceTarget = await resolveTaskFollowupTarget(pageUrlProperty(page, '關聯 Notion 頁面'));
+  if (!sourceTarget || !['group', 'room'].includes(sourceTarget.type)) {
+    throw new Error(`無法私訊「${target.name || '所選成員'}」：此成員尚未加入 Seven Jr. 好友或封鎖了 OA，且任務沒有可回退的來源群組。請對方先加入 Seven Jr. 好友，或改送來源群組。`);
+  }
+
+  return {
+    mode: 'source-group-mention',
+    target: sourceTarget,
+    message: buildMentionMessage(target.id, message),
+    savedTargetId: `user:${target.id}`,
+    savedTargetName: target.name || '',
+    note: `因所選成員無法接收 Seven Jr. 個人私訊，已改送來源群組並標記該成員`,
+  };
+}
+
+async function canPushToUser(userId) {
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN || !userId) {
+    return { ok: false, reason: 'missing-line-token-or-user-id' };
+  }
+
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+      return { ok: false, reason: responseText || `LINE profile failed: ${response.status}` };
+    }
+    const profile = responseText ? JSON.parse(responseText) : {};
+    return { ok: true, displayName: profile.displayName || '' };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+function buildMentionMessage(userId, message) {
+  return {
+    type: 'textV2',
+    text: `{member} ${message}`,
+    substitution: {
+      member: {
+        type: 'mention',
+        mentionee: {
+          type: 'user',
+          userId,
+        },
+      },
+    },
   };
 }
 
@@ -3216,13 +3293,16 @@ function outgoingMessageText(message) {
   if (typeof message === 'string') {
     return message;
   }
-  if (message?.type === 'text') {
+  if (message?.type === 'text' || message?.type === 'textV2') {
     return message.text || '';
   }
   return message ? JSON.stringify(message) : '';
 }
 
 function normalizeOutgoingMessageType(messageType) {
+  if (messageType === 'textV2') {
+    return 'text';
+  }
   return ['text', 'image', 'sticker', 'file', 'location', 'video', 'audio'].includes(messageType) ? messageType : 'unsupported';
 }
 
