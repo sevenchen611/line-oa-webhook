@@ -3052,6 +3052,9 @@ async function pushLine(to, messages) {
 
   const responseText = await response.text();
   if (!response.ok) {
+    if (response.status === 429 && /monthly limit/i.test(responseText)) {
+      throw new Error('LINE OA 本月 Messaging API 發送額度已用完，LINE 已拒絕發送。請升級或加購 LINE OA 訊息額度，或等下個月額度重置後再送。');
+    }
     throw new Error(`LINE push failed: ${response.status} ${responseText}`);
   }
 }
