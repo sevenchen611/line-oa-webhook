@@ -149,6 +149,68 @@ export async function renderProjectPage(projectName) {
   ${rows || '<div class="hint">此專案目前沒有任務。</div>'}
 
   <script>
+  const DASHBOARD_STATUS_COLORS = ${JSON.stringify(STATUS_COLORS)};
+  const DASHBOARD_CONFIRMED_STATUSES = new Set(['未開始', '進行中', '等待回覆', '待確認完成', '已完成']);
+
+  document.querySelectorAll('select.status-quick').forEach((select) => {
+    select.addEventListener('change', async () => {
+      const original = select.dataset.original || '';
+      const status = select.value;
+      const taskName = select.dataset.task || '此任務';
+      const state = select.closest('.quick-status-control')?.querySelector('.quick-save-state');
+      if (status === original) return;
+
+      const payload = {
+        pageId: select.dataset.id,
+        status,
+        editedBy: 'Seven 陳聖文',
+      };
+      if (DASHBOARD_CONFIRMED_STATUSES.has(status)) {
+        payload.confirmation = '已確認';
+      } else if (status === '待確認') {
+        payload.confirmation = '未確認';
+      }
+
+      select.disabled = true;
+      select.classList.add('saving');
+      if (state) state.textContent = '儲存中...';
+      try {
+        const response = await fetch('/control/tasks/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || ('HTTP ' + response.status));
+
+        select.dataset.original = status;
+        const card = select.closest('.card.task');
+        const color = DASHBOARD_STATUS_COLORS[status] || '#495057';
+        const dot = card?.querySelector('.status-dot');
+        const badge = card?.querySelector('[data-status-badge]');
+        if (dot) dot.style.background = color;
+        if (badge) {
+          badge.textContent = status || '未設定';
+          badge.style.color = color;
+        }
+        if (status === '封存') {
+          card?.classList.add('archived-inline');
+          if (state) state.textContent = '已封存，重新整理後隱藏';
+        } else if (state) {
+          state.textContent = '已儲存';
+          setTimeout(() => { if (state.textContent === '已儲存') state.textContent = ''; }, 1800);
+        }
+      } catch (error) {
+        alert('「' + taskName + '」狀態儲存失敗：' + error.message);
+        select.value = original;
+        if (state) state.textContent = '儲存失敗';
+      } finally {
+        select.disabled = false;
+        select.classList.remove('saving');
+      }
+    });
+  });
+
   document.querySelectorAll('select.parent-move').forEach((select) => {
     select.addEventListener('change', async () => {
       if (select.value === 'keep') return;
@@ -216,6 +278,9 @@ function taskRow(task, childrenByParent, depth, currentProject, officialNames, t
     .filter((candidate) => candidate.id !== currentParentId)
     .map((candidate) => `<option value="${escapeHtml(candidate.id)}">↳ 設為子任務：${escapeHtml(clampText(candidate.title, 40))}</option>`)
     .join('');
+  const statusOptions = STATUS_ORDER
+    .map((status) => `<option value="${escapeHtml(status)}" ${status === task.status ? 'selected' : ''}>狀態：${escapeHtml(status)}</option>`)
+    .join('');
 
   return `
   <div class="card task" style="margin-left:${depth * 22}px">
@@ -225,7 +290,7 @@ function taskRow(task, childrenByParent, depth, currentProject, officialNames, t
         <span class="task-title">${depth > 0 ? '└ ' : ''}${escapeHtml(task.title)}</span>
       </div>
       <div class="badges">
-        <span class="badge" style="color:${STATUS_COLORS[task.status] || '#495057'}">${escapeHtml(task.status || '未設定')}</span>
+        <span class="badge" data-status-badge style="color:${STATUS_COLORS[task.status] || '#495057'}">${escapeHtml(task.status || '未設定')}</span>
         ${task.overdue ? '<span class="badge overdue">⚠️ 已逾期</span>' : ''}
         ${task.priority === '高' ? '<span class="badge overdue">高優先</span>' : ''}
         ${task.owner ? `<span class="badge">${escapeHtml(task.owner)}</span>` : ''}
@@ -235,6 +300,12 @@ function taskRow(task, childrenByParent, depth, currentProject, officialNames, t
       ${task.nextStep ? `<div class="mini">➡️ ${escapeHtml(clampText(task.nextStep, 90))}</div>` : ''}
     </a>
     <div class="move-row">
+      <div class="quick-status-control">
+        <select class="status-quick" data-id="${escapeHtml(task.id)}" data-task="${escapeHtml(task.title)}" data-original="${escapeHtml(task.status)}">
+          ${statusOptions}
+        </select>
+        <span class="quick-save-state" aria-live="polite"></span>
+      </div>
       <select class="project-move" data-task="${escapeHtml(task.title)}">
         <option value="keep" selected>📁 ${escapeHtml(currentProject)}</option>
         ${moveOptions}
@@ -740,7 +811,9 @@ function pageShell(title, body) {
   .field a { color: #2f80ed; }
   .task-line { display: flex; align-items: center; gap: 8px; }
   a.task-link { display: block; text-decoration: none; color: inherit; }
-  .move-row { display: flex; gap: 6px; margin-top: 8px; }
+  .move-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+  .quick-status-control { flex: 1 1 160px; display: flex; align-items: center; gap: 6px; min-width: 150px; }
+  .quick-save-state { min-width: 56px; font-size: 11px; color: #2b8a3e; white-space: nowrap; }
   .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
   .edit-grid label, .edit-full { display: block; font-size: 12px; color: #52606d; font-weight: 700; margin-bottom: 8px; }
   .edit-grid select, .edit-grid input, .edit-full textarea { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
@@ -753,7 +826,9 @@ function pageShell(title, body) {
   .day-btn { font-size: 12px; padding: 6px 12px; border: 1px solid #cbd2d9; border-radius: 999px; background: #fff; color: #3e4c59; cursor: pointer; }
   .day-btn:hover { border-color: #2f80ed; color: #2f80ed; }
   .edit-grid label input[type="datetime-local"] { display: block; width: 100%; margin-top: 4px; font-size: 14px; font-weight: 400; padding: 9px 10px; border: 1px solid #cbd2d9; border-radius: 8px; background: #fff; font-family: inherit; color: #1f2933; }
-  select.project-move, select.parent-move { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
+  select.project-move, select.parent-move, select.status-quick { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid #dee2e6; border-radius: 8px; background: #f8f9fa; color: #495057; }
+  select.status-quick.saving { opacity: .65; }
+  .card.task.archived-inline { opacity: .58; border-style: dashed; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .task-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
   .hint { font-size: 13px; color: #52606d; background: #fff; border: 1px dashed #cbd2d9; border-radius: 10px; padding: 12px; }
