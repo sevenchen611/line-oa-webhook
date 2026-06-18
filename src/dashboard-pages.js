@@ -333,6 +333,13 @@ export async function renderTaskPage(taskPageId) {
   const bodyBlocks = await getBlockTexts(page.id, 60);
   const conversation = await loadConversationPreview(task.conversationUrl);
   const sourceRecipients = await loadSourceConversationRecipients(conversation);
+  const sourceTarget = sourceConversationTarget(conversation);
+  const currentTargetLabel = task.plannedTargetName || sourceTarget?.name || (conversation.name ? `來源對話「${conversation.name}」` : '未設定');
+  const defaultTargetOption = task.plannedTargetId
+    ? `<option value="" selected>沿用：${escapeHtml(task.plannedTargetName || task.plannedTargetId)}</option>`
+    : sourceTarget
+      ? `<option value="${escapeHtml(sourceTarget.value)}" data-name="${escapeHtml(sourceTarget.name)}" selected>${escapeHtml(sourceTarget.label)}</option>`
+      : '<option value="" selected>（先搜尋再選擇）</option>';
   markSourceMessages(conversation.messages, task.sourceText);
 
   const body = `
@@ -451,12 +458,13 @@ export async function renderTaskPage(taskPageId) {
       <textarea id="planned-message" rows="3">${escapeHtml(task.plannedMessage || defaultDraftMessage(task))}</textarea>
     </label>
     <div class="edit-grid">
-      <label>發送對象（目前：${escapeHtml(task.plannedTargetName || (conversation.name ? `來源對話「${conversation.name}」` : '未設定'))}）
+      <label>發送對象（目前：${escapeHtml(currentTargetLabel)}）
         <input type="text" id="planned-target-search" placeholder="輸入姓名或群組名稱搜尋…" value="">
       </label>
-      <label>來源群組成員 / 搜尋結果（選擇後成為發送對象）
+      <label>來源對話 / 來源群組成員 / 搜尋結果（選擇後成為發送對象）
         <select id="planned-target-select">
-          <option value="" selected>${task.plannedTargetId ? `沿用：${escapeHtml(task.plannedTargetName || task.plannedTargetId)}` : (conversation.name ? `預設：來源對話「${escapeHtml(conversation.name)}」` : '（先搜尋再選擇）')}</option>
+          ${defaultTargetOption}
+          ${sourceTarget && task.plannedTargetId ? `<optgroup label="來源對話"><option value="${escapeHtml(sourceTarget.value)}" data-name="${escapeHtml(sourceTarget.name)}">${escapeHtml(sourceTarget.label)}</option></optgroup>` : ''}
           ${sourceRecipients.length ? `<optgroup label="來源群組成員：${escapeHtml(conversation.name)}">${sourceRecipients.map((recipient) => `<option value="${escapeHtml(recipient.value)}" data-name="${escapeHtml(recipient.label)}">${escapeHtml(recipient.label)}</option>`).join('')}</optgroup>` : ''}
           <optgroup label="搜尋結果" id="planned-search-results"></optgroup>
         </select>
@@ -688,6 +696,33 @@ async function loadConversationPreview(conversationUrl) {
   } catch {
     return { name: '', url: conversationUrl, messages: [] };
   }
+}
+
+function sourceConversationTarget(conversation) {
+  if (!conversation) return null;
+  const name = conversation.name || '來源對話';
+  if (conversation.groupId) {
+    return {
+      value: `group:${conversation.groupId}`,
+      name,
+      label: `整個來源群組：${name}`,
+    };
+  }
+  if (conversation.roomId) {
+    return {
+      value: `room:${conversation.roomId}`,
+      name,
+      label: `整個來源聊天室：${name}`,
+    };
+  }
+  if (conversation.userId) {
+    return {
+      value: `user:${conversation.userId}`,
+      name,
+      label: `來源個人對話：${name}`,
+    };
+  }
+  return null;
 }
 
 async function loadSourceConversationRecipients(conversation) {
