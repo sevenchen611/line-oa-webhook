@@ -332,6 +332,7 @@ export async function renderTaskPage(taskPageId) {
   const task = normalizeTask(page);
   const bodyBlocks = await getBlockTexts(page.id, 60);
   const conversation = await loadConversationPreview(task.conversationUrl);
+  const sourceRecipients = await loadSourceConversationRecipients(conversation);
   markSourceMessages(conversation.messages, task.sourceText);
 
   const body = `
@@ -453,9 +454,11 @@ export async function renderTaskPage(taskPageId) {
       <label>發送對象（目前：${escapeHtml(task.plannedTargetName || (conversation.name ? `來源對話「${conversation.name}」` : '未設定'))}）
         <input type="text" id="planned-target-search" placeholder="輸入姓名或群組名稱搜尋…" value="">
       </label>
-      <label>搜尋結果（選擇後成為發送對象）
+      <label>來源群組成員 / 搜尋結果（選擇後成為發送對象）
         <select id="planned-target-select">
           <option value="" selected>${task.plannedTargetId ? `沿用：${escapeHtml(task.plannedTargetName || task.plannedTargetId)}` : (conversation.name ? `預設：來源對話「${escapeHtml(conversation.name)}」` : '（先搜尋再選擇）')}</option>
+          ${sourceRecipients.length ? `<optgroup label="來源群組成員：${escapeHtml(conversation.name)}">${sourceRecipients.map((recipient) => `<option value="${escapeHtml(recipient.value)}" data-name="${escapeHtml(recipient.label)}">${escapeHtml(recipient.label)}</option>`).join('')}</optgroup>` : ''}
+          <optgroup label="搜尋結果" id="planned-search-results"></optgroup>
         </select>
       </label>
     </div>
@@ -503,18 +506,21 @@ export async function renderTaskPage(taskPageId) {
         try {
           const response = await fetch('/reports/followup-recipient-candidates?target=' + encodeURIComponent(text));
           const data = await response.json();
-          const keep = targetSelect.options[0];
-          targetSelect.innerHTML = '';
-          targetSelect.appendChild(keep);
+          const searchGroup = document.getElementById('planned-search-results');
+          if (searchGroup) searchGroup.innerHTML = '';
           for (const candidate of data.candidates || []) {
             const option = document.createElement('option');
-            const targetId = candidate.targetMemberUserId && candidate.targetType === 'user' ? candidate.targetMemberUserId : candidate.targetId;
-            option.value = candidate.targetType + ':' + targetId;
+            const isMemberTarget = Boolean(candidate.targetMemberUserId);
+            const targetId = isMemberTarget ? candidate.targetMemberUserId : candidate.targetId;
+            option.value = (isMemberTarget ? 'user' : candidate.targetType) + ':' + targetId;
             option.dataset.name = candidate.label;
             option.textContent = candidate.label;
-            targetSelect.appendChild(option);
+            (searchGroup || targetSelect).appendChild(option);
           }
-          if ((data.candidates || []).length) targetSelect.selectedIndex = 1;
+          if ((data.candidates || []).length) {
+            const firstSearchOption = searchGroup?.querySelector('option');
+            if (firstSearchOption) firstSearchOption.selected = true;
+          }
           resultBox.textContent = (data.candidates || []).length ? '' : '找不到符合的對象，換個關鍵字試試。';
         } catch (error) {
           resultBox.textContent = '對象搜尋失敗：' + error.message;
@@ -632,6 +638,10 @@ async function loadConversationPreview(conversationUrl) {
   try {
     const page = await notionRequest(`/v1/pages/${pageId}`, { method: 'GET' });
     const name = textProperty(page.properties?.['LINE 對話名稱']) || textProperty(page.properties?.['自定義名稱']);
+    const targetType = page.properties?.['對象類型']?.select?.name || '';
+    const groupId = textProperty(page.properties?.['Group ID']);
+    const roomId = textProperty(page.properties?.['Room ID']);
+    const userId = textProperty(page.properties?.['User ID']);
     const result = await notionRequest(`/v1/blocks/${pageId}/children?page_size=100`, { method: 'GET' });
 
     const messages = [];
@@ -674,10 +684,110 @@ async function loadConversationPreview(conversationUrl) {
     }
     if (current) messages.push(current);
 
-    return { name, url: page.url || '', messages: messages.slice(0, 30) };
+    return { id: page.id, name, url: page.url || '', targetType, groupId, roomId, userId, messages: messages.slice(0, 30) };
   } catch {
     return { name: '', url: conversationUrl, messages: [] };
   }
+}
+
+async function loadSourceConversationRecipients(conversation) {
+  if (!conversation) return [];
+  const source = conversation.roomId
+    ? { type: 'room', id: conversation.roomId }
+    : conversation.groupId
+      ? { type: 'group', id: conversation.groupId }
+      : null;
+  if (!source) return [];
+
+  const indexedRecipients = await loadIndexedSourceConversationRecipients(conversation, source);
+  if (indexedRecipients.length) return indexedRecipients;
+
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) return [];
+
+  try {
+    const memberIds = await listLineMemberIds(source);
+    const profiles = await Promise.all(memberIds.slice(0, 500).map(async (userId) => {
+      const profile = await getLineMemberProfile(source, userId).catch(() => null);
+      return {
+        userId,
+        displayName: profile?.displayName || userId,
+      };
+    }));
+
+    return profiles
+      .filter((profile) => profile.userId)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-Hant'))
+      .map((profile) => ({
+        value: `user:${profile.userId}`,
+        label: `${profile.displayName}｜${conversation.name || '來源群組'}成員`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadIndexedSourceConversationRecipients(conversation, source) {
+  const dataSourceId = process.env.SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID || process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
+  if (!dataSourceId) return [];
+
+  const targetProperty = source.type === 'room' ? 'RoomID' : 'GroupID';
+  try {
+    const result = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
+      method: 'POST',
+      body: {
+        page_size: 100,
+        filter: { property: targetProperty, rich_text: { equals: source.id } },
+        sorts: [{ property: '成員顯示名稱', direction: 'ascending' }],
+      },
+    });
+
+    return (result.results || [])
+      .map((page) => {
+        const userId = textProperty(page.properties?.['UserID']);
+        const displayName = textProperty(page.properties?.['成員顯示名稱']) || textProperty(page.properties?.['成員選項名稱']) || userId;
+        return userId ? {
+          value: `user:${userId}`,
+          label: `${displayName}｜${conversation.name || '來源群組'}成員`,
+        } : null;
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function listLineMemberIds(source) {
+  const pathname = source.type === 'room'
+    ? `/v2/bot/room/${encodeURIComponent(source.id)}/members/ids`
+    : `/v2/bot/group/${encodeURIComponent(source.id)}/members/ids`;
+  const memberIds = [];
+  let start = '';
+  do {
+    const query = start ? `?start=${encodeURIComponent(start)}` : '';
+    const response = await lineRequest(`${pathname}${query}`);
+    memberIds.push(...(response.memberIds || []));
+    start = response.next || '';
+  } while (start);
+  return [...new Set(memberIds)];
+}
+
+async function getLineMemberProfile(source, userId) {
+  const pathname = source.type === 'room'
+    ? `/v2/bot/room/${encodeURIComponent(source.id)}/member/${encodeURIComponent(userId)}`
+    : `/v2/bot/group/${encodeURIComponent(source.id)}/member/${encodeURIComponent(userId)}`;
+  return lineRequest(pathname);
+}
+
+async function lineRequest(pathname) {
+  const response = await fetch(`https://api.line.me${pathname}`, {
+    headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+  });
+  const responseText = await response.text();
+  const json = responseText ? JSON.parse(responseText) : {};
+  if (!response.ok) {
+    throw new Error(json.message || responseText || `LINE request failed: ${response.status}`);
+  }
+  return json;
 }
 
 // ---- data loading ----

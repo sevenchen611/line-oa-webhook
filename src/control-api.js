@@ -22,6 +22,7 @@ const CONVERSATIONS_DATA_SOURCE_ID = process.env.SEVEN_CONVERSATIONS_DATA_SOURCE
 const MESSAGES_DATA_SOURCE_ID = process.env.SEVEN_MESSAGES_DATA_SOURCE_ID || '';
 const LINE_GROUP_OPTIONS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_OPTIONS_DATA_SOURCE_ID || '';
 const LINE_GROUP_MEMBERS_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_MEMBERS_DATA_SOURCE_ID || '';
+const LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID = process.env.SEVEN_LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID || '';
 const OUTGOING_ACTOR_NAME = process.env.SEVEN_OUTGOING_ACTOR_NAME || 'Seven Jr.';
 const CONVERSATION_ANCHOR_TEXT = '【Seven LINE】對話記錄';
 const OUTGOING_BLOCK_COLOR = 'orange';
@@ -3515,7 +3516,7 @@ async function findFollowupRecipientCandidates(searchText) {
 
   const [groups, members, conversations] = await Promise.all([
     LINE_GROUP_OPTIONS_DATA_SOURCE_ID ? queryDataSourcePages(LINE_GROUP_OPTIONS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
-    LINE_GROUP_MEMBERS_DATA_SOURCE_ID ? queryDataSourcePages(LINE_GROUP_MEMBERS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
+    queryRecipientMemberPages(),
     CONVERSATIONS_DATA_SOURCE_ID ? queryDataSourcePages(CONVERSATIONS_DATA_SOURCE_ID, { page_size: 100 }) : Promise.resolve([]),
   ]);
 
@@ -3535,7 +3536,7 @@ async function findFollowupRecipientCandidates(searchText) {
       targetMemberName: candidate.memberName,
       targetMemberUserId: candidate.userId,
       targetId: candidate.targetId,
-      targetType: candidate.targetType,
+      targetType: 'user',
       groupName: candidate.groupName,
       source: 'line-group-member',
       score,
@@ -3568,6 +3569,20 @@ async function findFollowupRecipientCandidates(searchText) {
     .map(({ score, ...candidate }) => candidate);
 }
 
+async function queryRecipientMemberPages() {
+  const dataSourceIds = [
+    LINE_GROUP_MEMBERS_DATA_SOURCE_ID,
+    LINE_GROUP_MEMBER_INDEX_DATA_SOURCE_ID,
+  ].filter(Boolean);
+  const uniqueIds = [...new Set(dataSourceIds.map((id) => normalizeId(id)))];
+  const pages = [];
+  for (const normalizedId of uniqueIds) {
+    const originalId = dataSourceIds.find((id) => normalizeId(id) === normalizedId);
+    pages.push(...await queryDataSourcePages(originalId, { page_size: 100 }));
+  }
+  return pages;
+}
+
 async function queryDataSourcePages(dataSourceId, body = {}) {
   const results = [];
   let startCursor = null;
@@ -3598,7 +3613,10 @@ function normalizeRecipientGroupOption(page) {
 }
 
 function normalizeRecipientMemberOption(page, groupsByPageId) {
-  const groupPageIds = pageRelationIds(page, 'LINE群組');
+  const groupPageIds = [
+    ...pageRelationIds(page, 'LINE群組'),
+    ...pageRelationIds(page, 'LINE群組選項'),
+  ];
   const group = groupPageIds.map((id) => groupsByPageId.get(id)).find(Boolean) || {};
   return {
     memberName: pageTextProperty(page, '成員顯示名稱') || pageTextProperty(page, '成員選項名稱'),
