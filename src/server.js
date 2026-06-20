@@ -2,6 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import { createEventQueue } from './event-queue.js';
+import { createLlmBackend } from './llm-backend.js';
 
 loadDotenv();
 
@@ -71,6 +72,7 @@ const server = http.createServer(async (req, res) => {
       taskQueryReplyEnabled: Boolean(notionToken && tasksDataSourceId),
       immediateCommandEnabled: true,
       immediateCommandPrefixes: ['Seven Junior', '7Junior', '7 Junior'],
+      realtimeDiscussionEnabled: true,
       judgmentCalibrationCommandEnabled: Boolean(notionToken && tasksDataSourceId && judgmentCalibrationCasesDataSourceId && judgmentRulesDataSourceId),
       judgmentCalibrationCommands: ['開始做任務校準', '开始做任务校准', '開始任務核對', '任務校準暫停', '任務校準狀態'],
       reportUrl,
@@ -254,6 +256,11 @@ async function buildCommandReply(event) {
     return buildTaskListReply(event, text);
   }
 
+  if (immediateCommand && isRealtimeDiscussionCommandText(immediateCommand.commandText)) {
+    if (!fromController) return null;
+    return buildRealtimeDiscussionReply(immediateCommand.commandText);
+  }
+
   if (immediateCommand) {
     // 非 controller 的指令仍會入佇列留紀錄，但不回執、不觸發即時回答。
     if (!fromController) return null;
@@ -273,6 +280,97 @@ function parseImmediateCommand(text) {
     trigger: match[1],
     commandText: value.slice(match[0].length).trim(),
   };
+}
+
+function isRealtimeDiscussionCommandText(text) {
+  const value = String(text || '').trim();
+  if (!value) return false;
+
+  const hasDiscussionIntent = /(即時討論|即時對話|專案討論|討論|想法|設計|架構|流程|模式|規則|策略|可不可以|能不能|有沒有辦法|怎麼做|怎樣做|為什麼|怎麼改|怎麼設計)/i.test(value);
+  const hasSevenAmTopic = /(SevenAM|Seven\s*AM|Seven\s*Junior|Seven\s*Jr\.?|7\s*Junior|LINE|Notion|Codex|Computer\s*Use|worker|Webhook|webhook|任務判斷|通知|報告|總控|B-Case|即時)/i.test(value);
+
+  if (hasDiscussionIntent && hasSevenAmTopic) return true;
+  return /進入.*(即時討論|專案討論)|開始.*(即時討論|專案討論)/.test(value);
+}
+
+async function buildRealtimeDiscussionReply(commandText) {
+  if (isSensitiveOrActionCommand(commandText)) {
+    return {
+      type: 'text',
+      text: [
+        '可以討論，但這則內容看起來可能涉及實際操作或敏感決策，所以我不會在即時對話裡直接執行。',
+        '',
+        '即時討論適合：系統設計、流程、任務判斷邏輯、報告格式、通知策略。',
+        '需要確認流程的內容：發 LINE 給別人、改 Notion、刪資料、付款、合約、薪資、人資、法律、稅務、對外承諾。',
+        '',
+        `我已保留你的指令內容：${clampText(commandText, 900)}`,
+      ].join('\n'),
+    };
+  }
+
+  const backend = createLlmBackend();
+  if (!backend.available) {
+    return {
+      type: 'text',
+      text: [
+        '我收到你的即時討論問題，但目前 webhook 端沒有可用的 LLM 後端。',
+        '這則訊息已照常進入 SevenAM 指令佇列，會由本機 worker 接手處理。',
+        '',
+        `問題：${clampText(commandText, 900)}`,
+      ].join('\n'),
+    };
+  }
+
+  try {
+    const result = await withTimeout(backend.completeJson({
+      maxTokens: 3000,
+      system: [
+        '你是 Seven Junior 的即時專案討論助理，使用者正在 LINE 中和你討論 SevenAM 專案設計。',
+        '請直接回答使用者問題，不要說「我會放進佇列」。',
+        '必須以 SevenAM 現有架構為前提：LINE OA webhook、Notion 指令佇列、local worker、Control API、LINE reply/push、報告確認頁、總控任務庫、通知候選與核准流程。',
+        '即時討論只做設計分析與建議，不執行外部動作、不承諾已修改資料、不發訊息給其他人。',
+        '若問題涉及實際操作、金錢、合約、人資、法律、稅務、對外承諾，請清楚說明需要回到確認流程。',
+        '回答要短而有用，適合 LINE 閱讀；最多 1200 字。使用繁體中文。',
+      ].join('\n'),
+      userContent: [{ type: 'text', text: commandText }],
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['answer'],
+        properties: {
+          answer: { type: 'string' },
+        },
+      },
+    }), 45000);
+
+    return {
+      type: 'text',
+      text: clampText(result.answer || '我收到你的即時討論問題，但暫時沒有產生可用回答。', 4900),
+    };
+  } catch (error) {
+    console.warn(`Realtime discussion reply failed: ${error.message}`);
+    return {
+      type: 'text',
+      text: [
+        '我收到你的即時討論問題，但這次即時回答沒有在時間內完成。',
+        '這則訊息仍會保留在 SevenAM 指令佇列，由 worker 接手產生完整回覆。',
+        '',
+        `問題：${clampText(commandText, 900)}`,
+      ].join('\n'),
+    };
+  }
+}
+
+function isSensitiveOrActionCommand(text) {
+  const value = String(text || '');
+  return /(發訊息|傳訊息|推送|送出|通知.*同仁|通知.*同事|改資料|修改|刪除|付款|匯款|合約|租約|薪資|獎金|人資|法律|稅務|報稅|對外承諾|正式回覆)/.test(value);
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms)),
+  ]);
 }
 
 function isJudgmentCalibrationCommandText(text) {
